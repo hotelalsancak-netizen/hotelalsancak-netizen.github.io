@@ -1,0 +1,53 @@
+name: Riva Dashboard
+
+# Dashboard'u bulutta üretir ve GitHub Pages'e yayınlar. Bu bilgisayara BAĞLI
+# DEĞİL — PC kapalıyken de çalışır. Canlı bölümler (Gün Sonu, Dünün Ödemesi)
+# Elektra'dan çekilir; Kart Güvenliği bölümü site_data/ içindeki şifreli bloktan
+# gelir (yerelde ./kart-yayinla.sh ile güncellenir). Kimlik bilgileri Secrets'tan.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]          # site_data/kart.enc.json güncellenince yeniden yayınla
+  schedule:
+    # UTC. TR = UTC+3. Aşağısı TR 21:00 / 23:00 / 01:00 / 03:00 / 05:00.
+    - cron: '0 18,20,22,0,2 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Dashboard'u üret
+        env:
+          ELEKTRA_HOTELID: ${{ secrets.ELEKTRA_HOTELID }}
+          ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
+          ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
+          DASH_PASSWORD: ${{ secrets.DASH_PASSWORD }}
+        run: python dashboard.py --build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

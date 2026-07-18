@@ -1,0 +1,19 @@
+# -*- coding: utf-8 -*-
+# GÖMÜLÜ GİRİŞ BİLGİLERİ  (embedded credentials)
+#
+# 1. Bu dosyayı "gizli.py" adıyla kopyalayın.
+# 2. Kendi bilgilerinizi yazın.
+# 3. build.bat ile derleyin — bilgiler exe'nin içine gömülür, ayrı dosya gerekmez.
+#
+# ÖNEMLİ: exe'ye gömülü şifre GİZLİ DEĞİLDİR — exe açılıp okunabilir. Bu yüzden
+# buraya YÖNETİCİ değil, SALT-OKUNUR bir API kullanıcısı yazın. Böylece bu bilgi
+# ele geçse bile yalnızca rezervasyon OKUNABİLİR, hiçbir şey değiştirilemez/silinemez.
+# (Elektra'da API kullanıcısı: SP_EASYPMS_CREATEAPIUSER.)
+#
+# gizli.py .gitignore ile korunur; koda/gite karışmaz.
+
+GIZLI = {
+    "hotelid": "29481",
+    "user": "",       # salt-okunur API kullanıcısı
+    "password": "",
+}

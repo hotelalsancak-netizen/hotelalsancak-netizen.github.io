@@ -1,0 +1,42 @@
+# --- şifreler / kimlik (ASLA commit) ---
+.env
+gizli.py
+ayarlar.ini
+auth_state.json
+
+# --- MİSAFİR VERİSİ (public repo — ASLA commit) ---
+cards.json
+cards*.json
+occupancy.json
+room_changes.json
+findings.json
+report.html
+report.pdf
+report_bundle.zip
+cardreads/
+testdata/
+discover/
+raporlar/
+reports/
+
+# --- yalnızca yerelde kullanılan, yorumlarında PII olabilen kod ---
+analyze.py
+build_report.py
+parse_cards.py
+room_changes.py
+package_report.py
+discover.py
+elektra.py
+gunsonu_app.py
+publish_web.py
+
+# --- üretilen çıktı / geçici ---
+public/
+__pycache__/
+build/
+dist/
+*.spec
+.venv/
+hata.log
+
+# not: site_data/ (şifreli kart bloğu) commit EDİLİR — güvenli.

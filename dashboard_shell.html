@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Riva Hotel Alsancak Dashboard</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+    --brand:#0e7490; --brand-ink:#ffffff; --bad:#dc2626; --bad-bg:#fef2f2;
+    --ok:#16a34a; --ok-bg:#f0fdf4; --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0b1120; --card:#111a2e; --ink:#e8eef7; --muted:#94a3b8; --line:#243049;
+      --brand:#22b8cf; --brand-ink:#04121a; --bad:#f87171; --bad-bg:#2a1416;
+      --ok:#4ade80; --ok-bg:#0f2417; --shadow:0 1px 3px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);}
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased;}
+  .hidden{display:none !important}
+
+  /* ---- login ---- */
+  #login{min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:24px;}
+  .login-card{width:100%; max-width:380px; background:var(--card); border:1px solid var(--line);
+    border-radius:18px; box-shadow:var(--shadow); padding:32px 28px; text-align:center;}
+  .logo{width:56px;height:56px;border-radius:14px;background:var(--brand);color:var(--brand-ink);
+    display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-weight:800;font-size:22px;letter-spacing:.5px;}
+  .login-card h1{font-size:19px;margin:0 0 4px;font-weight:700;}
+  .login-card .eyebrow{color:var(--muted);font-size:12.5px;margin-bottom:22px;letter-spacing:.3px;}
+  .field{display:flex;gap:8px;margin-top:6px}
+  input[type=password]{flex:1;padding:12px 14px;border:1px solid var(--line);border-radius:11px;
+    background:var(--bg);color:var(--ink);font-size:15px;outline:none;}
+  input[type=password]:focus{border-color:var(--brand)}
+  button.go{padding:12px 18px;border:0;border-radius:11px;background:var(--brand);color:var(--brand-ink);
+    font-weight:700;font-size:15px;cursor:pointer;}
+  button.go:disabled{opacity:.6;cursor:default}
+  .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:12px}
+  .kvkk{color:var(--muted);font-size:11.5px;margin-top:18px;line-height:1.5}
+
+  /* ---- dashboard ---- */
+  header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 86%, transparent);
+    backdrop-filter:saturate(1.4) blur(8px);border-bottom:1px solid var(--line);}
+  .top-in{max-width:1000px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:12px}
+  .brand-dot{width:30px;height:30px;border-radius:8px;background:var(--brand);color:var(--brand-ink);
+    display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex:0 0 auto}
+  .top h1{font-size:16px;margin:0;font-weight:700;flex:1}
+  .top .built{color:var(--muted);font-size:12px;margin-right:6px}
+  .logout{background:none;border:1px solid var(--line);color:var(--muted);border-radius:9px;
+    padding:7px 12px;font-size:13px;cursor:pointer}
+  main{max-width:1000px;margin:0 auto;padding:22px 20px 60px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+  .tile{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:20px;box-shadow:var(--shadow);cursor:pointer;transition:transform .12s ease,border-color .12s;
+    display:flex;flex-direction:column;gap:14px;min-height:150px;color:inherit;font:inherit}
+  .tile:hover{transform:translateY(-2px);border-color:var(--brand)}
+  .tile .label{font-size:15.5px;font-weight:700}
+  .tile .sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .tile .spacer{flex:1}
+  .badge{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;
+    border-radius:11px;font-weight:700;font-size:14px}
+  .badge .n{font-size:22px;line-height:1}
+  .badge.bad{background:var(--bad-bg);color:var(--bad)}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .tile .updated{color:var(--muted);font-size:11.5px}
+  .arrow{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:6px}
+
+  /* ---- detail ---- */
+  #detail{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column}
+  .detail-bar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);
+    background:var(--card)}
+  .back{background:none;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 14px;
+    font-size:14px;cursor:pointer;font-weight:600}
+  .detail-bar .t{font-weight:700;font-size:15px}
+  #detail iframe{flex:1;border:0;width:100%;background:#fff}
+  .foot{max-width:1000px;margin:30px auto 0;color:var(--muted);font-size:11.5px;text-align:center;line-height:1.6}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<section id="login">
+  <div class="login-card">
+    <div class="logo">RA</div>
+    <h1>Riva Hotel Alsancak</h1>
+    <div class="eyebrow">Dashboard · yetkili giriş</div>
+    <form id="loginForm">
+      <div class="field">
+        <input id="pw" type="password" autocomplete="current-password" placeholder="Şifre" autofocus>
+        <button class="go" id="goBtn" type="submit">Giriş</button>
+      </div>
+      <div class="err" id="err"></div>
+    </form>
+    <div class="kvkk">Bu panel misafir verisi içerir. İçerik şifrelidir ve yalnızca
+      doğru şifreyle tarayıcınızda çözülür. Şifreyi paylaşmayın.</div>
+  </div>
+</section>
+
+<!-- DASHBOARD -->
+<div id="app" class="hidden">
+  <header class="top">
+    <div class="top-in">
+      <div class="brand-dot">RA</div>
+      <h1>Riva Hotel Alsancak Dashboard</h1>
+      <span class="built" id="built"></span>
+      <button class="logout" id="logout">Çıkış</button>
+    </div>
+  </header>
+  <main>
+    <div class="grid" id="grid"></div>
+    <div class="foot">Otomatik güncellenir · içerik uçtan uca şifrelidir (AES-256-GCM).<br>
+      KVKK: veriyi yetkisiz kişilerle paylaşmayın.</div>
+  </main>
+</div>
+
+<!-- DETAIL -->
+<div id="detail" class="hidden">
+  <div class="detail-bar">
+    <button class="back" id="back">‹ Geri</button>
+    <span class="t" id="detailTitle"></span>
+  </div>
+  <iframe id="frame" sandbox="allow-scripts allow-popups allow-modals allow-downloads"></iframe>
+</div>
+
+<script>
+const FALLBACK = ["gunsonu","odeme","kart"];
+const $ = id => document.getElementById(id);
+const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function deriveKey(password, salt, iter){
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password),
+    "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt, iterations:iter, hash:"SHA-256"},
+    base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+}
+async function decryptBlob(blob, password){
+  const key = await deriveKey(password, b64d(blob.salt), blob.iter);
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64d(blob.iv)}, key, b64d(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function getJSON(url){
+  const r = await fetch(url, {cache:"no-store"});
+  if(!r.ok) return null;
+  return r.json();
+}
+
+let SECTIONS = [];
+
+async function doLogin(ev){
+  ev.preventDefault();
+  const pw = $("pw").value;
+  $("err").textContent = "";
+  $("goBtn").disabled = true;
+  try{
+    const man = await getJSON("data/manifest.json");
+    const keys = (man && man.sections) ? man.sections : FALLBACK;
+    if(man && man.built) $("built").textContent = "güncellenme: " + man.built;
+    const out = [];
+    let sawBlob = false;
+    for(const k of keys){
+      const blob = await getJSON("data/" + k + ".enc.json");
+      if(!blob) continue;
+      sawBlob = true;
+      const s = await decryptBlob(blob, pw);   // throws if wrong password
+      s.key = k;
+      out.push(s);
+    }
+    if(!sawBlob){ $("err").textContent = "Henüz veri yüklenmemiş."; return; }
+    SECTIONS = out;
+    renderDashboard();
+  }catch(e){
+    $("err").textContent = "Şifre hatalı.";
+  }finally{
+    $("goBtn").disabled = false;
+  }
+}
+
+function renderDashboard(){
+  $("login").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  const grid = $("grid");
+  grid.innerHTML = "";
+  SECTIONS.forEach((s, i) => {
+    const tone = s.tone === "bad" ? "bad" : "ok";
+    const t = document.createElement("button");
+    t.className = "tile";
+    t.innerHTML =
+      '<div><div class="label">'+esc(s.label)+'</div>'+
+      (s.sub ? '<div class="sub">'+esc(s.sub)+'</div>' : '')+'</div>'+
+      '<span class="badge '+tone+'"><span class="n">'+s.count+'</span>'+esc(s.count_label||'')+'</span>'+
+      '<div class="spacer"></div>'+
+      '<div class="updated">'+(s.updated ? 'son güncelleme: '+esc(s.updated) : '')+'</div>'+
+      '<div class="arrow">Aç →</div>';
+    t.addEventListener("click", () => openDetail(i));
+    grid.appendChild(t);
+  });
+}
+
+function openDetail(i){
+  const s = SECTIONS[i];
+  $("detailTitle").textContent = s.label;
+  $("frame").srcdoc = s.html;
+  $("detail").classList.remove("hidden");
+}
+function closeDetail(){ $("detail").classList.add("hidden"); $("frame").srcdoc = ""; }
+
+function esc(x){ return String(x==null?"":x).replace(/[&<>"]/g, c => (
+  {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+$("loginForm").addEventListener("submit", doLogin);
+$("logout").addEventListener("click", () => location.reload());
+$("back").addEventListener("click", closeDetail);
+document.addEventListener("keydown", e => { if(e.key==="Escape") closeDetail(); });
+</script>
+</body>
+</html>

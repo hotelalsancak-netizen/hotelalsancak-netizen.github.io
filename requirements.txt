@@ -1,0 +1,5 @@
+# Gün-sonu uygulaması + dashboard bulut derlemesi:
+requests>=2.28
+cryptography>=42.0    # dashboard bölümlerinin AES-256-GCM şifrelemesi (dashcrypto.py)
+# EXE üretmek için (build.bat kurar):
+# pyinstaller>=6.0
