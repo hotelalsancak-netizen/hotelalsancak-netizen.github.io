@@ -43,7 +43,7 @@ SHELL = ROOT / "dashboard_shell.html"
 
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
-SECTION_ORDER = ["gunsonu", "odeme", "kart"]
+SECTION_ORDER = ["gunsonu", "odeme", "kasa", "iptal", "indirim", "bakiye", "kart", "stats"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -170,10 +170,17 @@ def build_cloud():
         shutil.rmtree(PUBLIC)
     PUBLIC.mkdir(parents=True)
 
+    import checks
+
     built = []
 
-    # Live sections (Elektra API only).
-    for key, fn in (("gunsonu", build_gunsonu), ("odeme", build_odeme)):
+    # Live sections (Elektra API only). A broken section is logged and skipped so
+    # one bad fetch never blanks the whole dashboard.
+    live = (("gunsonu", build_gunsonu), ("odeme", build_odeme),
+            ("kasa", checks.build_kasa), ("iptal", checks.build_iptal),
+            ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
+            ("stats", checks.build_stats))
+    for key, fn in live:
         try:
             section = fn(env)
             write_blob(key, encrypt_section(section, pw), PUBLIC)

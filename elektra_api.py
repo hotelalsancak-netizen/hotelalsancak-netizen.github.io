@@ -306,6 +306,62 @@ def fetch_departed_range(frm, to, env=None, raw=False):
 
 
 # ---------------------------------------------------------------------------
+# Extended fetchers for the owner-control lists (cash/POS reconciliation,
+# cancels, discounts, balances, stats). These return RAW rows (original column
+# names) so the check modules can read the full reservation / folio model.
+# ---------------------------------------------------------------------------
+
+RES_EXT_COLUMNS = [
+    "RESID", "ROOMNO", "GUESTNAMES", "AGENCY", "CHECKIN", "CHECKOUT",
+    "RESSTATE", "RESSTATEID", "GENERALBALANCE", "GUESTBALANCE", "AGENCYBALANCE",
+    "TOTALPRICE", "AVERAGENIGHTPRICE", "PAIDAMOUNT", "NIGHT", "ADULT",
+    "ROOMTYPE", "SOURCE", "RATECODE", "PAYMENTTYPENAME", "CURRENCYCODE",
+    "CANCEL_DATE", "CANCELUSER", "CREATORUSER", "UPDATEUSER", "CREATEDATE",
+]
+
+
+def fetch_reservations(where, env=None, columns=None, order_by=None):
+    """Raw reservation rows for an arbitrary WHERE (HOTELID is prepended). Original
+    column names are kept untouched — the control lists want the full model."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    return e.select(env.get("ELEKTRA_RES_OBJECT", RES_OBJECT), columns or RES_EXT_COLUMNS,
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid}] + list(where),
+                    order_by=order_by, per_page=500)
+
+
+def fetch_reservations_between(col, frm, to, env=None, extra=None, columns=None):
+    """Reservations whose `col` (CHECKIN / CHECKOUT / CANCEL_DATE …) is in [frm, to]."""
+    w = [{"Column": col, "Operator": ">=", "Value": f"{frm} 00:00:00"},
+         {"Column": col, "Operator": "<=", "Value": f"{to} 23:59:59.999"}]
+    return fetch_reservations(w + list(extra or []), env=env, columns=columns,
+                              order_by=[{"Column": col, "Direction": "ASC"}])
+
+
+FOLIO_OBJECT = "QA_HOTEL_FOLIO"
+FOLIO_COLUMNS = [
+    "ID", "RESID", "ROOMNO", "GUESTNAMES", "AGENCY", "DEPNAME", "DEPCODE",
+    "DEPTTYPE", "DEPTTYPENAME", "TYPE", "REVENUENAME", "TOTAL", "CTOTAL",
+    "CURRENCY", "USERCODE", "USERFULLNAME", "FOLIODATE",
+]
+
+
+def fetch_folio(frm, to, env=None, columns=None):
+    """Folio lines (charges + collections) with FOLIODATE in [frm, to] — raw rows.
+
+    DEPTTYPENAME 'PAYMENT' rows are collections; DEPNAME is the method
+    (Cash / Credit Card / Havale / CityLedger). 'REVENUE' rows are charges.
+    TYPE in ('Discount','Rebate') are price reductions. USERFULLNAME is who did it."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    return e.select(FOLIO_OBJECT, columns or FOLIO_COLUMNS,
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
+                           {"Column": "FOLIODATE", "Operator": ">=", "Value": f"{frm} 00:00:00"},
+                           {"Column": "FOLIODATE", "Operator": "<=", "Value": f"{to} 23:59:59.999"}],
+                    per_page=1000)
+
+
+# ---------------------------------------------------------------------------
 # Room calendar — the occupancy source for the room-usage security check.
 # ---------------------------------------------------------------------------
 # FN_ROOMCALENDAR_BASIC is what draws the Oda Planı. Verified live 15.07.2026.
