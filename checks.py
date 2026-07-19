@@ -474,56 +474,94 @@ def build_bakiye(env):
             f"<div class='stats'>{stats}</div>{table}{note}")}
 
 
+# --------------------------------------------------------------------------- occupancy engine
+# Shared by İstatistikler + Aylık Satışlar. Occupancy = distinct PHYSICAL (numeric)
+# rooms with a live reservation per night; revenue = TRY nightly price (MCTOTALPRICE
+# / nights) of those rooms. Excludes cancelled/deleted/no-show and virtual tour rooms.
+EXCL_STATES = {"Cancelled", "Deleted", "No Show"}
+TR_MON_FULL = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
+               "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
+
+
+def try_nightly(r):
+    ni = num(r.get("NIGHT")) or 1
+    mc = num(r.get("MCTOTALPRICE"))
+    return (mc / ni) if mc else num(r.get("AVERAGENIGHTPRICE")) * (num(r.get("CURRENCYRATE")) or 1)
+
+
+def month_start(d, back=0):
+    tot = d.year * 12 + (d.month - 1) - back
+    y, m = divmod(tot, 12)
+    return dt.date(y, m + 1, 1)
+
+
+def active_reservations(env, start, end):
+    res = E.fetch_reservations(
+        [{"Column": "CHECKIN", "Operator": "<=", "Value": f"{end} 23:59:59"},
+         {"Column": "CHECKOUT", "Operator": ">=", "Value": f"{start} 00:00:00"}], env=env,
+        columns=["RESID", "ROOMNO", "RESSTATE", "MCTOTALPRICE", "NIGHT",
+                 "AVERAGENIGHTPRICE", "CURRENCYRATE", "CHECKIN", "CHECKOUT"])
+    return [r for r in res if str(r.get("ROOMNO") or "").isdigit()
+            and r.get("RESSTATE") not in EXCL_STATES]
+
+
+def daily_occupancy(active, start, end):
+    """OrderedDict date -> {room: try_nightly}. De-dupes rooms per night."""
+    out = OrderedDict()
+    d, one = start, dt.timedelta(days=1)
+    while d <= end:
+        rp = {}
+        for r in active:
+            ci, co = pdate(r.get("CHECKIN")), pdate(r.get("CHECKOUT"))
+            if ci and co and ci <= d < co:
+                rp[str(r.get("ROOMNO"))] = try_nightly(r)
+        out[d] = rp
+        d += one
+    return out
+
+
+def monthly_aggregate(daily):
+    """daily -> OrderedDict (year,month) -> {rooms, rev, days, occ, adr, revpar}."""
+    agg = OrderedDict()
+    for d, rp in daily.items():
+        a = agg.setdefault((d.year, d.month), {"rooms": 0, "rev": 0.0, "days": 0})
+        a["rooms"] += len(rp)
+        a["rev"] += sum(rp.values())
+        a["days"] += 1
+    for a in agg.values():
+        cap = ROOMS_TOTAL * a["days"]
+        a["occ"] = round(a["rooms"] / cap * 100) if cap else 0
+        a["adr"] = a["rev"] / a["rooms"] if a["rooms"] else 0.0
+        a["revpar"] = a["rev"] / cap if cap else 0.0
+    return agg
+
+
+def mlabel(key, short=True):
+    y, m = key
+    return f"{TR_MONTHS[m]} {str(y)[2:]}" if short else f"{TR_MON_FULL[m]} {y}"
+
+
 # --------------------------------------------------------------------------- 5) İstatistikler
 def build_stats(env):
     today = dt.date.today()
-    days = 30
-    frm = today - dt.timedelta(days=days - 1)
-    nights = [frm + dt.timedelta(days=i) for i in range(days)]
+    # One 12-month fetch powers both the daily (last 30) and the monthly views.
+    start = month_start(today, 11)
+    active = active_reservations(env, start, today)
+    daily = daily_occupancy(active, start, today)
+    day_keys = list(daily.keys())
 
-    # Occupancy = distinct PHYSICAL (numeric) rooms with a LIVE reservation
-    # overlapping the night. Must include arrivals not yet checked in (RESSTATE
-    # 'Reservation') — Elektra counts them in tonight's occupancy — and exclude
-    # Cancelled/Deleted/No Show plus virtual tour rooms (T…/OT…). Room changes /
-    # shared folios are absorbed by de-duping ROOMNO. Verified vs Elektra: 30 rooms.
-    #
-    # TRY nightly price: prices are multi-currency (EUR/TRY/USD) and AVERAGENIGHTPRICE
-    # is in the booking's OWN currency, so summing it mixes money. MCTOTALPRICE is the
-    # master-currency (TRY) total → MCTOTAL / nights = TRY/night.
-    res = E.fetch_reservations(
-        [{"Column": "CHECKIN", "Operator": "<=", "Value": f"{today} 23:59:59"},
-         {"Column": "CHECKOUT", "Operator": ">=", "Value": f"{frm} 00:00:00"}], env=env,
-        columns=["RESID", "ROOMNO", "RESSTATE", "MCTOTALPRICE", "NIGHT",
-                 "AVERAGENIGHTPRICE", "CURRENCYRATE", "CHECKIN", "CHECKOUT"])
-    EXCL = {"Cancelled", "Deleted", "No Show"}
-    active = [r for r in res if str(r.get("ROOMNO") or "").isdigit()
-              and r.get("RESSTATE") not in EXCL]
-
-    def try_nightly(r):
-        ni = num(r.get("NIGHT")) or 1
-        mc = num(r.get("MCTOTALPRICE"))
-        return (mc / ni) if mc else num(r.get("AVERAGENIGHTPRICE")) * (num(r.get("CURRENCYRATE")) or 1)
-
-    occ, adr = [], []
-    for n in nights:
-        room_price = {}
-        for r in active:
-            ci, co = pdate(r.get("CHECKIN")), pdate(r.get("CHECKOUT"))
-            if ci and co and ci <= n < co:
-                room_price[str(r.get("ROOMNO"))] = try_nightly(r)
-        occ.append(len(room_price))
-        vals = [v for v in room_price.values() if v > 0]
-        adr.append(sum(vals) / len(vals) if vals else 0.0)
+    last30 = day_keys[-30:]
+    occ = [len(daily[d]) for d in last30]
+    adr = [(sum(daily[d].values()) / len(daily[d]) if daily[d] else 0.0) for d in last30]
     occ_pct = [min(100, round(c / ROOMS_TOTAL * 100)) for c in occ]
+    labels = [f"{d.day:02d}" for d in last30]
 
-    today_occ = occ[-1]
-    today_pct = occ_pct[-1]
-    today_adr = adr[-1]
+    today_occ = len(daily[today])
+    today_pct = min(100, round(today_occ / ROOMS_TOTAL * 100))
+    today_adr = (sum(daily[today].values()) / today_occ) if today_occ else 0.0
     revpar = today_adr * today_occ / ROOMS_TOTAL if ROOMS_TOTAL else 0
     avg_pct = round(sum(occ_pct) / len(occ_pct)) if occ_pct else 0
     avg_adr = (sum(a for a in adr if a) / len([a for a in adr if a])) if any(adr) else 0
-
-    labels = [f"{n.day:02d}" for n in nights]
 
     stats = (stat(f"%{today_pct}", "bugün doluluk", "")
              + stat(f"{today_occ}/{ROOMS_TOTAL}", "dolu oda")
@@ -547,10 +585,86 @@ def build_stats(env):
     <div class='card' style='margin-top:16px'><h3>Doluluk % — son 30 gün</h3>{svg_bars(labels, occ_pct, unit='%')}</div>
     <div class='card' style='margin-top:16px'><h3>Ortalama oda fiyatı (ADR ₺) — son 30 gün</h3>{svg_line(labels, adr, unit=' ₺', fmt=lambda v: tl(v))}</div>
     """
-    note = (f"<div class='note'>Doluluk = konaklayan oda / {ROOMS_TOTAL}. ADR = konaklayan odaların ortalama gecelik fiyatı. "
-            f"30 gün ort.: doluluk %{avg_pct}, ADR {tl(avg_adr)} ₺. Kaynak: QA_HOTEL_RESERVATION + QA_HOTEL_FOLIO.</div>")
+    # ---- monthly summary (last 12 months) ----
+    monthly = monthly_aggregate(daily)
+    mkeys = list(monthly.keys())
+    mlabels = [mlabel(k) for k in mkeys]
+    m_occ = [monthly[k]["occ"] for k in mkeys]
+    m_adr = [monthly[k]["adr"] for k in mkeys]
+    mrows = "".join(
+        f"<tr><td>{esc(mlabel(k, False))}</td><td class='r'>%{monthly[k]['occ']}</td>"
+        f"<td class='r money'>{tl(monthly[k]['adr'])}</td>"
+        f"<td class='r money'>{tl(monthly[k]['revpar'])}</td>"
+        f"<td class='r'>{monthly[k]['rooms']}</td>"
+        f"<td class='r money'>{tl(monthly[k]['rev'])} ₺</td></tr>"
+        for k in reversed(mkeys))
+    monthly_html = (
+        "<h2>Aylık özet (son 12 ay)</h2>"
+        f"<div class='card'><h3>Aylık doluluk %</h3>{svg_bars(mlabels, m_occ, unit='%')}</div>"
+        f"<div class='card' style='margin-top:16px'><h3>Aylık ADR (₺)</h3>"
+        f"{svg_line(mlabels, m_adr, unit=' ₺', fmt=lambda v: tl(v))}</div>"
+        "<table><tr><th>Ay</th><th class='r'>Doluluk</th><th class='r'>ADR</th>"
+        "<th class='r'>RevPAR</th><th class='r'>Oda-gecesi</th><th class='r'>Oda geliri</th></tr>"
+        + mrows + "</table>"
+        "<p class='note'>Bu ay kısmidir (bugüne kadar). Oda geliri = konaklanan oda-gecelerinin TL gecelik toplamı (ekstralar hariç).</p>")
+
+    note = (f"<div class='note'>Doluluk = dolu oda / {ROOMS_TOTAL}. ADR = dolu odaların ortalama gecelik fiyatı (TL). "
+            f"30 gün ort.: doluluk %{avg_pct}, ADR {tl(avg_adr)} ₺. Kaynak: QA_HOTEL_RESERVATION.</div>")
+    body = f"<div class='stats'>{stats}</div>{charts}{monthly_html}{note}"
     return {"label": "İstatistikler & Grafikler", "count": today_pct,
             "count_label": "% bugün doluluk", "tone": "ok",
             "sub": f"bugün %{today_pct} · ADR {tl(today_adr)} ₺ · 30 gün ort. %{avg_pct}",
             "updated": now_str(), "html": PAGE("Doluluk & Gelir",
-            "İstatistikler & Grafikler", "son 30 gün trendi", f"<div class='stats'>{stats}</div>{charts}{note}")}
+            "İstatistikler & Grafikler", "son 30 gün + aylık", body)}
+
+
+# --------------------------------------------------------------------------- 6) Aylık Satışlar
+def build_satis(env):
+    today = dt.date.today()
+    start = month_start(today, 11)
+    active = active_reservations(env, start, today)
+    daily = daily_occupancy(active, start, today)
+    monthly = monthly_aggregate(daily)
+    mkeys = list(monthly.keys())
+    mlabels = [mlabel(k) for k in mkeys]
+    m_rev = [monthly[k]["rev"] for k in mkeys]
+
+    cur = monthly[mkeys[-1]] if mkeys else {"rev": 0, "rooms": 0, "adr": 0}
+    prev = monthly[mkeys[-2]] if len(mkeys) > 1 else {"rev": 0}
+    ytd = sum(v["rev"] for k, v in monthly.items() if k[0] == today.year)
+
+    stats = (stat(f"{tl(cur['rev'])} ₺", f"{TR_MON_FULL[today.month]} oda geliri")
+             + stat(f"{tl(prev['rev'])} ₺", "geçen ay")
+             + stat(f"{tl(ytd)} ₺", f"{today.year} yıl toplamı")
+             + stat(f"{cur['rooms']}", "bu ay oda-gecesi"))
+
+    revbar = (f"<div class='card'><h3>Aylık oda geliri (₺)</h3>"
+              f"{svg_bars(mlabels, m_rev, unit=' ₺', fmt=lambda v: tl(v))}</div>")
+
+    # This-month collections by payment method (folio) — how the money came in.
+    fol = E.fetch_folio(month_start(today).isoformat(), today.isoformat(), env=env)
+    pm = defaultdict(float)
+    for r in fol:
+        if r.get("DEPTTYPENAME") == "PAYMENT":
+            pm[METHOD_TR.get(r.get("DEPNAME"), r.get("DEPNAME") or "Diğer")] += abs(num(r.get("TOTAL")))
+    pm_card = (f"<div class='card'><h3>Bu ay tahsilat — ödeme türü</h3>"
+               f"{svg_hbars(sorted(pm.items(), key=lambda t: -t[1])) or '<div class=lead>veri yok</div>'}</div>")
+
+    mrows = "".join(
+        f"<tr><td>{esc(mlabel(k, False))}</td><td class='r money'>{tl(monthly[k]['rev'])} ₺</td>"
+        f"<td class='r'>{monthly[k]['rooms']}</td><td class='r'>%{monthly[k]['occ']}</td>"
+        f"<td class='r money'>{tl(monthly[k]['adr'])}</td></tr>"
+        for k in reversed(mkeys))
+    table = ("<h2>Aylık satış tablosu</h2><table><tr><th>Ay</th><th class='r'>Oda geliri</th>"
+             "<th class='r'>Oda-gecesi</th><th class='r'>Doluluk</th><th class='r'>ADR</th></tr>"
+             + mrows + "</table>")
+
+    body = (f"<div class='stats'>{stats}</div>{revbar}"
+            f"<div class='grid2' style='margin-top:16px'>{pm_card}</div>{table}"
+            "<div class='note'>Oda geliri = konaklanan oda-gecelerinin TL gecelik toplamı (tahakkuk; ekstralar/minibar hariç). "
+            "Tahsilat = bu ay folioya girilen ödemeler (TL). Kaynak: QA_HOTEL_RESERVATION + QA_HOTEL_FOLIO.</div>")
+    return {"label": "Aylık Satışlar", "count": int(round(cur["rev"] / 1000)),
+            "count_label": "bin ₺ · bu ay", "tone": "ok",
+            "sub": f"{TR_MON_FULL[today.month]}: {tl(cur['rev'])} ₺ · {today.year} toplam {tl(ytd)} ₺",
+            "updated": now_str(), "html": PAGE("Aylık Gelir & Satış",
+            "Aylık Satışlar", "son 12 ay oda geliri", body)}
