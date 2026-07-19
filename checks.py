@@ -481,36 +481,36 @@ def build_stats(env):
     frm = today - dt.timedelta(days=days - 1)
     nights = [frm + dt.timedelta(days=i) for i in range(days)]
 
-    # Occupancy from the room calendar (the physical Oda Planı) — count DISTINCT
-    # physical (numeric) rooms per night. The reservation view alone over-counts:
-    # it also carries virtual tour/group room codes (T…, OT…), which pushed the old
-    # figure past 100%. Room changes / shared folios are absorbed by de-duping ROOMNO.
-    cal = E.fetch_room_calendar(frm.isoformat(), today.isoformat(), env=env)
-    recs = [r for r in cal["reservations"] if str(r.get("room") or "").isdigit()]
-
-    # TRY nightly price per reservation. Prices are multi-currency (EUR/TRY/USD) and
-    # AVERAGENIGHTPRICE is in the booking's OWN currency, so summing it mixes money.
-    # MCTOTALPRICE is the master-currency (TRY) total → MCTOTAL / nights = TRY/night.
-    pr = E.fetch_reservations(
+    # Occupancy = distinct PHYSICAL (numeric) rooms with a LIVE reservation
+    # overlapping the night. Must include arrivals not yet checked in (RESSTATE
+    # 'Reservation') — Elektra counts them in tonight's occupancy — and exclude
+    # Cancelled/Deleted/No Show plus virtual tour rooms (T…/OT…). Room changes /
+    # shared folios are absorbed by de-duping ROOMNO. Verified vs Elektra: 30 rooms.
+    #
+    # TRY nightly price: prices are multi-currency (EUR/TRY/USD) and AVERAGENIGHTPRICE
+    # is in the booking's OWN currency, so summing it mixes money. MCTOTALPRICE is the
+    # master-currency (TRY) total → MCTOTAL / nights = TRY/night.
+    res = E.fetch_reservations(
         [{"Column": "CHECKIN", "Operator": "<=", "Value": f"{today} 23:59:59"},
          {"Column": "CHECKOUT", "Operator": ">=", "Value": f"{frm} 00:00:00"}], env=env,
-        columns=["RESID", "MCTOTALPRICE", "NIGHT", "AVERAGENIGHTPRICE", "CURRENCYRATE"])
-    price = {}
-    for r in pr:
+        columns=["RESID", "ROOMNO", "RESSTATE", "MCTOTALPRICE", "NIGHT",
+                 "AVERAGENIGHTPRICE", "CURRENCYRATE", "CHECKIN", "CHECKOUT"])
+    EXCL = {"Cancelled", "Deleted", "No Show"}
+    active = [r for r in res if str(r.get("ROOMNO") or "").isdigit()
+              and r.get("RESSTATE") not in EXCL]
+
+    def try_nightly(r):
         ni = num(r.get("NIGHT")) or 1
         mc = num(r.get("MCTOTALPRICE"))
-        p = (mc / ni) if mc else num(r.get("AVERAGENIGHTPRICE")) * (num(r.get("CURRENCYRATE")) or 1)
-        if p:
-            price[str(r.get("RESID"))] = p
+        return (mc / ni) if mc else num(r.get("AVERAGENIGHTPRICE")) * (num(r.get("CURRENCYRATE")) or 1)
 
     occ, adr = [], []
     for n in nights:
         room_price = {}
-        for r in recs:
-            ci, co = pdate(r.get("checkin")), pdate(r.get("checkout"))
+        for r in active:
+            ci, co = pdate(r.get("CHECKIN")), pdate(r.get("CHECKOUT"))
             if ci and co and ci <= n < co:
-                room = str(r["room"])
-                room_price[room] = price.get(str(r.get("rez_id")), room_price.get(room, 0.0))
+                room_price[str(r.get("ROOMNO"))] = try_nightly(r)
         occ.append(len(room_price))
         vals = [v for v in room_price.values() if v > 0]
         adr.append(sum(vals) / len(vals) if vals else 0.0)
