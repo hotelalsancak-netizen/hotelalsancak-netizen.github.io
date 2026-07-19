@@ -479,23 +479,42 @@ def build_stats(env):
     today = dt.date.today()
     days = 30
     frm = today - dt.timedelta(days=days - 1)
-    res = E.fetch_reservations(
-        [{"Column": "CHECKIN", "Operator": "<=", "Value": f"{today} 23:59:59"},
-         {"Column": "CHECKOUT", "Operator": ">=", "Value": f"{frm} 00:00:00"}], env=env)
-    sold = [r for r in res if r.get("RESSTATE") in ("InHouse", "CheckOut")]
-
     nights = [frm + dt.timedelta(days=i) for i in range(days)]
+
+    # Occupancy from the room calendar (the physical Oda Planı) — count DISTINCT
+    # physical (numeric) rooms per night. The reservation view alone over-counts:
+    # it also carries virtual tour/group room codes (T…, OT…), which pushed the old
+    # figure past 100%. Room changes / shared folios are absorbed by de-duping ROOMNO.
+    cal = E.fetch_room_calendar(frm.isoformat(), today.isoformat(), env=env)
+    recs = [r for r in cal["reservations"] if str(r.get("room") or "").isdigit()]
+
+    # TRY nightly price per reservation. Prices are multi-currency (EUR/TRY/USD) and
+    # AVERAGENIGHTPRICE is in the booking's OWN currency, so summing it mixes money.
+    # MCTOTALPRICE is the master-currency (TRY) total → MCTOTAL / nights = TRY/night.
+    pr = E.fetch_reservations(
+        [{"Column": "CHECKIN", "Operator": "<=", "Value": f"{today} 23:59:59"},
+         {"Column": "CHECKOUT", "Operator": ">=", "Value": f"{frm} 00:00:00"}], env=env,
+        columns=["RESID", "MCTOTALPRICE", "NIGHT", "AVERAGENIGHTPRICE", "CURRENCYRATE"])
+    price = {}
+    for r in pr:
+        ni = num(r.get("NIGHT")) or 1
+        mc = num(r.get("MCTOTALPRICE"))
+        p = (mc / ni) if mc else num(r.get("AVERAGENIGHTPRICE")) * (num(r.get("CURRENCYRATE")) or 1)
+        if p:
+            price[str(r.get("RESID"))] = p
+
     occ, adr = [], []
     for n in nights:
-        cnt, rev = 0, 0.0
-        for r in sold:
-            ci, co = pdate(r.get("CHECKIN")), pdate(r.get("CHECKOUT"))
+        room_price = {}
+        for r in recs:
+            ci, co = pdate(r.get("checkin")), pdate(r.get("checkout"))
             if ci and co and ci <= n < co:
-                cnt += 1
-                rev += num(r.get("AVERAGENIGHTPRICE"))
-        occ.append(cnt)
-        adr.append(rev / cnt if cnt else 0.0)
-    occ_pct = [round(c / ROOMS_TOTAL * 100) for c in occ]
+                room = str(r["room"])
+                room_price[room] = price.get(str(r.get("rez_id")), room_price.get(room, 0.0))
+        occ.append(len(room_price))
+        vals = [v for v in room_price.values() if v > 0]
+        adr.append(sum(vals) / len(vals) if vals else 0.0)
+    occ_pct = [min(100, round(c / ROOMS_TOTAL * 100)) for c in occ]
 
     today_occ = occ[-1]
     today_pct = occ_pct[-1]
