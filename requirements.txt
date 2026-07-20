@@ -3,3 +3,4 @@ requests>=2.28
 cryptography>=42.0    # dashboard bölümlerinin AES-256-GCM şifrelemesi (dashcrypto.py)
 # EXE üretmek için (build.bat kurar):
 # pyinstaller>=6.0
+openpyxl>=3.1    # yerel: Oda Değişimi Excel export'unu okumak (kart_yukle.py)

@@ -86,6 +86,15 @@ ile her anomali personele bağlanır.
 
 ## Kart (haftalık) — özel notlar
 - Kapı kilidi dökümleri **~2 aylık geçmiş** tutar; hafta veriden değil **export tarihinden** belirlenir.
-- **Oda değişimi** Elektra API'sinde bize kapalı (403) → best-effort (zip'te varsa kullanılır, yoksa
-  rapora uyarı). Format: `{when,guest,from_room,to_room,rez_id}`.
 - `build_report.build(cards, changes, occ, lo, hi)` haftaya göre **parametreli**.
+- **Oda Değişimi (room changes)** — taşınan misafirlerin yanlışlıkla "şüpheli" görünmesini önler.
+  - Elektra'nın "Oda Değişimi" raporunun **doğrudan API endpoint'i tespit edilemedi** (admin erişimi VAR
+    ama nesne adı Elektra'nın lazy-yüklenen kodunda; QA_/HOTEL_/FN_ kör tahminleri hep 403; SP_EASYPMS_
+    SWAPROOM/ASSIGNROOM taşımayı *yapar*, raporlamaz). Otomatik çekmek istenirse endpoint'i **bir kez
+    yakala**: `python3 discover.py --headed` ile giriş yapıp "Oda Değişimi" raporunu aç → `discover/requests.jsonl`
+    içindeki `Object` adını bul → `elektra_api.py`'ye `fetch_room_changes(frm,to)` olarak göm.
+  - **Şu an ÇALIŞAN yol:** `kart_yukle.py`, "Oda Değişimi" export'unu (Elektra → Excel/CSV/JSON) zip'in
+    İÇİNDE veya YANINDA otomatik bulur (harf-duyarsız), **Türkçe başlıkları esnek eşler**
+    (Tarih/Saat, Misafir, Eski Oda, Yeni Oda, Rez No) ve analize katar. Excel için `pip install openpyxl`.
+    Bulunamazsa `room_changes.json`'a düşer, o da yoksa rapora uyarı. Hedef format:
+    `{when,guest,from_room,to_room,rez_id}`.
