@@ -74,6 +74,8 @@
   .back{background:none;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 14px;
     font-size:14px;cursor:pointer;font-weight:600}
   .detail-bar .t{font-weight:700;font-size:15px}
+  .weekSel{margin-left:auto;padding:8px 12px;border:1px solid var(--line);border-radius:9px;
+    background:var(--card);color:var(--ink);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer}
   #detail iframe{flex:1;border:0;width:100%;background:#fff}
   .foot{max-width:1000px;margin:30px auto 0;color:var(--muted);font-size:11.5px;text-align:center;line-height:1.6}
 </style>
@@ -120,6 +122,7 @@
   <div class="detail-bar">
     <button class="back" id="back">‹ Geri</button>
     <span class="t" id="detailTitle"></span>
+    <select id="weekSel" class="weekSel hidden"></select>
   </div>
   <iframe id="frame" sandbox="allow-scripts allow-popups allow-modals allow-downloads"></iframe>
 </div>
@@ -160,6 +163,8 @@ async function getJSON(url){
 }
 
 let SECTIONS = [];
+let PW = "";          // kept in memory during the session for lazy week loading
+let CUR = 0;          // section index currently open in the detail view
 
 async function doLogin(ev){
   ev.preventDefault();
@@ -173,6 +178,23 @@ async function doLogin(ev){
     const out = [];
     let sawBlob = false;
     for(const k of keys){
+      if(k === "kart"){
+        // Multi-week section (manager-only). Tile shows the newest week; other
+        // weeks load lazily on selection. decryptBlob() returns null for a role
+        // that isn't allowed to see it, so reception simply won't get a kart tile.
+        const idx = await getJSON("data/kart-index.json");
+        if(!idx || !idx.weeks || !idx.weeks.length) continue;
+        sawBlob = true;
+        const latest = idx.weeks[0];
+        const blob = await getJSON("data/" + latest.file);
+        if(!blob) continue;
+        const s = await decryptBlob(blob, pw);
+        if(!s) continue;
+        s.key = "kart"; s.weeks = idx.weeks; s.cache = {}; s.curWeek = latest.id;
+        s.cache[latest.id] = s.html;
+        out.push(s);
+        continue;
+      }
       const blob = await getJSON("data/" + k + ".enc.json");
       if(!blob) continue;
       sawBlob = true;
@@ -186,6 +208,7 @@ async function doLogin(ev){
     // one opened, the login is valid and we show exactly the allowed sections
     // (reception sees only its own; the manager sees everything).
     if(out.length === 0){ $("err").textContent = "Şifre hatalı."; return; }
+    PW = pw;
     SECTIONS = out;
     renderDashboard();
   }catch(e){
@@ -218,9 +241,34 @@ function renderDashboard(){
 
 function openDetail(i){
   const s = SECTIONS[i];
+  CUR = i;
   $("detailTitle").textContent = s.label;
-  $("frame").srcdoc = s.html;
+  const sel = $("weekSel");
+  if(s.weeks && s.weeks.length){
+    sel.innerHTML = s.weeks.map(w => '<option value="'+esc(w.id)+'">'+esc(w.label)+'</option>').join("");
+    sel.value = s.curWeek || s.weeks[0].id;
+    sel.classList.remove("hidden");
+    loadWeek(i, sel.value);
+  } else {
+    sel.classList.add("hidden");
+    $("frame").srcdoc = s.html;
+  }
   $("detail").classList.remove("hidden");
+}
+
+async function loadWeek(i, id){
+  const s = SECTIONS[i];
+  const wk = (s.weeks || []).find(w => w.id === id);
+  if(!wk) return;
+  s.curWeek = id;
+  if(!s.cache[id]){
+    $("frame").srcdoc = "<p style='font:14px sans-serif;padding:24px;color:#64748b'>Yükleniyor…</p>";
+    const blob = await getJSON("data/" + wk.file);
+    const sec = blob ? await decryptBlob(blob, PW) : null;
+    if(!sec){ $("frame").srcdoc = "<p style='font:14px sans-serif;padding:24px;color:#dc2626'>Bu hafta açılamadı.</p>"; return; }
+    s.cache[id] = sec.html;
+  }
+  $("frame").srcdoc = s.cache[id];
 }
 function closeDetail(){ $("detail").classList.add("hidden"); $("frame").srcdoc = ""; }
 
@@ -230,6 +278,7 @@ function esc(x){ return String(x==null?"":x).replace(/[&<>"]/g, c => (
 $("loginForm").addEventListener("submit", doLogin);
 $("logout").addEventListener("click", () => location.reload());
 $("back").addEventListener("click", closeDetail);
+$("weekSel").addEventListener("change", e => loadWeek(CUR, e.target.value));
 document.addEventListener("keydown", e => { if(e.key==="Escape") closeDetail(); });
 </script>
 </body>

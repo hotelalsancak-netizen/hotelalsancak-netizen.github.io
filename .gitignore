@@ -40,3 +40,4 @@ dist/
 hata.log
 
 # not: site_data/ (şifreli kart bloğu) commit EDİLİR — güvenli.
+kart_yukle.py

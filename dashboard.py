@@ -214,16 +214,33 @@ def build_cloud():
         except Exception as e:
             print(f"  {key}: ÜRETİLEMEDİ — {e}", file=sys.stderr)
 
-    # Card section: reuse the committed encrypted blob (built locally, weekly).
-    committed = SITE_DATA / "kart.enc.json"
-    if committed.exists():
+    # Card section: MULTI-WEEK, manager-only. Copy every committed weekly blob + the
+    # week index; the shell shows a week picker. Weeks are built locally by
+    # kart_yukle.py (each already encrypted manager-only via encrypt_multi).
+    kart_dir = SITE_DATA / "kart"
+    kart_idx = kart_dir / "index.json"
+    if kart_idx.exists():
+        weeks = json.loads(kart_idx.read_text()).get("weeks", [])
         (PUBLIC / "data").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(committed, PUBLIC / "data" / "kart.enc.json")
+        n = 0
+        for w in weeks:
+            src = kart_dir / f"{w['id']}.enc.json"
+            if src.exists():
+                shutil.copyfile(src, PUBLIC / "data" / w["file"])
+                n += 1
+        (PUBLIC / "data" / "kart-index.json").write_text(
+            json.dumps({"weeks": weeks}, ensure_ascii=False), encoding="utf-8")
+        if n:
+            built.append("kart")
+            print(f"  kart: {n} hafta kopyalandı [yönetim] ✓")
+    elif (SITE_DATA / "kart.enc.json").exists():  # eski tek-blok (geçiş)
+        (PUBLIC / "data").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(SITE_DATA / "kart.enc.json", PUBLIC / "data" / "kart.enc.json")
         built.append("kart")
-        print("  kart: commit edilmiş şifreli blob kopyalandı ✓")
+        print("  kart: eski tek-blok kopyalandı ✓")
     else:
-        print("  kart: site_data/kart.enc.json yok — kart tile'ı atlandı "
-              "(yerelde ./kart-yayinla.sh çalıştırın)")
+        print("  kart: site_data/kart/ yok — kart tile'ı atlandı "
+              "(yerelde python3 kart_yukle.py <zip>)")
 
     if not any(k in built for k in ("gunsonu", "odeme")):
         print("HİÇBİR CANLI BÖLÜM ÜRETİLEMEDİ — yayın iptal.", file=sys.stderr)
