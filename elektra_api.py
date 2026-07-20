@@ -362,6 +362,41 @@ def fetch_folio(frm, to, env=None, columns=None):
 
 
 # ---------------------------------------------------------------------------
+# Room changes (Oda Değişimi) — the report behind /app/grid/room-changerapor.
+# Backing view Q_HOTELROOMCHANGE, discovered from GetConfig/grid.room-changerapor
+# .config and verified live (54 rows for 13–20.07 == the Elektra grid). Feeds the
+# card-security check so a moved guest is not flagged as an unsold-room read.
+# ---------------------------------------------------------------------------
+
+ROOMCHANGE_OBJECT = "Q_HOTELROOMCHANGE"
+
+
+def fetch_room_changes(frm, to, env=None):
+    """Room changes with RCDATE in [frm, to] (YYYY-MM-DD), mapped to the shape
+    analyze.py wants: {when, guest, from_room, to_room, rez_id, user}."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    rows = e.select(ROOMCHANGE_OBJECT,
+                    ["RCDATE", "ROOMNO_FIRSTROOMID", "ROOMNO_LASTROOMID",
+                     "GUESTNAMES", "USERCODE", "RESID"],
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
+                           {"Column": "RCDATE", "Operator": ">=", "Value": f"{frm} 00:00:00"},
+                           {"Column": "RCDATE", "Operator": "<=", "Value": f"{to} 23:59:59.999"}],
+                    order_by=[{"Column": "RCDATE", "Direction": "ASC"}])
+    out = []
+    for r in rows:
+        out.append({
+            "when": str(r.get("RCDATE") or "")[:16],
+            "guest": (r.get("GUESTNAMES") or "").strip(),
+            "from_room": str(r.get("ROOMNO_FIRSTROOMID") or "").strip(),
+            "to_room": str(r.get("ROOMNO_LASTROOMID") or "").strip(),
+            "rez_id": str(r.get("RESID") or ""),
+            "user": (r.get("USERCODE") or "").strip(),
+        })
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Room calendar — the occupancy source for the room-usage security check.
 # ---------------------------------------------------------------------------
 # FN_ROOMCALENDAR_BASIC is what draws the Oda Planı. Verified live 15.07.2026.

@@ -87,14 +87,15 @@ ile her anomali personele bağlanır.
 ## Kart (haftalık) — özel notlar
 - Kapı kilidi dökümleri **~2 aylık geçmiş** tutar; hafta veriden değil **export tarihinden** belirlenir.
 - `build_report.build(cards, changes, occ, lo, hi)` haftaya göre **parametreli**.
-- **Oda Değişimi (room changes)** — taşınan misafirlerin yanlışlıkla "şüpheli" görünmesini önler.
-  - Elektra'nın "Oda Değişimi" raporunun **doğrudan API endpoint'i tespit edilemedi** (admin erişimi VAR
-    ama nesne adı Elektra'nın lazy-yüklenen kodunda; QA_/HOTEL_/FN_ kör tahminleri hep 403; SP_EASYPMS_
-    SWAPROOM/ASSIGNROOM taşımayı *yapar*, raporlamaz). Otomatik çekmek istenirse endpoint'i **bir kez
-    yakala**: `python3 discover.py --headed` ile giriş yapıp "Oda Değişimi" raporunu aç → `discover/requests.jsonl`
-    içindeki `Object` adını bul → `elektra_api.py`'ye `fetch_room_changes(frm,to)` olarak göm.
-  - **Şu an ÇALIŞAN yol:** `kart_yukle.py`, "Oda Değişimi" export'unu (Elektra → Excel/CSV/JSON) zip'in
-    İÇİNDE veya YANINDA otomatik bulur (harf-duyarsız), **Türkçe başlıkları esnek eşler**
-    (Tarih/Saat, Misafir, Eski Oda, Yeni Oda, Rez No) ve analize katar. Excel için `pip install openpyxl`.
-    Bulunamazsa `room_changes.json`'a düşer, o da yoksa rapora uyarı. Hedef format:
-    `{when,guest,from_room,to_room,rez_id}`.
+- **Oda Değişimi (room changes)** — taşınan misafirlerin yanlışlıkla "şüpheli" görünmesini önler. Çok kritik:
+  gerçek veri gelince 13-19 haftası **29 → 3 şüpheliye** düştü (26'sı taşınan misafirdi).
+  - ✅ **OTOMATİK (Elektra'dan çekiliyor):** `elektra_api.fetch_room_changes(frm,to)` → view **`Q_HOTELROOMCHANGE`**
+    (Oda Değişimi raporu `/app/grid/room-changerapor`'un arkasındaki tablo). Kolonlar: `RCDATE` (tarih),
+    `ROOMNO_FIRSTROOMID` (ilk oda), `ROOMNO_LASTROOMID` (son oda), `GUESTNAMES`, `USERCODE`, `RESID`.
+    `kart_yukle.py` oda değişimini **önce buradan** çeker — elle export GEREKMEZ.
+  - Endpoint nasıl bulundu (başka rapor lazım olursa aynı yöntem): `GetConfig/menu` → grid `id`'sini bul
+    (ör. Room Change → `room-changerapor`), sonra `GetConfig/grid.<id>.config` → arkadaki `Object`. Body:
+    `{"Action":"GetConfig","ConfigName":"<name>","LoginToken":...}`. Elektra "izin yok"/"nesne yok" için aynı 403'ü döner.
+  - **Yedek yollar** (Elektra çekilemezse): zip'in içinde/yanında Excel/CSV/JSON export ararsa kullanır
+    (Türkçe başlık esnek eşleme: Tarih/Misafir/Eski Oda/Yeni Oda/Rez No; Excel için `pip install openpyxl`),
+    o da yoksa `room_changes.json`, o da yoksa rapora uyarı. Hedef format: `{when,guest,from_room,to_room,rez_id}`.
