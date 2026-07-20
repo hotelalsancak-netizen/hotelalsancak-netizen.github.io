@@ -36,7 +36,8 @@ jobs:
           ELEKTRA_HOTELID: ${{ secrets.ELEKTRA_HOTELID }}
           ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
           ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
-          DASH_PASSWORD: ${{ secrets.DASH_PASSWORD }}
+          DASH_PW_MANAGER: ${{ secrets.DASH_PW_MANAGER }}
+          DASH_PW_RECEPTION: ${{ secrets.DASH_PW_RECEPTION }}
         run: python dashboard.py --build
       - uses: actions/upload-pages-artifact@v3
         with:

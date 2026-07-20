@@ -126,18 +126,42 @@ def build_kart() -> dict:
 # Encrypt + write
 # ---------------------------------------------------------------------------
 
-def password() -> str:
-    pw = os.environ.get("DASH_PASSWORD", "").strip()
-    if not pw:
-        print("DASH_PASSWORD yok (Secret / .env).", file=sys.stderr)
+# --- Roles ---------------------------------------------------------------
+# Reception sees ONLY the sections listed here; the manager sees everything.
+# To let reception see another list later, add its key (e.g. "bakiye").
+RECEPTION_SECTIONS = {"gunsonu"}
+
+
+def passwords() -> dict:
+    """Return {'manager': pw, 'reception': pw}. Manager is required; reception is
+    optional (if unset, only the manager password works). Falls back to the old
+    single DASH_PASSWORD as the manager password for backward compatibility."""
+    mgr = (os.environ.get("DASH_PW_MANAGER")
+           or os.environ.get("DASH_PASSWORD", "")).strip()
+    rec = os.environ.get("DASH_PW_RECEPTION", "").strip()
+    if not mgr:
+        print("Yönetim şifresi yok (DASH_PW_MANAGER / DASH_PASSWORD Secret / .env).",
+              file=sys.stderr)
         sys.exit(2)
-    return pw
+    if rec and rec == mgr:
+        print("UYARI: resepsiyon ve yönetim şifresi aynı — rol ayrımı olmaz.",
+              file=sys.stderr)
+    return {"manager": mgr, "reception": rec}
 
 
-def encrypt_section(section: dict, pw: str) -> dict:
+def section_passwords(key: str, pws: dict) -> list:
+    """Which passwords may open section `key`. Manager always; reception only for
+    RECEPTION_SECTIONS. Duplicates/blanks are dropped by encrypt_multi."""
+    allowed = [pws["manager"]]
+    if key in RECEPTION_SECTIONS and pws.get("reception"):
+        allowed.append(pws["reception"])
+    return allowed
+
+
+def encrypt_section(section: dict, key: str, pws: dict) -> dict:
     keep = ("label", "count", "count_label", "tone", "sub", "updated", "html")
     payload = json.dumps({k: section.get(k) for k in keep}, ensure_ascii=False)
-    return dashcrypto.encrypt(payload, pw)
+    return dashcrypto.encrypt_multi(payload, section_passwords(key, pws))
 
 
 def write_blob(key: str, blob: dict, out_dir: Path):
@@ -152,9 +176,9 @@ def write_blob(key: str, blob: dict, out_dir: Path):
 
 def build_cards():
     """Local weekly: build the card-security section and commit its encrypted blob."""
-    pw = password()
+    pws = passwords()
     section = build_kart()
-    blob = encrypt_section(section, pw)
+    blob = encrypt_section(section, "kart", pws)  # manager-only
     SITE_DATA.mkdir(parents=True, exist_ok=True)
     (SITE_DATA / "kart.enc.json").write_text(json.dumps(blob), encoding="utf-8")
     print(f"KART bölümü şifrelendi -> site_data/kart.enc.json "
@@ -164,7 +188,7 @@ def build_cards():
 
 def build_cloud():
     """Cloud daily: build live sections, reuse committed card blob, write public/."""
-    pw = password()
+    pws = passwords()
     env = elektra_env()
     if PUBLIC.exists():
         shutil.rmtree(PUBLIC)
@@ -183,9 +207,10 @@ def build_cloud():
     for key, fn in live:
         try:
             section = fn(env)
-            write_blob(key, encrypt_section(section, pw), PUBLIC)
+            write_blob(key, encrypt_section(section, key, pws), PUBLIC)
             built.append(key)
-            print(f"  {key}: {section['count']} {section.get('count_label','')} ✓")
+            role = "resepsiyon+yönetim" if key in RECEPTION_SECTIONS else "yönetim"
+            print(f"  {key}: {section['count']} {section.get('count_label','')} [{role}] ✓")
         except Exception as e:
             print(f"  {key}: ÜRETİLEMEDİ — {e}", file=sys.stderr)
 

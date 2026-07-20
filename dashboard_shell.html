@@ -136,10 +136,22 @@ async function deriveKey(password, salt, iter){
     {name:"PBKDF2", salt, iterations:iter, hash:"SHA-256"},
     base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
 }
-async function decryptBlob(blob, password){
-  const key = await deriveKey(password, b64d(blob.salt), blob.iter);
-  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64d(blob.iv)}, key, b64d(blob.ct));
+async function decryptBox(box, password){
+  const key = await deriveKey(password, b64d(box.salt), box.iter);
+  const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64d(box.iv)}, key, b64d(box.ct));
   return JSON.parse(new TextDecoder().decode(pt));
+}
+// A blob may be a v2 multi-recipient blob {variants:[box,…]} (a section visible to
+// more than one role) or a legacy single box. Try the password against every
+// variant; return the decrypted section, or null if this password opens none of
+// them (i.e. this role isn't allowed to see this section).
+async function decryptBlob(blob, password){
+  const boxes = Array.isArray(blob.variants) ? blob.variants : [blob];
+  for(const box of boxes){
+    try{ return await decryptBox(box, password); }
+    catch(e){ /* wrong password for this box — try the next */ }
+  }
+  return null;
 }
 async function getJSON(url){
   const r = await fetch(url, {cache:"no-store"});
@@ -164,15 +176,20 @@ async function doLogin(ev){
       const blob = await getJSON("data/" + k + ".enc.json");
       if(!blob) continue;
       sawBlob = true;
-      const s = await decryptBlob(blob, pw);   // throws if wrong password
+      const s = await decryptBlob(blob, pw);   // null if this role can't see it
+      if(!s) continue;
       s.key = k;
       out.push(s);
     }
     if(!sawBlob){ $("err").textContent = "Henüz veri yüklenmemiş."; return; }
+    // Blobs exist but none opened with this password => wrong password. If at least
+    // one opened, the login is valid and we show exactly the allowed sections
+    // (reception sees only its own; the manager sees everything).
+    if(out.length === 0){ $("err").textContent = "Şifre hatalı."; return; }
     SECTIONS = out;
     renderDashboard();
   }catch(e){
-    $("err").textContent = "Şifre hatalı.";
+    $("err").textContent = "Bir hata oluştu, tekrar deneyin.";
   }finally{
     $("goBtn").disabled = false;
   }

@@ -44,3 +44,37 @@ def decrypt(blob: dict, password: str) -> str:
                               d(blob["salt"]), blob["iter"], dklen=32)
     pt = AESGCM(key).decrypt(d(blob["iv"]), d(blob["ct"]), None)
     return pt.decode("utf-8")
+
+
+def encrypt_multi(plaintext: str, passwords, iterations: int = ITERATIONS) -> dict:
+    """Encrypt one plaintext for SEVERAL passwords (roles) at once.
+
+    Returns {"v": 2, "variants": [ {salt,iv,ct,iter}, … ]} — one independent
+    AES-256-GCM box per password, each with its own random salt/iv. A viewer who
+    knows ANY of the passwords can open exactly one variant; the others stay opaque.
+    This is how one section is made visible to, say, both the manager and reception
+    while another is manager-only: just encrypt it for fewer passwords.
+
+    Deduplicates identical passwords so a section never carries a redundant box.
+    """
+    seen, variants = set(), []
+    for pw in passwords:
+        if not pw or pw in seen:
+            continue
+        seen.add(pw)
+        variants.append(encrypt(plaintext, pw, iterations))
+    if not variants:
+        raise ValueError("encrypt_multi: no passwords given")
+    return {"v": 2, "variants": variants}
+
+
+def decrypt_multi(blob: dict, password: str) -> str:
+    """Try `password` against every variant; return the first that opens. Raises if
+    none do. Mirrors the browser logic in dashboard_shell.html."""
+    variants = blob.get("variants", [blob])  # tolerate a legacy single-box blob
+    for v in variants:
+        try:
+            return decrypt(v, password)
+        except Exception:
+            continue
+    raise ValueError("decrypt_multi: password opened no variant")
