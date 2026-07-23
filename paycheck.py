@@ -58,7 +58,12 @@ def classify(rows, tolerance=DEFAULT_TOLERANCE):
     out = {"unpaid": [], "cancelled_unpaid": [], "credit": [], "ok": [], "no_balance": []}
     for r in rows:
         bal = parse_money(r.get("genel_bakiye"))
-        r = dict(r, _balance=bal)
+        # Balances come in the reservation's own currency (Booking = EUR); convert to
+        # TL with CURRENCYRATE so every amount reads in ₺ (EUR×kur=TL, TRY×1=TRY).
+        rate = parse_money(r.get("kur")) or 1.0
+        if bal is not None:
+            bal = bal * rate
+        r = dict(r, _balance=bal, currency="₺")
         if bal is None:
             out["no_balance"].append(r)
         elif bal > tolerance:

@@ -181,7 +181,7 @@ def detail_table(rows, kind, action):
         for k, _ in cols:
             v = r.get(k)
             tds += f"<td>{pc.fmt_dt(v) if k in pc.DATE_COLS else (v if v is not None else '')}</td>"
-        cur = r.get("currency") or ""
+        cur = "₺"   # balances are converted to TL upstream (audit.money)
         if kind in ("money", "money_age"):
             tds += (f"<td class='num'>{pc.fmt_money(r.get('_guest', 0))}</td>"
                     f"<td class='num'>{pc.fmt_money(r.get('_agency', 0))}</td>")
@@ -227,7 +227,7 @@ def risk_summary(data):
         return ""
     by_cur = {}
     for r in urgent:
-        by_cur[r.get("currency") or "?"] = by_cur.get(r.get("currency") or "?", 0) + r.get("_balance", 0)
+        by_cur["₺"] = by_cur.get("₺", 0) + r.get("_balance", 0)   # all balances now TL
     amt = " + ".join(f"<span class='amt'>{pc.fmt_money(v)} {c}</span>"
                      for c, v in sorted(by_cur.items()))
     return (f"<div class='risk'><div class='item'>Misafir kaynaklı açık: "

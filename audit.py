@@ -38,7 +38,9 @@ TOL = 0.5  # ignore sub-lira rounding crumbs; net must exceed this to count as o
 
 
 def money(r, field):
-    return pc.parse_money(r.get(field)) or 0.0
+    # Convert the reservation-currency balance to TL (Booking = EUR; EUR×kur=TL).
+    rate = pc.parse_money(r.get("kur")) or 1.0
+    return (pc.parse_money(r.get(field)) or 0.0) * rate
 
 
 def categorise(rows, today):
@@ -107,7 +109,7 @@ def sec_table(rows, show_age=False, split=False):
             tds += f"<td>{pc.fmt_dt(v) if k in pc.DATE_COLS else (v if v is not None else '')}</td>"
         if show_age:
             tds += f"<td class='num'>{r['_age']}g</td>"
-        cur = r.get("currency") or ""
+        cur = "₺"   # balances are converted to TL in money()
         if split:
             tds += (f"<td class='num'>{pc.fmt_money(r['_guest'])}</td>"
                     f"<td class='num'>{pc.fmt_money(r['_agency'])}</td>")

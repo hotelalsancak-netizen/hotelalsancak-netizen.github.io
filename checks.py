@@ -64,6 +64,12 @@ def pdate(x):
         return None
 
 
+def bal_tl(r, field="GENERALBALANCE"):
+    """A reservation balance/amount in TL. Balances come in the booking's own
+    currency (Booking = EUR); CURRENCYRATE converts to TL (EUR×kur=TL, TRY×1=TRY)."""
+    return num(r.get(field)) * (num(r.get("CURRENCYRATE")) or 1)
+
+
 TR_MONTHS = ["", "Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl",
              "Eki", "Kas", "Ara"]
 
@@ -335,7 +341,7 @@ def build_iptal(env):
     flagged = []
     for r in cancels:
         rid = str(r.get("RESID"))
-        paid = paid_by_res.get(rid, 0.0) or num(r.get("PAIDAMOUNT"))
+        paid = paid_by_res.get(rid, 0.0) or bal_tl(r, "PAIDAMOUNT")  # folio TL; PAIDAMOUNT→TL
         if paid > 0.5:
             flagged.append((r, paid))
     flagged.sort(key=lambda t: -t[1])
@@ -428,13 +434,13 @@ def build_bakiye(env):
         env=env, extra=[{"Column": "RESSTATE", "Operator": "=", "Value": "CheckOut"}])
 
     rows = inhouse + recent_out
-    owed = [r for r in rows if num(r.get("GENERALBALANCE")) > 0.5]
-    # guest-owed is the urgent bucket; agency debt settles later.
-    guest = [r for r in owed if num(r.get("GUESTBALANCE")) > 0.5]
-    guest.sort(key=lambda r: -num(r.get("GENERALBALANCE")))
-    agency = [r for r in owed if num(r.get("GUESTBALANCE")) <= 0.5]
+    owed = [r for r in rows if bal_tl(r) > 0.5]
+    # guest-owed is the urgent bucket; agency debt settles later. All amounts in TL.
+    guest = [r for r in owed if bal_tl(r, "GUESTBALANCE") > 0.5]
+    guest.sort(key=lambda r: -bal_tl(r))
+    agency = [r for r in owed if bal_tl(r, "GUESTBALANCE") <= 0.5]
 
-    g_total = sum(num(r.get("GENERALBALANCE")) for r in guest)
+    g_total = sum(bal_tl(r) for r in guest)
     stats = (stat(len(guest), "misafir açık bakiye", "bad" if guest else "ok")
              + stat(f"{tl(g_total)} ₺", "misafir alacağı")
              + stat(len(agency), "acenta açık") )
@@ -453,7 +459,7 @@ def build_bakiye(env):
             trs.append(f"<tr class='bad'><td>{esc(r.get('ROOMNO') or '—')}</td>"
                        f"<td>{esc((r.get('GUESTNAMES') or '')[:32])}</td>"
                        f"<td>{esc('Konaklıyor' if st=='InHouse' else 'Çıkış yaptı')}</td>"
-                       f"<td class='r money'>{tl(r.get('GENERALBALANCE'))} ₺</td>"
+                       f"<td class='r money'>{tl(bal_tl(r))} ₺</td>"
                        f"<td>{esc(age(r))}</td>"
                        f"<td>{esc((r.get('AGENCY') or '')[:20])}</td></tr>")
         table = ("<h2>Misafir açık bakiyeleri (yaşlandırma)</h2>"
