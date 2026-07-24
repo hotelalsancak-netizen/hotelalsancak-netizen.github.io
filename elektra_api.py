@@ -369,6 +369,11 @@ def fetch_folio(frm, to, env=None, columns=None):
 # card-security check so a moved guest is not flagged as an unsold-room read.
 # ---------------------------------------------------------------------------
 
+# NOTE: the guest-folio view QA_HOTEL_RESERVATION_GUESTFOLIOS (res-guest-balance-list)
+# exposes GUEST_BALANCE, but that GROSS figure over-counts on check-outs (an agency
+# prepayment offsets it to zero net). "Bakiye Kontrolü" instead uses NET GENERALBALANCE
+# from QA_HOTEL_RESERVATION — see checks.build_bakiye — which is the proven signal.
+
 ROOMCHANGE_OBJECT = "Q_HOTELROOMCHANGE"
 
 

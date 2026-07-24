@@ -427,58 +427,69 @@ def build_indirim(env):
 
 # --------------------------------------------------------------------------- 4) Açık bakiye
 def build_bakiye(env):
+    """Bakiye Kontrolü — reservations where the guest STILL OWES money (net), so a
+    walk-in / direct guest who didn't pay isn't forgotten. Uses NET balance
+    (GENERALBALANCE): the guest-folio figure alone over-counts because an agency
+    prepayment can offset it to zero (Booking/Expedia). A guest who CHECKED OUT still
+    owing net is flagged urgent (left without paying)."""
     today = dt.date.today()
     inhouse = E.fetch_reservations(
         [{"Column": "RESSTATE", "Operator": "=", "Value": "InHouse"}], env=env)
     recent_out = E.fetch_reservations_between(
-        "CHECKOUT", (today - dt.timedelta(days=30)).isoformat(), today.isoformat(),
+        "CHECKOUT", (today - dt.timedelta(days=180)).isoformat(), today.isoformat(),
         env=env, extra=[{"Column": "RESSTATE", "Operator": "=", "Value": "CheckOut"}])
-
     rows = inhouse + recent_out
-    owed = [r for r in rows if bal_tl(r) > 0.5]
-    # guest-owed is the urgent bucket; agency debt settles later. All amounts in TL.
-    guest = [r for r in owed if bal_tl(r, "GUESTBALANCE") > 0.5]
-    guest.sort(key=lambda r: -bal_tl(r))
-    agency = [r for r in owed if bal_tl(r, "GUESTBALANCE") <= 0.5]
+    # Net owed AND the guest (not the agency) owes it. Balances are already TL.
+    owed = [r for r in rows if bal_tl(r) > 0.5 and bal_tl(r, "GUESTBALANCE") > 0.5]
+    for r in owed:
+        r["_left"] = r.get("RESSTATE") == "CheckOut"        # çıkış yaptı, hâlâ borçlu
+    owed.sort(key=lambda r: (0 if r.get("_left") else 1, -bal_tl(r)))
 
-    g_total = sum(bal_tl(r) for r in guest)
-    stats = (stat(len(guest), "misafir açık bakiye", "bad" if guest else "ok")
-             + stat(f"{tl(g_total)} ₺", "misafir alacağı")
-             + stat(len(agency), "acenta açık") )
+    left = [r for r in owed if r.get("_left")]
+    total = sum(bal_tl(r) for r in owed)
+    stats = (stat(len(owed), "açık kayıt", "bad" if owed else "ok")
+             + stat(f"{tl(total)} ₺", "tahsil edilecek toplam")
+             + stat(len(left), "çıkıp borçlu (acil)", "bad" if left else "ok"))
 
     def age(r):
+        if not r.get("_left"):
+            return "konaklıyor"
         co = pdate(r.get("CHECKOUT"))
         if not co:
             return "—"
         d = (today - co).days
-        return "konaklıyor" if d < 0 else ("bugün" if d == 0 else f"{d} gün")
+        return "bugün çıktı" if d <= 0 else f"{d} gün önce çıktı"
 
-    if guest:
+    if owed:
         trs = []
-        for r in guest:
-            st = r.get("RESSTATE")
-            trs.append(f"<tr class='bad'><td>{esc(r.get('ROOMNO') or '—')}</td>"
-                       f"<td>{esc((r.get('GUESTNAMES') or '')[:32])}</td>"
-                       f"<td>{esc('Konaklıyor' if st=='InHouse' else 'Çıkış yaptı')}</td>"
+        for r in owed:
+            durum = ("🔴 ÇIKTI — borçlu" if r.get("_left") else "Konaklıyor")
+            trs.append(f"<tr class='{'bad' if r.get('_left') else ''}'>"
+                       f"<td>{esc(r.get('ROOMNO') or '—')}</td>"
+                       f"<td>{esc((r.get('GUESTNAMES') or '')[:34])}</td>"
+                       f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
+                       f"<td>{durum}</td>"
                        f"<td class='r money'>{tl(bal_tl(r))} ₺</td>"
-                       f"<td>{esc(age(r))}</td>"
-                       f"<td>{esc((r.get('AGENCY') or '')[:20])}</td></tr>")
-        table = ("<h2>Misafir açık bakiyeleri (yaşlandırma)</h2>"
-                 "<p class='lead'>Ödemesi alınmamış, tutara göre sıralı. 'Çıkış yaptı' + bakiye = "
-                 "tahsil edilmeden gitmiş; incelenmeli.</p>"
-                 "<table><tr><th>Oda</th><th>Misafir</th><th>Durum</th><th class='r'>Bakiye</th>"
-                 "<th>Yaş</th><th>Acenta</th></tr>" + "".join(trs) + "</table>")
+                       f"<td>{esc(age(r))}</td></tr>")
+        table = ("<h2>Ödemesi alınmamış misafir kayıtları</h2>"
+                 "<p class='lead'>Misafirin gerçekten borçlu olduğu (net) kayıtlar — en acili "
+                 "<b>çıkış yaptığı hâlde borçlu</b> olanlar (kırmızı). Tahsil edilene kadar burada kalır, "
+                 "böylece unutulmaz.</p>"
+                 "<table><tr><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Durum</th>"
+                 "<th class='r'>Borç</th><th>Yaş</th></tr>" + "".join(trs) + "</table>")
     else:
-        table = empty_ok("Açık misafir bakiyesi yok.")
+        table = empty_ok("Ödemesi alınmamış misafir kaydı yok — hepsi tahsil edilmiş.")
 
-    note = ("<div class='note'>Acenta alacakları ayrı tutuldu (rutin, sonra kapanır). "
-            "Kaynak: QA_HOTEL_RESERVATION (GENERALBALANCE / GUESTBALANCE).</div>")
-    return {"label": "Açık Bakiye Yaşlandırma", "count": len(guest),
-            "count_label": "misafir açık", "tone": "bad" if guest else "ok",
-            "sub": f"misafir alacağı {tl(g_total)} ₺",
-            "updated": now_str(), "html": PAGE("Tahsilat Kontrolü",
-            "Açık Bakiye Yaşlandırma", "konaklayan + son 30 gün çıkış",
-            f"<div class='stats'>{stats}</div>{table}{note}")}
+    note = ("<div class='note'>Net borç (GENERALBALANCE, TL) ve misafirin kendi payı (GUESTBALANCE) > 0 olanlar. "
+            "Acenta ön ödemesiyle netlenip sıfırlanan folyolar sayılmaz (yanlış alarm olmasın). "
+            "Konaklayan + son 180 gün çıkış. Kaynak: QA_HOTEL_RESERVATION.</div>")
+    sub = f"tahsil edilecek {tl(total)} ₺" + (f" · {len(left)} çıkıp borçlu 🔴" if left else "")
+    return {"label": "Bakiye Kontrolü", "count": len(owed),
+            "count_label": "açık kayıt", "tone": "bad" if owed else "ok",
+            "sub": sub, "updated": now_str(),
+            "html": PAGE("Tahsilat — Açık Bakiye", "Bakiye Kontrolü",
+                         "ödemesi alınmamış misafir kayıtları",
+                         f"<div class='stats'>{stats}</div>{table}{note}")}
 
 
 # --------------------------------------------------------------------------- occupancy engine
