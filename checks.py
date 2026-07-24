@@ -65,9 +65,10 @@ def pdate(x):
 
 
 def bal_tl(r, field="GENERALBALANCE"):
-    """A reservation balance/amount in TL. Balances come in the booking's own
-    currency (Booking = EUR); CURRENCYRATE converts to TL (EUR×kur=TL, TRY×1=TRY)."""
-    return num(r.get(field)) * (num(r.get("CURRENCYRATE")) or 1)
+    """Reservation BALANCE fields (GENERAL/GUEST/AGENCYBALANCE, PAIDAMOUNT) are
+    already in TL (master currency) in Elektra — return as-is. (Only the PRICE fields
+    TOTALPRICE/AVERAGENIGHTPRICE are in the booking currency and need ×CURRENCYRATE.)"""
+    return num(r.get(field))
 
 
 TR_MONTHS = ["", "Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl",

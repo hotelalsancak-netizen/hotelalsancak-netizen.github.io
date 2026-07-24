@@ -57,12 +57,9 @@ def classify(rows, tolerance=DEFAULT_TOLERANCE):
     """Split rows into unpaid / unpaid-but-cancelled / credit / ok."""
     out = {"unpaid": [], "cancelled_unpaid": [], "credit": [], "ok": [], "no_balance": []}
     for r in rows:
+        # Balances (genel_bakiye) and the total ("toplam" = MCTOTALPRICE) are already
+        # in TL (master currency) in Elektra — no conversion, just relabel ₺.
         bal = parse_money(r.get("genel_bakiye"))
-        # Balances come in the reservation's own currency (Booking = EUR); convert to
-        # TL with CURRENCYRATE so every amount reads in ₺ (EUR×kur=TL, TRY×1=TRY).
-        rate = parse_money(r.get("kur")) or 1.0
-        if bal is not None:
-            bal = bal * rate
         r = dict(r, _balance=bal, currency="₺")
         if bal is None:
             out["no_balance"].append(r)

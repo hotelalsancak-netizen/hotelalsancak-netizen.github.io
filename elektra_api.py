@@ -72,7 +72,7 @@ FIELD_MAP = {
     "AGENCYBALANCE": "acenta_bakiye",
     "GENERALBALANCE": "genel_bakiye",
     "AVERAGENIGHTPRICE": "ort_oda",
-    "TOTALPRICE": "toplam",
+    "MCTOTALPRICE": "toplam",    # master-currency (TL) total; TOTALPRICE is booking-currency
     "PAYMENTTYPE": "odeme_tipi",
     "CURRENCYCODE": "currency",
     "CURRENCYRATE": "kur",       # rezervasyon parasını TL'ye çevirir (EUR×kur=TL)

@@ -38,9 +38,9 @@ TOL = 0.5  # ignore sub-lira rounding crumbs; net must exceed this to count as o
 
 
 def money(r, field):
-    # Convert the reservation-currency balance to TL (Booking = EUR; EUR×kur=TL).
-    rate = pc.parse_money(r.get("kur")) or 1.0
-    return (pc.parse_money(r.get(field)) or 0.0) * rate
+    # Balance fields (GENERAL/GUEST/AGENCYBALANCE) are already in TL (master currency)
+    # in Elektra — no conversion. Only PRICE fields would need ×CURRENCYRATE.
+    return pc.parse_money(r.get(field)) or 0.0
 
 
 def categorise(rows, today):
