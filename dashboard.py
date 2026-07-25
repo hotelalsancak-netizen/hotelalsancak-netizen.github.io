@@ -43,7 +43,7 @@ SHELL = ROOT / "dashboard_shell.html"
 
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
-SECTION_ORDER = ["gunsonu", "odeme", "kasa", "iptal", "indirim", "bakiye", "kart", "stats", "satis"]
+SECTION_ORDER = ["gunsonu", "odeme", "kasa", "iptal", "indirim", "bakiye", "parite", "kart", "stats", "satis"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -213,6 +213,14 @@ def build_cloud():
             print(f"  {key}: {section['count']} {section.get('count_label','')} [{role}] ✓")
         except Exception as e:
             print(f"  {key}: ÜRETİLEMEDİ — {e}", file=sys.stderr)
+
+    # Parite (fiyat) section: single committed blob, built locally by parite.py.
+    parite_blob = SITE_DATA / "parite.enc.json"
+    if parite_blob.exists():
+        (PUBLIC / "data").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(parite_blob, PUBLIC / "data" / "parite.enc.json")
+        built.append("parite")
+        print("  parite: commit edilmiş şifreli blob kopyalandı ✓")
 
     # Card section: MULTI-WEEK, manager-only. Copy every committed weekly blob + the
     # week index; the shell shows a week picker. Weeks are built locally by
