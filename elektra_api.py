@@ -374,6 +374,22 @@ def fetch_folio(frm, to, env=None, columns=None):
 # prepayment offsets it to zero net). "Bakiye Kontrolü" instead uses NET GENERALBALANCE
 # from QA_HOTEL_RESERVATION — see checks.build_bakiye — which is the proven signal.
 
+def fetch_channel_factors(env=None):
+    """OTA channels the hotel pushes rates to, with each channel's PRICEFACTOR (rate
+    multiplier) and currency. Backs "Parite Kontrolü": OTA price ≈ base × PRICEFACTOR.
+    Source: FN_QUICKPANEL_CHANNELMANAGER (TYPEID=1) behind /app/grid/mini-channels."""
+    e, env = connect(env)
+    rows = e.function("FN_QUICKPANEL_CHANNELMANAGER", {"TYPEID": 1})
+    out = []
+    for r in rows:
+        out.append({"name": (r.get("CHANNELMANAGERNAME") or "").strip(),
+                    "factor": r.get("PRICEFACTOR"),
+                    "currency_id": r.get("CURRENCYID"),
+                    "active": bool(r.get("ACTIVE")),
+                    "sendrates": bool(r.get("SENDRATES"))})
+    return out
+
+
 ROOMCHANGE_OBJECT = "Q_HOTELROOMCHANGE"
 
 
