@@ -690,54 +690,44 @@ def build_satis(env):
 
 
 
-# --------------------------------------------------------------------------- Parite (fiyat)
-# OTA fiyatları Elektra'da: her kanalın PRICEFACTOR'ü (çarpanı) var (mini-channels).
-# OTA fiyatı ≈ kapıdan (baz) × çarpan. Kullanıcı TEK sayı (kapıdan) girer; gerisi hesaplanır.
-_PARITE_FALLBACK = {"Booking.com": 1.5, "Expedia": 1.3, "ETSTUR": 1.25,
-                    "TatilSepeti": 1.25, "Enuygun": 1.25, "TatilBudur": 1.25}
-PARITE_TARGETS = [
-    ("Booking.com", "Booking.com",
-     "https://www.booking.com/searchresults.tr.html?ss=Riva+Hotel+Alsancak+Izmir&checkin={ci}&checkout={co}&group_adults=2&no_rooms=1"),
-    ("Expedia", "Hotels.com / Expedia",
+# --------------------------------------------------------------------------- Parite (fiyat) — elle giriş
+# OTA'lar kendi indirimlerini (Booking Genius, promosyon, mobil) OTA tarafında uygular;
+# Elektra bunu görmez. Gerçek EKRAN fiyatını yakalamanın tek güvenilir yolu: kullanıcı
+# gördüğü fiyatı girer. Her kanal "Aç →" ile açılır; kapıdandan ucuz OTA = parite ihlali.
+PARITE_CHANNELS = [
+    ("kapidan", "🏠 Kapıdan (rezervasyonal)",
+     "https://rivahotelalsancak.rezervasyonal.com/?Checkin={ci}&Checkout={co}&Adult=2&child=0&ChildAges=&language=tr"),
+    ("booking", "Booking.com",
+     "https://www.booking.com/searchresults.tr.html?ss=Riva+Hotel+Alsancak+Izmir&checkin={ci}&checkout={co}&group_adults=2&no_rooms=1&group_children=0"),
+    ("hotels", "Hotels.com",
      "https://tr.hotels.com/Hotel-Search?destination=Riva%20Hotel%20Alsancak&startDate={ci}&endDate={co}&adults=2"),
-    ("ETSTUR", "Etstur", "https://www.etstur.com/oteller?aramaMetni=Riva+Hotel+Alsancak"),
-    ("TatilSepeti", "Tatilsepeti", "https://www.tatilsepeti.com/arama?SearchText=Riva+Hotel+Alsancak"),
-    ("Enuygun", "Enuygun", "https://www.enuygun.com/otel/?query=Riva+Hotel+Alsancak"),
-    ("TatilBudur", "Tatilbudur", "https://www.tatilbudur.com/oteller?q=Riva+Hotel+Alsancak"),
+    ("etstur", "Etstur",
+     "https://www.etstur.com/oteller?aramaMetni=Riva+Hotel+Alsancak"),
+    ("tatilsepeti", "Tatilsepeti",
+     "https://www.tatilsepeti.com/arama?SearchText=Riva+Hotel+Alsancak"),
+    ("enuygun", "Enuygun",
+     "https://www.enuygun.com/otel/?query=Riva+Hotel+Alsancak"),
+    ("tatilbudur", "Tatilbudur",
+     "https://www.tatilbudur.com/oteller?q=Riva+Hotel+Alsancak"),
 ]
-CUR_ID = {44: "EUR", 142: "TL", 1: "TL"}
 
 
 def build_parite(env):
-    """Parite Kontrolü — OTA fiyatı = kapıdan (baz) × Elektra kanal çarpanı. Çarpanlar
-    Elektra'dan (captcha yok); kullanıcı sadece bugünkü kapıdan fiyatını (tek sayı) girer,
-    tüm OTA fiyatları anında hesaplanır. Baz fiyat tarayıcıda gün gün saklanır."""
-    try:
-        factors = {c["name"]: c for c in E.fetch_channel_factors(env)}
-    except Exception:
-        factors = {}
-    chans = []
-    for ekey, disp, url in PARITE_TARGETS:
-        c = factors.get(ekey)
-        f = num(c["factor"]) if c and c.get("factor") is not None else _PARITE_FALLBACK.get(ekey, 1.0)
-        cur = CUR_ID.get((c or {}).get("currency_id"), "EUR") if c else "EUR"
-        chans.append({"name": disp, "factor": round(f, 3), "cur": cur, "url": url})
-    ch_js = json.dumps(chans, ensure_ascii=False)
+    """Parite Kontrolü — kullanıcı her kanalda GÖRDÜĞÜ gerçek fiyatı (Genius/indirim dahil)
+    girer. Kapıdandan ucuz satan OTA parite ihlali (kırmızı); en ucuz yeşil. Girilen
+    fiyatlar tarayıcıda gün gün saklanır. OTA'ların kendi indirimlerini Elektra göremediği
+    için gerçek ekran fiyatını yakalamanın tek güvenilir yolu budur."""
+    ch_js = json.dumps([{"key": k, "name": n, "url": u} for k, n, u in PARITE_CHANNELS],
+                       ensure_ascii=False)
     body = f"""
-    <p class='lead'>Baz: <b>bu gece · 2 kişi · Standart Stüdyo (mutfaklı)</b>. Sadece
-    <b>kapıdan fiyatını</b> gir — OTA fiyatları Elektra kanal çarpanlarıyla otomatik hesaplanır
-    (OTA fiyatı ≈ kapıdan × çarpan).</p>
-    <div class='grid2'><div class='card'>
-      <label style='font-weight:700'>🏠 Kapıdan fiyat (bu gece, ₺)</label>
-      <input id='base' type='number' inputmode='decimal' placeholder='örn 5000' style='max-width:220px'>
-      <div class='note' style='margin-top:6px'>Kapıdan siteyi
-        <a href='https://rivahotelalsancak.rezervasyonal.com/?Checkin={{ci}}&Checkout={{co}}&Adult=2&child=0&language=tr' target='_blank' rel='noopener' id='kapilink'>burada aç →</a></div>
-    </div></div>
-    <table><tr><th>Kanal</th><th class='r'>Çarpan</th><th class='r'>Hesaplanan fiyat</th><th></th></tr>
+    <p class='lead'>Baz: <b>bu gece · 2 kişi · Standart Stüdyo (mutfaklı)</b>. Her kanalın
+    <b>Aç →</b> linkine tıkla, <b>gördüğün gerçek fiyatı</b> (Genius/indirim dahil) yaz.
+    🔴 <b>kapıdandan ucuz</b> satan OTA = parite ihlali · 🟢 en ucuz.</p>
+    <div class='stats' id='psum'></div>
+    <table><tr><th>Kanal</th><th></th><th class='r'>Gördüğün fiyat (₺)</th></tr>
       <tbody id='prows'></tbody></table>
-    <div class='note'>Çarpanlar Elektra "Kanal Yönetimi" (mini-channels) verisinden canlı çekildi. Bu, otelin o
-    kanala <b>gönderdiği</b> fiyattır; gerçek OTA ekran fiyatı promosyon/komisyonla biraz oynayabilir.
-    EUR kanallarda tutar EUR'ya çevrilir. Kapıdan fiyatı tarayıcında saklanır.</div>
+    <div class='note'>Girdiğin fiyatlar bu tarayıcıda, gün gün saklanır. OTA'ların Genius/promosyon
+    indirimleri OTA tarafında olur; Elektra göremez — o yüzden gerçek fiyatı sen girersin.</div>
     <script>
     (function(){{
       var CH={ch_js};
@@ -745,32 +735,47 @@ def build_parite(env):
       var now=new Date(),tom=new Date(Date.now()+864e5);
       var ci=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
       var co=tom.getFullYear()+'-'+pad(tom.getMonth()+1)+'-'+pad(tom.getDate());
-      var kl=document.getElementById('kapilink'); if(kl) kl.href=kl.href.replace('{{ci}}',ci).replace('{{co}}',co);
-      var KEY='parite-base-'+ci, base=document.getElementById('base');
-      try{{var s=localStorage.getItem(KEY); if(s!=null) base.value=s;}}catch(e){{}}
-      function tl(n){{return(Math.round(n*100)/100).toLocaleString('tr-TR',{{minimumFractionDigits:2}});}}
+      var KEY='parite-'+ci;
+      var saved={{}}; try{{saved=JSON.parse(localStorage.getItem(KEY)||'{{}}');}}catch(e){{}}
       var rows=document.getElementById('prows');
-      function render(){{
-        var b=parseFloat(base.value);
-        try{{localStorage.setItem(KEY,base.value);}}catch(e){{}}
-        rows.innerHTML='';
-        CH.forEach(function(c){{
-          var url=c.url.replace('{{ci}}',ci).replace('{{co}}',co);
-          var price=(!isNaN(b))?tl(b*c.factor)+' ₺':'—';
-          var tr=document.createElement('tr');
-          tr.innerHTML='<td>'+c.name+' <span class="who">'+c.cur+'</span></td>'+
-            '<td class="r">×'+c.factor+'</td>'+
-            '<td class="r money">'+price+'</td>'+
-            '<td class="r"><a href="'+url+'" target="_blank" rel="noopener" style="color:var(--brand,#0e7490);font-weight:600">kontrol →</a></td>';
-          rows.appendChild(tr);
+      CH.forEach(function(c){{
+        var url=c.url.replace('{{ci}}',ci).replace('{{co}}',co);
+        var tr=document.createElement('tr'); tr.id='row-'+c.key;
+        tr.innerHTML='<td class="pn">'+c.name+'</td>'+
+          '<td><a href="'+url+'" target="_blank" rel="noopener" style="color:var(--brand,#0e7490);font-weight:600">Aç →</a></td>'+
+          '<td class="r"><input type="number" inputmode="decimal" data-k="'+c.key+'" placeholder="—" '+
+          'style="width:130px;text-align:right;padding:7px 9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"'+
+          (saved[c.key]!=null?' value="'+saved[c.key]+'"':'')+'></td>';
+        rows.appendChild(tr);
+      }});
+      function tl(n){{return(Math.round(n*100)/100).toLocaleString('tr-TR',{{minimumFractionDigits:2}});}}
+      function recalc(){{
+        var vals={{}}, store={{}};
+        document.querySelectorAll('#prows input').forEach(function(i){{
+          var v=parseFloat(i.value); if(!isNaN(v)){{vals[i.dataset.k]=v; store[i.dataset.k]=i.value;}}
         }});
+        try{{localStorage.setItem(KEY,JSON.stringify(store));}}catch(e){{}}
+        var direct=vals['kapidan'];
+        var nums=Object.values(vals); var cheap=nums.length?Math.min.apply(null,nums):null;
+        var viol=0;
+        CH.forEach(function(c){{
+          var tr=document.getElementById('row-'+c.key); var v=vals[c.key]; tr.className='';
+          var td=tr.querySelector('.pn'); td.innerHTML=c.name;
+          if(v==null) return;
+          if(cheap!=null && Math.abs(v-cheap)<0.5) td.innerHTML+=' <span style="color:#16a34a;font-weight:700">· en ucuz</span>';
+          if(c.key!=='kapidan' && direct!=null && v<direct-0.5){{ td.innerHTML+=' <span style="color:#dc2626;font-weight:700">· kapıdandan ucuz!</span>'; tr.className='bad'; viol++; }}
+        }});
+        document.getElementById('psum').innerHTML=
+          "<div class='stat'><div class='n'>"+(direct!=null?tl(direct)+' ₺':'—')+"</div><div class='l'>kapıdan</div></div>"+
+          "<div class='stat'><div class='n'>"+(cheap!=null?tl(cheap)+' ₺':'—')+"</div><div class='l'>en ucuz</div></div>"+
+          "<div class='stat "+(viol?'bad':'ok')+"'><div class='n'>"+viol+"</div><div class='l'>parite ihlali</div></div>";
       }}
-      base.addEventListener('input',render); render();
+      document.querySelectorAll('#prows input').forEach(function(i){{i.addEventListener('input',recalc);}});
+      recalc();
     }})();
     </script>"""
-    return {"label": "Parite Kontrolü", "count": len(chans), "count_label": "kanal",
-            "tone": "ok",
-            "sub": "kapıdan fiyatı gir → OTA fiyatları Elektra çarpanıyla otomatik",
+    return {"label": "Parite Kontrolü", "count": 0, "count_label": "gerçek fiyat gir",
+            "tone": "ok", "sub": "her kanalda gördüğün fiyatı gir · kapıdandan ucuz = ihlal",
             "updated": now_str(),
             "html": PAGE("Fiyat / Parite", "Parite Kontrolü",
-                         "kapıdan fiyat × Elektra kanal çarpanı", body)}
+                         "gördüğün gerçek fiyatları gir (Genius/indirim dahil)", body)}
