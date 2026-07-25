@@ -14,6 +14,7 @@ Data comes from the Elektra views probed live (see elektra_api.py):
 """
 import datetime as dt
 import html as _html
+import json
 from collections import defaultdict, OrderedDict
 
 import elektra_api as E
