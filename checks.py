@@ -686,3 +686,90 @@ def build_satis(env):
             "sub": f"{TR_MON_FULL[today.month]}: {tl(cur['rev'])} ₺ · {today.year} toplam {tl(ytd)} ₺",
             "updated": now_str(), "html": PAGE("Aylık Gelir & Satış",
             "Aylık Satışlar", "son 12 ay oda geliri", body)}
+
+
+# --------------------------------------------------------------------------- Parite (fiyat) formu
+PARITE_CHANNELS = [
+    ("kapidan", "🏠 Kapıdan (rezervasyonal)",
+     "https://rivahotelalsancak.rezervasyonal.com/?Checkin={ci}&Checkout={co}&Adult=2&child=0&ChildAges=&language=tr"),
+    ("booking", "Booking.com",
+     "https://www.booking.com/searchresults.tr.html?ss=Riva+Hotel+Alsancak+Izmir&checkin={ci}&checkout={co}&group_adults=2&no_rooms=1&group_children=0"),
+    ("hotels", "Hotels.com",
+     "https://tr.hotels.com/Hotel-Search?destination=Riva%20Hotel%20Alsancak&startDate={ci}&endDate={co}&adults=2"),
+    ("etstur", "Etstur",
+     "https://www.etstur.com/oteller?aramaMetni=Riva+Hotel+Alsancak"),
+    ("tatilsepeti", "Tatilsepeti",
+     "https://www.tatilsepeti.com/arama?SearchText=Riva+Hotel+Alsancak"),
+    ("enuygun", "Enuygun",
+     "https://www.enuygun.com/otel/?query=Riva+Hotel+Alsancak"),
+    ("tatilbudur", "Tatilbudur",
+     "https://www.tatilbudur.com/oteller?q=Riva+Hotel+Alsancak"),
+]
+
+
+def build_parite(env):
+    """Client-side parity ENTRY FORM. Prices are typed in the browser (OTAs are
+    captcha/anti-bot protected, so no reliable auto-scrape). Each channel opens in a
+    new tab; you read the price and type it. Cheapest is flagged green, an OTA cheaper
+    than the direct rate is a parity violation (red). Saved per day in the browser."""
+    ch_js = json.dumps([{"key": k, "name": n, "url": u} for k, n, u in PARITE_CHANNELS],
+                       ensure_ascii=False)
+    body = f"""
+    <p class='lead'>Baz: <b>bu gece · 1 gece · 2 yetişkin · Standart Stüdyo (mutfaklı)</b>.
+    Her kanalın <b>Aç →</b> linkine tıkla, fiyatı gör, yaz. 🔴 <b>kapıdandan ucuz</b> satan OTA = parite ihlali.</p>
+    <div class='stats' id='psum'></div>
+    <table><tr><th>Kanal</th><th></th><th class='r'>Fiyat (₺)</th></tr>
+      <tbody id='prows'></tbody></table>
+    <div class='note' id='psaved'>Girdiğin fiyatlar bu tarayıcıda, gün gün saklanır. Her gün tekrar gir.</div>
+    <script>
+    (function(){{
+      var CH = {ch_js};
+      function pad(n){{return (n<10?'0':'')+n;}}
+      var now=new Date(), tom=new Date(Date.now()+864e5);
+      var ci=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+      var co=tom.getFullYear()+'-'+pad(tom.getMonth()+1)+'-'+pad(tom.getDate());
+      var KEY='parite-'+ci;
+      var saved={{}}; try{{saved=JSON.parse(localStorage.getItem(KEY)||'{{}}');}}catch(e){{}}
+      var rows=document.getElementById('prows');
+      CH.forEach(function(c){{
+        var url=c.url.replace('{{ci}}',ci).replace('{{co}}',co);
+        var tr=document.createElement('tr'); tr.id='row-'+c.key;
+        tr.innerHTML='<td>'+c.name+'</td>'+
+          '<td><a href="'+url+'" target="_blank" rel="noopener" style="color:var(--brand,#0e7490);font-weight:600">Aç →</a></td>'+
+          '<td class="r"><input type="number" inputmode="decimal" data-k="'+c.key+'" placeholder="—" '+
+          'style="width:120px;text-align:right;padding:7px 9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"'+
+          (saved[c.key]!=null?' value="'+saved[c.key]+'"':'')+'></td>';
+        rows.appendChild(tr);
+      }});
+      function tl(n){{return (Math.round(n*100)/100).toLocaleString('tr-TR',{{minimumFractionDigits:2}});}}
+      function recalc(){{
+        var vals={{}}, store={{}};
+        document.querySelectorAll('#prows input').forEach(function(i){{
+          var v=parseFloat(i.value); if(!isNaN(v)){{vals[i.dataset.k]=v; store[i.dataset.k]=i.value;}}
+        }});
+        try{{localStorage.setItem(KEY,JSON.stringify(store));}}catch(e){{}}
+        var direct=vals['kapidan'];
+        var nums=Object.values(vals); var cheap=nums.length?Math.min.apply(null,nums):null;
+        var viol=0;
+        CH.forEach(function(c){{
+          var tr=document.getElementById('row-'+c.key); var v=vals[c.key];
+          tr.className='';
+          var td=tr.children[0];
+          td.innerHTML=c.name;
+          if(v==null) return;
+          if(cheap!=null && Math.abs(v-cheap)<0.5) td.innerHTML+=' <span style="color:#16a34a;font-weight:700">· en ucuz</span>';
+          if(c.key!=='kapidan' && direct!=null && v<direct-0.5){{ td.innerHTML+=' <span style="color:#dc2626;font-weight:700">· kapıdandan ucuz!</span>'; tr.className='bad'; viol++; }}
+        }});
+        document.getElementById('psum').innerHTML=
+          "<div class='stat'><div class='n'>"+(direct!=null?tl(direct)+' ₺':'—')+"</div><div class='l'>kapıdan</div></div>"+
+          "<div class='stat'><div class='n'>"+(cheap!=null?tl(cheap)+' ₺':'—')+"</div><div class='l'>en ucuz</div></div>"+
+          "<div class='stat "+(viol?'bad':'ok')+"'><div class='n'>"+viol+"</div><div class='l'>parite ihlali</div></div>";
+      }}
+      document.querySelectorAll('#prows input').forEach(function(i){{i.addEventListener('input',recalc);}});
+      recalc();
+    }})();
+    </script>"""
+    return {"label": "Parite Kontrolü", "count": 0, "count_label": "günlük gir",
+            "tone": "ok", "sub": "bugünkü OTA + kapıdan fiyatları · parite ihlali kontrolü",
+            "updated": now_str(),
+            "html": PAGE("Fiyat / Parite", "Parite Kontrolü", "kanal fiyatlarını gir → parite", body)}

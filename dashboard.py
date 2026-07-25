@@ -203,6 +203,7 @@ def build_cloud():
     live = (("gunsonu", build_gunsonu), ("odeme", build_odeme),
             ("kasa", checks.build_kasa), ("iptal", checks.build_iptal),
             ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
+            ("parite", checks.build_parite),
             ("stats", checks.build_stats), ("satis", checks.build_satis))
     for key, fn in live:
         try:
@@ -213,14 +214,6 @@ def build_cloud():
             print(f"  {key}: {section['count']} {section.get('count_label','')} [{role}] ✓")
         except Exception as e:
             print(f"  {key}: ÜRETİLEMEDİ — {e}", file=sys.stderr)
-
-    # Parite (fiyat) section: single committed blob, built locally by parite.py.
-    parite_blob = SITE_DATA / "parite.enc.json"
-    if parite_blob.exists():
-        (PUBLIC / "data").mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(parite_blob, PUBLIC / "data" / "parite.enc.json")
-        built.append("parite")
-        print("  parite: commit edilmiş şifreli blob kopyalandı ✓")
 
     # Card section: MULTI-WEEK, manager-only. Copy every committed weekly blob + the
     # week index; the shell shows a week picker. Weeks are built locally by
