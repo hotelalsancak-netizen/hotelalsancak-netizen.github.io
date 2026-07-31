@@ -232,97 +232,291 @@ def svg_hbars(pairs, unit="₺"):
 
 
 # --------------------------------------------------------------------------- 1) Kasa & POS
+KASA_EXTRA_CSS = """<style>
+textarea{width:100%;font:12px/1.4 ui-monospace,Menlo,monospace;padding:10px;border:1px solid #cbd5e1;
+  border-radius:10px;background:#fff;color:inherit;resize:vertical}
+@media (prefers-color-scheme:dark){textarea{background:#0b1120;border-color:#334155}}
+.btnrow{display:flex;gap:10px;align-items:center;margin:10px 0 4px;flex-wrap:wrap}
+.btn{font:inherit;font-weight:700;padding:9px 16px;border-radius:10px;border:1px solid #0e7490;
+  background:#0e7490;color:#fff;cursor:pointer}
+.btn.ghost{background:transparent;color:#0e7490}
+.muted{color:#94a3b8;font-size:12px}
+.recon{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin:14px 0}
+@media (prefers-color-scheme:dark){.recon{background:#111a2e;border-color:#243049}}
+.recon h3{margin:0 0 4px;font-size:15px}
+.ok{color:#16a34a}.warn{color:#dc2626}.amber{color:#d97706}
+.pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;margin-left:6px}
+.pill.ok{background:#dcfce7;color:#166534}.pill.warn{background:#fee2e2;color:#991b1b}
+.pill.amber{background:#fef3c7;color:#92400e}
+@media (prefers-color-scheme:dark){.pill.ok{background:#0f2417;color:#4ade80}
+  .pill.warn{background:#3a1414;color:#f87171}.pill.amber{background:#3a2a0e;color:#fbbf24}}
+</style>"""
+
+# Client-side POS/bank reconciliation. recon_core = pure logic (parse the pasted bank
+# statement, categorise, match Elektra card vs bank POS with T+1 alignment); render =
+# DOM. Both node-tested against a real Akbank "Hesap Hareketleri" export before embedding.
+KASA_RECON_JS = r"""<script>
+(function(root){
+  function parseNum(s){
+    s = String(s==null?'':s).replace(/\s/g,'').replace(/[^0-9.\-]/g,'');
+    var v = parseFloat(s); return isNaN(v)?0:v;   // bank data is US format: 1,234.56
+  }
+  function toISO(s){
+    var m = String(s).match(/(\d{2})\.(\d{2})\.(\d{4})/);
+    return m ? m[3]+'-'+m[2]+'-'+m[1] : null;
+  }
+  function splitLine(line){
+    if(line.indexOf('\t')>=0) return line.split('\t');
+    var out=[], cur='', q=false;
+    for(var i=0;i<line.length;i++){ var ch=line[i];
+      if(ch==='"'){ q=!q; }
+      else if(ch===',' && !q){ out.push(cur); cur=''; }
+      else cur+=ch;
+    }
+    out.push(cur); return out;
+  }
+  function parseBank(text){
+    var out=[];
+    String(text).split(/\r?\n/).forEach(function(ln){
+      if(!ln.trim()) return;
+      var c = splitLine(ln).map(function(x){return x.trim().replace(/^"|"$/g,'');});
+      var d = toISO(c[0]); if(!d) return;
+      var amt = parseNum(c[2]);
+      var ba = (c[4]||'').trim().toUpperCase();
+      if(ba!=='A' && ba!=='B') ba = amt<0 ? 'B':'A';
+      var desc = ((c[5]||'')+' '+(c[6]||'')).trim();
+      out.push({d:d, amt:Math.abs(amt), ba:ba, desc:desc});
+    });
+    return out;
+  }
+  function catOf(desc){
+    var u = desc.toUpperCase().split('İ').join('I').split('Ş').join('S');
+    if(u.indexOf('AKPOS')>=0 || u.indexOf('APOS ')>=0 || u.indexOf('POS PES')>=0) return 'POS';
+    if(u.indexOf('EURO KARSILIGI')>=0 || u.indexOf('EURO KAR')>=0) return 'DOVIZ';
+    if(u.indexOf('FAST')>=0) return 'EFT';
+    if(u.indexOf('EFT')>=0) return 'EFT';
+    if(u.indexOf('HAV.')>=0 || u.indexOf('HAVALE')>=0) return 'HAVALE';
+    return 'DIGER';
+  }
+  function ksOf(desc){
+    var m = desc.match(/KS:\s*([0-9.,]+)\s*TL/i);
+    return m ? parseNum(m[1]) : 0;
+  }
+  function senderOf(desc){
+    var s = desc.replace(/^\s*\d+\s*/,'');
+    var m = s.match(/(?:EFT:|FAST:|HAV\.|HAVALE)\s*([^_]+?)(?:\s{2,}|_|PN\d|VO\d|$)/i);
+    var name = m ? m[1] : s;
+    return name.replace(/\s+/g,' ').trim().slice(0,34);
+  }
+  function addDays(iso,delta){
+    var p=iso.split('-'); var dd=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));
+    dd.setUTCDate(dd.getUTCDate()+delta); return dd.toISOString().slice(0,10);
+  }
+  function reconcile(rows, days){
+    days = days||{};
+    var inc = rows.filter(function(r){return r.ba==='A';});
+    var dates = inc.map(function(r){return r.d;}).sort();
+    if(!dates.length) return null;
+    var bMin=dates[0], bMax=dates[dates.length-1];
+    var posDay={}, posGross=0, posKs=0, eft=0, hav=0, doviz=0, senders={};
+    inc.forEach(function(r){
+      var c=catOf(r.desc);
+      if(c==='POS'){ var k=ksOf(r.desc); var g=r.amt+k; posDay[r.d]=(posDay[r.d]||0)+g; posGross+=g; posKs+=k; }
+      else if(c==='DOVIZ'){ doviz+=r.amt; }
+      else if(c==='EFT'){ eft+=r.amt; var s=senderOf(r.desc); senders[s]=(senders[s]||0)+r.amt; }
+      else if(c==='HAVALE'){ hav+=r.amt; var s2=senderOf(r.desc); senders[s2]=(senders[s2]||0)+r.amt; }
+    });
+    function el(iso,k){ return (days[iso]&&days[iso][k])||0; }
+    var tbl=[], elCardSum=0, posSum=0, d=bMin;
+    while(d<=bMax){
+      var elDay=addDays(d,-1), elCard=el(elDay,'cardTRY'), bankPos=posDay[d]||0;
+      tbl.push({bankDay:d, elDay:elDay, elCard:elCard, bankPos:bankPos, diff:elCard-bankPos});
+      elCardSum+=elCard; posSum+=bankPos; d=addDays(d,1);
+    }
+    var elHav=0, elCl=0, elEUR=0, dd=bMin;
+    while(dd<=bMax){ elHav+=el(dd,'havale'); elCl+=el(dd,'cityledger'); elEUR+=el(dd,'cardEUR'); dd=addDays(dd,1); }
+    return {bMin:bMin,bMax:bMax,posGross:posGross,posKs:posKs,posSum:posSum,elCardSum:elCardSum,
+            tbl:tbl, eft:eft, hav:hav, doviz:doviz, senders:senders, elHav:elHav, elCl:elCl, elEUR:elEUR};
+  }
+  root.RECON = {parseBank:parseBank,reconcile:reconcile};
+})(window);
+</script>
+<script>
+(function(){
+  var R = window.RECON, KASA = window.__KASA__ || {days:{}};
+  var $ = function(id){ return document.getElementById(id); };
+  var LS = 'kasa-bank-paste';
+  function f(n){ return (Math.round(n*100)/100).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function trg(iso){ var p=iso.split('-'); var M=['','Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']; return (+p[2])+' '+M[+p[1]]; }
+  function esc(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+
+  function render(rec){
+    if(!rec){ $('results').innerHTML = "<div class='recon'><b>Gelen (Alacak) satır bulunamadı.</b> Raporu başlıklarıyla birlikte yapıştırdığından emin ol.</div>"; return; }
+    var out = '';
+    var diff = rec.elCardSum - rec.posGross;
+    var tol = Math.max(rec.elCardSum*0.05, 5000);
+    var posPill, posMsg;
+    if(diff <= tol){
+      posPill = "<span class='pill ok'>✓ Tüm POS bankaya geçmiş</span>";
+      posMsg = "Bankaya geçen POS (brüt) tutarı, Elektra'daki kart tahsilatını karşılıyor.";
+    } else {
+      posPill = "<span class='pill warn'>⚠ "+f(diff)+" ₺ eksik olabilir</span>";
+      posMsg = "Elektra'da <b>"+f(diff)+" ₺</b> kart tahsilatı var ama bankaya geçen POS'ta görünmüyor — incelenmeli.";
+    }
+    out += "<div class='recon'><h3>💳 POS / Kredi Kartı "+posPill+"</h3>"
+      + "<p class='lead'>"+posMsg+"</p><div class='stats'>"
+      + "<div class='stat'><div class='n'>"+f(rec.elCardSum)+" ₺</div><div class='l'>Elektra kart (TRY, T+1 hizalı)</div></div>"
+      + "<div class='stat'><div class='n'>"+f(rec.posGross)+" ₺</div><div class='l'>Banka POS brüt (net+komisyon)</div></div>"
+      + "<div class='stat'><div class='n'>"+f(rec.posKs)+" ₺</div><div class='l'>banka komisyonu</div></div></div>";
+    var rowsH='';
+    rec.tbl.forEach(function(t){
+      var cls = Math.abs(t.diff)<1 ? 'ok' : (Math.abs(t.diff)>=5000?'amber':'');
+      rowsH += "<tr><td>"+trg(t.bankDay)+"</td><td class='muted'>"+trg(t.elDay)+"</td>"
+        + "<td class='r money'>"+f(t.elCard)+"</td><td class='r money'>"+f(t.bankPos)+"</td>"
+        + "<td class='r "+cls+"'>"+(t.diff>=0?'+':'')+f(t.diff)+"</td></tr>";
+    });
+    out += "<table><tr><th>Banka günü</th><th>Elektra günü</th><th class='r'>Elektra kart ₺</th>"
+      + "<th class='r'>Banka POS ₺</th><th class='r'>fark</th></tr>"+rowsH+"</table>"
+      + "<div class='note'>Hafta sonu satılan kartın parası pazartesi geçebilir; bazı günler kayar ama hafta toplamı tutar. "
+      + "Tek günlük sarı fark genelde bu kaymadır — kalıcı büyük fark önemlidir.</div></div>";
+
+    out += "<div class='recon'><h3>💶 Yabancı kart / Döviz</h3>"
+      + "<p class='lead'>EUR ödemeler POS'a değil, biriktiğince bozdurulup 'Euro karşılığı' havalesiyle girer — haftalık birebir tutmayabilir.</p><div class='stats'>"
+      + "<div class='stat'><div class='n'>"+f(rec.elEUR)+" ₺</div><div class='l'>Elektra EUR-kart (TL karşılığı)</div></div>"
+      + "<div class='stat'><div class='n'>"+f(rec.doviz)+" ₺</div><div class='l'>Banka 'Euro karşılığı' yatan</div></div></div></div>";
+
+    var send = Object.keys(rec.senders).map(function(k){return [k,rec.senders[k]];}).sort(function(a,b){return b[1]-a[1];});
+    var sH='';
+    send.slice(0,15).forEach(function(x){ sH += "<tr><td>"+esc(x[0])+"</td><td class='r money'>"+f(x[1])+" ₺</td></tr>"; });
+    out += "<div class='recon'><h3>🏦 Acente & gelen havaleler</h3>"
+      + "<p class='lead'>Acente/EFT/havale ile gelen paralar (gönderene göre). Acenteler kendi takviminde ödediği için gün-gün tutmaz; farkındalık için listelenir. 'Kasa karşılığı' satırları otelin bankaya yatırdığı nakittir.</p><div class='stats'>"
+      + "<div class='stat'><div class='n'>"+f(rec.eft+rec.hav)+" ₺</div><div class='l'>Banka EFT/FAST + havale (gelen)</div></div>"
+      + "<div class='stat'><div class='n'>"+f(rec.elHav+rec.elCl)+" ₺</div><div class='l'>Elektra havale + cari/acente</div></div></div>"
+      + "<table><tr><th>Gönderen</th><th class='r'>Tutar</th></tr>"+sH+"</table></div>";
+
+    $('results').innerHTML = out;
+  }
+
+  function run(){
+    var text = $('bankIn').value || '';
+    try{ localStorage.setItem(LS, text); }catch(e){}
+    var rows = R.parseBank(text);
+    var rec = R.reconcile(rows, KASA.days);
+    if(rec){ $('rangeLbl').textContent = 'Banka aralığı: '+trg(rec.bMin)+' – '+trg(rec.bMax)+'  ('+rows.filter(function(r){return r.ba==='A';}).length+' gelen kayıt)'; }
+    render(rec);
+  }
+  function boot(){
+    try{ var s=localStorage.getItem(LS); if(s){ $('bankIn').value=s; } }catch(e){}
+    $('goBtn').addEventListener('click', run);
+    $('clrBtn').addEventListener('click', function(){ $('bankIn').value=''; $('results').innerHTML=''; $('rangeLbl').textContent=''; try{localStorage.removeItem(LS);}catch(e){} });
+    if(($('bankIn').value||'').trim()) run();
+  }
+  if(document.readyState!=='loading') boot(); else document.addEventListener('DOMContentLoaded', boot);
+})();
+</script>"""
+
+
 def build_kasa(env):
-    day = yesterday()
-    rows = E.fetch_folio(day.isoformat(), day.isoformat(), env=env)
+    end = yesterday()
+    start = end - dt.timedelta(days=10)          # 11-day window; client aligns to bank range
+    rows = E.fetch_folio(start.isoformat(), end.isoformat(), env=env)
     pays = [r for r in rows if r.get("DEPTTYPENAME") == "PAYMENT"]
 
-    by_method = defaultdict(float)
-    by_user_method = defaultdict(lambda: defaultdict(float))
+    days = OrderedDict()
+    d = start
+    while d <= end:
+        days[d.isoformat()] = {"cardTRY": 0.0, "cardEUR": 0.0, "cash": 0.0,
+                               "havale": 0.0, "cityledger": 0.0}
+        d += dt.timedelta(days=1)
+    week = list(days)[-7:]
+    wkset = set(week)
+    by_user = defaultdict(lambda: defaultdict(float))
     for r in pays:
+        fd = str(r.get("FOLIODATE"))[:10]
+        if fd not in days:
+            continue
         amt = abs(num(r.get("TOTAL")))
-        m = r.get("DEPNAME") or "Diğer"
-        by_method[m] += amt
-        by_user_method[r.get("USERFULLNAME") or "—"][m] += amt
+        m = r.get("DEPNAME") or ""
+        cur = (r.get("CURRENCY") or "").upper()
+        slot = days[fd]
+        if m == "Credit Card":
+            slot["cardEUR" if cur == "EUR" else "cardTRY"] += amt
+        elif m == "Cash":
+            slot["cash"] += amt
+        elif m == "Havale":
+            slot["havale"] += amt
+        elif m == "CityLedger":
+            slot["cityledger"] += amt
+        if fd in wkset:
+            by_user[r.get("USERFULLNAME") or "—"][m] += amt
 
-    cash = by_method.get("Cash", 0.0)
-    card = by_method.get("Credit Card", 0.0)
-    total = sum(by_method.values())
+    W = lambda k: sum(days[x][k] for x in week)  # noqa: E731
+    wk_cardTRY, wk_cardEUR = W("cardTRY"), W("cardEUR")
+    wk_cash, wk_hav, wk_cl = W("cash"), W("havale"), W("cityledger")
 
-    order = ["Cash", "Credit Card", "Havale", "CityLedger"]
-    methods = [m for m in order if m in by_method] + [m for m in by_method if m not in order]
+    stats = stat(f"{tl(wk_cardTRY)} ₺", "kredi kartı ₺ (7 gün)")
+    stats += stat(f"{tl(wk_cardEUR)} ₺", "yabancı kart / EUR (7 gün)", "")
+    stats += stat(f"{tl(wk_cash)} ₺", "nakit (7 gün)", "")
+    stats += stat(f"{tl(wk_hav + wk_cl)} ₺", "havale + acente (7 gün)", "")
 
-    stats = stat(f"{tl(total)} ₺", "toplam tahsilat")
-    stats += stat(f"{tl(cash)} ₺", "nakit", "")
-    stats += stat(f"{tl(card)} ₺", "kredi kartı", "")
-    stats += stat(len(pays), "işlem")
+    intro = (
+        "<h2>Banka POS mutabakatı — haftalık</h2>"
+        "<p class='lead'>Her pazartesi bankadan indirdiğin <b>Hesap Hareketleri</b> raporunu "
+        "(Excel'i aç → hepsini seç → kopyala) aşağıdaki kutuya <b>yapıştır</b> ve "
+        "<b>Karşılaştır</b>'a bas. Elektra'daki kart/havale tahsilatıyla bankaya "
+        "<b>gerçekten geçen</b> parayı karşılaştırır. Yapıştırdığın veri yalnızca bu "
+        "tarayıcıda kalır — dışarı gitmez.</p>")
 
-    # Method breakdown table
-    mrows = "".join(
-        f"<tr><td>{esc(METHOD_TR.get(m, m))}</td><td class='r money'>{tl(by_method[m])} ₺</td></tr>"
-        for m in methods)
-    method_tbl = f"<h2>Ödeme türüne göre</h2><table><tr><th>Tür</th><th class='r'>Tutar</th></tr>{mrows}</table>"
+    form = (
+        "<textarea id='bankIn' rows='6' placeholder='Banka Hesap Hareketleri raporunu buraya "
+        "yapıştır (Tarih, Saat, Tutar, Bakiye, Borç/Alacak, Açıklama, Fiş/Dekont No)...'></textarea>"
+        "<div class='btnrow'><button id='goBtn' class='btn'>Karşılaştır</button>"
+        "<button id='clrBtn' class='btn ghost'>Temizle</button>"
+        "<span id='rangeLbl' class='muted'></span></div>"
+        "<div id='results'></div>")
 
-    # Per-user table
+    # Weekly per-user collection table (who collected how much).
     urows = []
-    for u in sorted(by_user_method, key=lambda u: -sum(by_user_method[u].values())):
-        tot = sum(by_user_method[u].values())
-        c = by_user_method[u].get("Cash", 0)
-        cc = by_user_method[u].get("Credit Card", 0)
+    for u in sorted(by_user, key=lambda u: -sum(by_user[u].values())):
+        tot = sum(by_user[u].values())
+        c = by_user[u].get("Cash", 0)
+        cc = by_user[u].get("Credit Card", 0)
         urows.append(f"<tr><td><span class='who'>{esc(u)}</span></td>"
                      f"<td class='r money'>{tl(c)}</td><td class='r money'>{tl(cc)}</td>"
                      f"<td class='r money'>{tl(tot)} ₺</td></tr>")
-    user_tbl = ("<h2>Personele göre tahsilat</h2><table><tr><th>Personel</th>"
+    user_tbl = ("<h2>Personele göre tahsilat (7 gün)</h2><table><tr><th>Personel</th>"
                 "<th class='r'>Nakit</th><th class='r'>Kredi Kartı</th><th class='r'>Toplam</th></tr>"
                 + "".join(urows) + "</table>")
 
-    # Reconciliation mini-form (client-side, localStorage per date).
-    form = f"""
-    <h2>Kasa & POS mutabakatı</h2>
-    <p class='lead'>Fiziki sayılan nakiti ve POS Z-raporu toplamını girin; PMS ile farkı anında görün.</p>
-    <div class='grid2'>
-      <div class='card'><h3>💵 Nakit</h3>
-        <div class='vrow'><span>PMS nakit tahsilat</span><span class='money' id='pmsCash'>{tl(cash)} ₺</span></div>
-        <label>Kasada sayılan nakit (₺)</label><input id='inCash' type='number' inputmode='decimal' placeholder='0'>
-        <div class='vrow'><span>Fark</span><span id='dCash' class='money'>—</span></div>
-      </div>
-      <div class='card'><h3>💳 Kredi Kartı / POS</h3>
-        <div class='vrow'><span>PMS kart tahsilat</span><span class='money' id='pmsCard'>{tl(card)} ₺</span></div>
-        <label>POS Z-raporu toplamı (₺)</label><input id='inCard' type='number' inputmode='decimal' placeholder='0'>
-        <div class='vrow'><span>Fark</span><span id='dCard' class='money'>—</span></div>
-      </div>
-    </div>
-    <div class='note'>Fark 0 ise ✓ eşleşti. Nakit farkı = eksik/fazla kasa; kart farkı = POS ile PMS uyuşmazlığı — ikisi de incelenmeli.
-    Girdiğiniz sayılar yalnızca bu tarayıcıda saklanır (gün: {day.isoformat()}).</div>
-    <script>
-    (function(){{
-      var CASH={cash:.2f}, CARD={card:.2f}, KEY='kasa-{day.isoformat()}';
-      var ic=document.getElementById('inCash'), id=document.getElementById('inCard');
-      try{{var s=JSON.parse(localStorage.getItem(KEY)||'{{}}'); if(s.cash!=null)ic.value=s.cash; if(s.card!=null)id.value=s.card;}}catch(e){{}}
-      function tlf(n){{return (Math.round(n*100)/100).toLocaleString('tr-TR',{{minimumFractionDigits:2}});}}
-      function upd(){{
-        function diff(inp,base,out){{
-          var v=parseFloat(inp.value);
-          if(isNaN(v)){{out.textContent='—';out.className='money';return;}}
-          var d=v-base; out.textContent=(d>=0?'+':'')+tlf(d)+' ₺';
-          out.className='money '+(Math.abs(d)<0.5?'match':'miss');
-        }}
-        diff(ic,CASH,document.getElementById('dCash'));
-        diff(id,CARD,document.getElementById('dCard'));
-        try{{localStorage.setItem(KEY,JSON.stringify({{cash:ic.value,card:id.value}}));}}catch(e){{}}
-      }}
-      ic.addEventListener('input',upd); id.addEventListener('input',upd); upd();
-    }})();
-    </script>"""
+    # Elektra per-day context table (all baked days, newest first).
+    trows = ""
+    for dd in list(days)[::-1]:
+        s = days[dd]
+        trows += (f"<tr><td>{tr_g(dt.date.fromisoformat(dd))}</td>"
+                  f"<td class='r money'>{tl(s['cardTRY'])}</td><td class='r'>{tl(s['cardEUR'])}</td>"
+                  f"<td class='r'>{tl(s['cash'])}</td><td class='r'>{tl(s['havale'])}</td>"
+                  f"<td class='r'>{tl(s['cityledger'])}</td></tr>")
+    eltable = ("<h2>Elektra günlük tahsilat</h2><table><tr><th>Gün</th><th class='r'>Kart ₺</th>"
+               "<th class='r'>Kart EUR(₺)</th><th class='r'>Nakit</th><th class='r'>Havale</th>"
+               "<th class='r'>Acente/Cari</th></tr>" + trows + "</table>")
 
-    body = f"<div class='stats'>{stats}</div>{form}{method_tbl}{user_tbl}"
-    body += ("<div class='note'>Not: tutarlar PMS folio 'PAYMENT' satırlarından; iade/düzeltme varsa ayrıca gözden geçirin. "
-             "Kaynak: QA_HOTEL_FOLIO.</div>")
-    return {"label": "Kasa & POS Mutabakatı", "count": int(round(total)),
-            "count_label": "₺ tahsilat", "tone": "ok",
-            "sub": f"{tr_g(day)} · nakit {tl(cash)} ₺ · kart {tl(card)} ₺",
-            "updated": now_str(), "html": PAGE("Günlük Kasa Kontrolü",
-            "Kasa & POS Mutabakatı", f"{tr_g(day)} tahsilatları", body)}
+    note = ("<div class='note'>POS parası bankaya genelde <b>ertesi gün</b> geçer (T+1); tablo "
+            "bunu hizalar. Banka <b>net</b> yatırır (komisyon düşülür) — rapor komisyonu geri "
+            "ekleyip <b>brüt</b> karşılaştırır. Yabancı (EUR) kartlar POS'a değil 'Euro karşılığı' "
+            "havalesiyle girer (ayrı gösterilir). Acente EFT'leri kendi takviminde ödendiğinden "
+            "gün-gün tutmayabilir. Kaynak: QA_HOTEL_FOLIO (PAYMENT satırları).</div>")
+
+    data_script = ("<script>window.__KASA__=" + json.dumps(
+        {"days": days, "start": start.isoformat(), "end": end.isoformat()},
+        ensure_ascii=False) + ";</script>")
+
+    body = (KASA_EXTRA_CSS + f"<div class='stats'>{stats}</div>" + intro + form
+            + user_tbl + eltable + note + data_script + KASA_RECON_JS)
+    return {"label": "Kasa & POS Mutabakatı", "count": int(round(wk_cardTRY + wk_cardEUR)),
+            "count_label": "₺ kart (7g)", "tone": "ok",
+            "sub": f"{tr_g(start)}–{tr_g(end)} · POS için banka raporunu yapıştır",
+            "updated": now_str(), "html": PAGE("Haftalık Kasa Kontrolü",
+            "Kasa & POS Mutabakatı", f"{tr_g(start)} – {tr_g(end)} · banka POS mutabakatı", body)}
 
 
 # --------------------------------------------------------------------------- 2) İptal/Silinen
