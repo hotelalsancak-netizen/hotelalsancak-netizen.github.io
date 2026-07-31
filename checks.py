@@ -408,13 +408,22 @@ KASA_RECON_JS = r"""<script>
       else if(c==='EFT'){ eft+=r.amt; var s=senderOf(r.desc); senders[s]=(senders[s]||0)+r.amt; }
       else if(c==='HAVALE'){ hav+=r.amt; var s2=senderOf(r.desc); senders[s2]=(senders[s2]||0)+r.amt; }
     });
-    function el(iso){ return (key && days[iso] && days[iso][key])||0; }
-    var tbl=[], elCardSum=0, d=bMin;
-    while(d<=bMax){ var elDay=addDays(d,-1), elCard=el(elDay), bankPos=posDay[d]||0;
-      tbl.push({bankDay:d, elDay:elDay, elCard:elCard, bankPos:bankPos, diff:elCard-bankPos});
-      elCardSum+=elCard; d=addDays(d,1); }
+    // Elektra is baked only for [startKey .. ]; a bank day whose T+1 source day is before
+    // that is UNCOMPARABLE (we simply don't have that day's Elektra card). Mark it unknown,
+    // show "—", and leave it out of the totals/verdict so a data gap never reads as "missing".
+    var startKey = Object.keys(days).sort()[0] || '9999';
+    var tbl=[], elCardSum=0, posComp=0, d=bMin;
+    while(d<=bMax){
+      var elDay=addDays(d,-1), bankPos=posDay[d]||0;
+      var known = !!key && elDay>=startKey && !!days[elDay];
+      var elCard = known ? (days[elDay][key]||0) : null;
+      tbl.push({bankDay:d, elDay:elDay, elCard:elCard, bankPos:bankPos,
+                unknown:!known, diff: known ? elCard-bankPos : null});
+      if(known){ elCardSum+=elCard; posComp+=bankPos; }
+      d=addDays(d,1);
+    }
     return {currency:CUR, hasEl:!!key, bMin:bMin, bMax:bMax, posGross:posGross, posKs:posKs,
-            elCardSum:elCardSum, tbl:tbl, eft:eft, hav:hav, doviz:doviz, senders:senders};
+            elCardSum:elCardSum, posComp:posComp, tbl:tbl, eft:eft, hav:hav, doviz:doviz, senders:senders};
   }
   var api={parseNum:parseNum,toISO:toISO,textToCells:textToCells,readXlsx:readXlsx,
            rowsFromCells:rowsFromCells,readFile:readFile,reconcile:reconcile,catOf:catOf};
@@ -439,17 +448,24 @@ KASA_RECON_JS = r"""<script>
     var out = "<div class='recon'><h3>"+(rec.currency==='TL'?'💳':(rec.currency==='EUR'?'💶':'💵'))
       + " POS / Kredi Kartı — "+curName(rec.currency);
     if(rec.hasEl){
-      var diff = rec.elCardSum - rec.posGross, tol = Math.max(rec.elCardSum*0.05, rec.currency==='TL'?5000:150);
+      var diff = rec.elCardSum - rec.posComp, tol = Math.max(rec.elCardSum*0.05, rec.currency==='TL'?5000:150);
       if(diff <= tol) out += " <span class='pill ok'>✓ Tüm POS geçmiş</span></h3>"
-        + "<p class='lead'>Bankaya geçen POS (brüt), Elektra'daki kart tahsilatını karşılıyor.</p>";
+        + "<p class='lead'>Karşılaştırılabilir günlerde bankaya geçen POS, Elektra'daki kart tahsilatını karşılıyor.</p>";
       else out += " <span class='pill warn'>⚠ "+f(diff)+" "+s+" eksik olabilir</span></h3>"
         + "<p class='lead'>Elektra'da <b>"+f(diff)+" "+s+"</b> kart tahsilatı var ama bankaya geçen POS'ta yok — incelenmeli.</p>";
       out += "<div class='stats'>"
-        + "<div class='stat'><div class='n'>"+f(rec.elCardSum)+" "+s+"</div><div class='l'>Elektra kart (T+1 hizalı)</div></div>"
-        + "<div class='stat'><div class='n'>"+f(rec.posGross)+" "+s+"</div><div class='l'>Banka POS brüt (net+komisyon)</div></div>"
-        + "<div class='stat'><div class='n'>"+f(rec.posKs)+" "+s+"</div><div class='l'>banka komisyonu</div></div></div>";
+        + "<div class='stat'><div class='n'>"+f(rec.elCardSum)+" "+s+"</div><div class='l'>Elektra kart (karşılaştırılan)</div></div>"
+        + "<div class='stat'><div class='n'>"+f(rec.posComp)+" "+s+"</div><div class='l'>Banka POS (aynı günler, brüt)</div></div>"
+        + "<div class='stat'><div class='n'>"+f(rec.posKs)+" "+s+"</div><div class='l'>banka komisyonu (toplam)</div></div></div>";
       var rowsH='';
-      rec.tbl.forEach(function(t){ var cls=Math.abs(t.diff)<1?'ok':(Math.abs(t.diff)>=(rec.currency==='TL'?5000:100)?'amber':'');
+      rec.tbl.forEach(function(t){
+        if(t.unknown){
+          rowsH += "<tr><td>"+trg(t.bankDay)+"</td><td class='muted'>"+trg(t.elDay)+"</td>"
+            +"<td class='r muted'>—</td><td class='r money'>"+f(t.bankPos)+"</td>"
+            +"<td class='r muted' title='Bu güne ait Elektra verisi yüklü aralıkta yok'>karşılaştırma dışı</td></tr>";
+          return;
+        }
+        var cls=Math.abs(t.diff)<1?'ok':(Math.abs(t.diff)>=(rec.currency==='TL'?5000:100)?'amber':'');
         rowsH += "<tr><td>"+trg(t.bankDay)+"</td><td class='muted'>"+trg(t.elDay)+"</td>"
           +"<td class='r money'>"+f(t.elCard)+"</td><td class='r money'>"+f(t.bankPos)+"</td>"
           +"<td class='r "+cls+"'>"+(t.diff>=0?'+':'')+f(t.diff)+"</td></tr>"; });
@@ -517,7 +533,7 @@ KASA_RECON_JS = r"""<script>
 
 def build_kasa(env):
     end = yesterday()
-    start = end - dt.timedelta(days=10)          # 11-day window; client aligns to bank range
+    start = end - dt.timedelta(days=13)          # 14-day window; covers a 7-day bank report + T+1 preroll
     rows = E.fetch_folio(start.isoformat(), end.isoformat(), env=env)
     pays = [r for r in rows if r.get("DEPTTYPENAME") == "PAYMENT"]
 
