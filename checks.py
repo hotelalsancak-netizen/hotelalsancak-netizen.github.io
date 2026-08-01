@@ -756,12 +756,12 @@ def build_indirim(env):
 
 
 # --------------------------------------------------------------------------- 4) Açık bakiye
-def build_bakiye(env):
-    """Bakiye Kontrolü — reservations where the guest STILL OWES money (net), so a
-    walk-in / direct guest who didn't pay isn't forgotten. Uses NET balance
-    (GENERALBALANCE): the guest-folio figure alone over-counts because an agency
-    prepayment can offset it to zero (Booking/Expedia). A guest who CHECKED OUT still
-    owing net is flagged urgent (left without paying)."""
+def open_balances(env):
+    """res-guest-balance-list equivalent: reservations where the guest STILL OWES net.
+    In-house + last-180-day check-outs, filtered to GENERALBALANCE>0 AND GUESTBALANCE>0
+    (agency-prepaid folios that net to zero are excluded). Each row gets _left=True if the
+    guest already checked out still owing. Sorted: checked-out-owing first, then by amount.
+    Shared by build_bakiye and build_odeme (daily payment control)."""
     today = dt.date.today()
     inhouse = E.fetch_reservations(
         [{"Column": "RESSTATE", "Operator": "=", "Value": "InHouse"}], env=env)
@@ -769,11 +769,21 @@ def build_bakiye(env):
         "CHECKOUT", (today - dt.timedelta(days=180)).isoformat(), today.isoformat(),
         env=env, extra=[{"Column": "RESSTATE", "Operator": "=", "Value": "CheckOut"}])
     rows = inhouse + recent_out
-    # Net owed AND the guest (not the agency) owes it. Balances are already TL.
     owed = [r for r in rows if bal_tl(r) > 0.5 and bal_tl(r, "GUESTBALANCE") > 0.5]
     for r in owed:
         r["_left"] = r.get("RESSTATE") == "CheckOut"        # çıkış yaptı, hâlâ borçlu
     owed.sort(key=lambda r: (0 if r.get("_left") else 1, -bal_tl(r)))
+    return owed
+
+
+def build_bakiye(env):
+    """Bakiye Kontrolü — reservations where the guest STILL OWES money (net), so a
+    walk-in / direct guest who didn't pay isn't forgotten. Uses NET balance
+    (GENERALBALANCE): the guest-folio figure alone over-counts because an agency
+    prepayment can offset it to zero (Booking/Expedia). A guest who CHECKED OUT still
+    owing net is flagged urgent (left without paying)."""
+    today = dt.date.today()
+    owed = open_balances(env)
 
     left = [r for r in owed if r.get("_left")]
     total = sum(bal_tl(r) for r in owed)
@@ -820,6 +830,123 @@ def build_bakiye(env):
             "html": PAGE("Tahsilat — Açık Bakiye", "Bakiye Kontrolü",
                          "ödemesi alınmamış misafir kayıtları",
                          f"<div class='stats'>{stats}</div>{table}{note}")}
+
+
+DAY_ABBR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
+
+
+def build_odeme(env):
+    """Günlük Ödeme Kontrolü — date-SELECTABLE arrival-payment check plus an open-balances
+    panel (res-guest-balance-list). On Monday the owner picks Saturday / Sunday to see each
+    day's arrivals' payment status, while the open-balances panel surfaces anyone from a past
+    day who still owes — so a weekend non-payer is never missed."""
+    import paycheck
+    today = dt.date.today()
+    ndays = 7
+
+    # 1) Per-day arrivals classified by paid/unpaid (one fetch per day, last ndays).
+    daydata = OrderedDict()
+    total_rows = 0
+    for i in range(1, ndays + 1):
+        day = (today - dt.timedelta(days=i)).isoformat()
+        rows = E.fetch_arrivals(day, env=env)
+        total_rows += len(rows)
+        daydata[day] = (len(rows), paycheck.classify(rows)["unpaid"])
+    if total_rows == 0:
+        raise RuntimeError("son 7 günde hiç giriş dönmedi — boş grid 'hepsi ödedi' sayılmaz "
+                           "(API sorunu olabilir).")
+
+    # 2) Open balances (the red res-guest-balance-list rows), day-independent.
+    owed = open_balances(env)
+    left = [r for r in owed if r.get("_left")]
+    owed_total = sum(bal_tl(r) for r in owed)
+
+    stats = (stat(len(owed), "açık bakiye (ödenmemiş)", "bad" if owed else "ok")
+             + stat(f"{tl(owed_total)} ₺", "tahsil edilecek toplam")
+             + stat(len(left), "çıkıp borçlu 🔴", "bad" if left else "ok"))
+
+    def age(r):
+        if not r.get("_left"):
+            return "konaklıyor"
+        co = pdate(r.get("CHECKOUT"))
+        if not co:
+            return "—"
+        d = (today - co).days
+        return "bugün çıktı" if d <= 0 else f"{d} gün önce çıktı"
+
+    if owed:
+        trs = "".join(
+            f"<tr class='{'bad' if r.get('_left') else ''}'>"
+            f"<td>{esc(r.get('ROOMNO') or '—')}</td>"
+            f"<td>{esc((r.get('GUESTNAMES') or '')[:34])}</td>"
+            f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
+            f"<td>{esc(str(r.get('CHECKIN') or '')[:10])}</td>"
+            f"<td>{esc(str(r.get('CHECKOUT') or '')[:10])}</td>"
+            f"<td>{'🔴 ÇIKTI — borçlu' if r.get('_left') else 'Konaklıyor'}</td>"
+            f"<td class='r money'>{tl(bal_tl(r))} ₺</td><td>{esc(age(r))}</td></tr>"
+            for r in owed)
+        openpanel = ("<h2>🔴 Açık bakiyeler — ödenmemiş</h2>"
+                     "<p class='lead'>Geçmiş günlerden kalan, hâlâ tahsil edilmemiş bakiyeler "
+                     "(Elektra'da kırmızı). En acili <b>çıkış yaptığı hâlde borçlu</b> olanlar. "
+                     "Tahsil edilene kadar burada kalır — pazartesi baktığında cumartesinin "
+                     "ödemeyeni de burada görünür.</p>"
+                     "<table><tr><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Giriş</th>"
+                     "<th>Çıkış</th><th>Durum</th><th class='r'>Borç</th><th>Yaş</th></tr>"
+                     + trs + "</table>")
+    else:
+        openpanel = empty_ok("Açık (ödenmemiş) bakiye yok — hepsi tahsil edilmiş.")
+
+    # 3) Per-day arrival panels + a day selector (client-side show/hide).
+    def day_label(iso):
+        d = dt.date.fromisoformat(iso)
+        return f"{tr_g(d)} {DAY_ABBR[d.weekday()]}"
+
+    opts, panels = "", ""
+    for iso, (arrivals, unpaid) in daydata.items():
+        tag = f"{len(unpaid)} ödenmemiş" if unpaid else ("giriş yok" if not arrivals else "hepsi ödedi")
+        opts += f"<option value='{iso}'>{esc(day_label(iso))} — {tag}</option>"
+        if unpaid:
+            rows_html = "".join(
+                f"<tr><td>{esc(r.get('room') or '—')}</td>"
+                f"<td>{esc((r.get('guest') or '')[:34])}</td>"
+                f"<td>{esc((r.get('agency') or '')[:16])}</td>"
+                f"<td>{esc(str(r.get('checkin') or '')[:10])} → {esc(str(r.get('checkout') or '')[:10])}</td>"
+                f"<td class='r money'>{tl(r.get('_balance'))} ₺</td></tr>"
+                for r in unpaid)
+            inner = (f"<p class='lead'><b class='miss'>{len(unpaid)} rezervasyonda ödeme eksik</b> — "
+                     f"toplam {tl(sum(r['_balance'] for r in unpaid))} ₺. Resepsiyona sorulmalı.</p>"
+                     "<table><tr><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Giriş→Çıkış</th>"
+                     "<th class='r'>Genel Bakiye</th></tr>" + rows_html + "</table>")
+        elif not arrivals:
+            inner = "<p class='lead'>Bu tarihte giriş yok.</p>"
+        else:
+            inner = empty_ok(f"{arrivals} girişin hepsi ödemesini yapmış.")
+        panels += f"<div class='daypanel' data-day='{iso}' style='display:none'>{inner}</div>"
+
+    selector = ("<h2>Güne göre giriş ödemeleri</h2>"
+                "<p class='lead'>Bir gün seç — o gün <b>giriş yapan</b> misafirlerin ödeme durumu. "
+                "Pazartesi baktığında cumartesi ve pazarı ayrı ayrı görebilirsin.</p>"
+                "<select id='daySel' style='font:inherit;padding:8px 11px;border:1px solid #cbd5e1;"
+                "border-radius:9px;background:#fff;color:inherit;max-width:100%'>" + opts + "</select>"
+                + panels +
+                "<script>(function(){var s=document.getElementById('daySel');"
+                "function show(){var v=s.value;var ps=document.querySelectorAll('.daypanel');"
+                "for(var i=0;i<ps.length;i++){ps[i].style.display=ps[i].getAttribute('data-day')===v?'block':'none';}}"
+                "s.addEventListener('change',show);show();})();</script>")
+
+    note = ("<div class='note'>Açık bakiyeler: net borç (GENERALBALANCE>0) ve misafir payı "
+            "(GUESTBALANCE>0) — acenta ön ödemesiyle sıfırlananlar hariç; konaklayan + son 180 gün "
+            "çıkış. Güne göre panel: o gün Geliş = tarih olan rezervasyonlar, Genel Bakiye>0 "
+            "ödenmemiş sayılır. Kaynak: QA_HOTEL_RESERVATION.</div>")
+
+    body = f"<div class='stats'>{stats}</div>{openpanel}{selector}{note}"
+    sub = (f"{len(owed)} açık bakiye · tahsil {tl(owed_total)} ₺"
+           + (f" · {len(left)} çıkıp borçlu 🔴" if left else ""))
+    return {"label": "Günlük Ödeme Kontrolü", "count": len(owed),
+            "count_label": "açık bakiye", "tone": "bad" if owed else "ok",
+            "sub": sub, "updated": now_str(),
+            "html": PAGE("Günlük Ödeme Kontrolü", "Günlük Ödeme Kontrolü",
+                         f"açık bakiyeler + güne göre giriş ödemeleri · {tr_g(today)}", body)}
 
 
 # --------------------------------------------------------------------------- occupancy engine

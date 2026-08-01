@@ -82,23 +82,8 @@ def build_gunsonu(env) -> dict:
             "updated": now_str(), "html": html}
 
 
-def build_odeme(env) -> dict:
-    import paycheck
-    from elektra_api import fetch_arrivals
-    date = (dt.date.today() - dt.timedelta(days=1)).isoformat()
-    rows = fetch_arrivals(date, env=env)
-    if not rows:
-        raise RuntimeError(f"{date} için rezervasyon dönmedi — boş grid 'hepsi ödedi' sayılmaz.")
-    groups = paycheck.classify(rows)
-    meta = {"total": len(rows), "tolerance": paycheck.DEFAULT_TOLERANCE,
-            "generated": now_str(), "note": None,
-            "source": "ElektraWeb res-all/reservation", "missing": 0}
-    html = paycheck.render(date, groups, meta)
-    n = len(groups["unpaid"])
-    return {"label": "Dünün Ödeme Kontrolü", "count": n, "count_label": "ödenmemiş",
-            "tone": "bad" if n else "ok",
-            "sub": f"{tr_date(dt.date.fromisoformat(date))} girişleri · {len(rows)} rezervasyon",
-            "updated": now_str(), "html": html}
+# build_odeme moved to checks.build_odeme — now date-selectable (last 7 days) with an
+# open-balances panel (res-guest-balance-list). Still uses paycheck.classify per day.
 
 
 def build_kart() -> dict:
@@ -200,7 +185,7 @@ def build_cloud():
 
     # Live sections (Elektra API only). A broken section is logged and skipped so
     # one bad fetch never blanks the whole dashboard.
-    live = (("gunsonu", build_gunsonu), ("odeme", build_odeme),
+    live = (("gunsonu", build_gunsonu), ("odeme", checks.build_odeme),
             ("kasa", checks.build_kasa), ("iptal", checks.build_iptal),
             ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
             ("parite", checks.build_parite),
