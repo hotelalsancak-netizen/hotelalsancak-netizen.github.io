@@ -10,10 +10,12 @@ boş oda satılıp cebe mi atıldı?"
 
 - **Canlı adres:** https://hotelalsancak-netizen.github.io/  (girişte parola sorar)
 - **Repo (public):** `hotelalsancak-netizen/hotelalsancak-netizen.github.io` — GitHub Pages
-- **9 bölüm (tile):** `gunsonu` (Gün Sonu), `odeme` (Dünün Ödemesi), `kasa` (Kasa & POS
-  mutabakatı), `iptal` (İptal/Silinen), `indirim`, `bakiye` (Açık bakiye), `kart` (Haftalık
-  Kart Güvenliği — çok-haftalı, hafta seçicili), `stats` (Doluluk/ADR/grafikler),
-  `satis` (Aylık satışlar).
+- **10 bölüm (tile):** `gunsonu` (Gün Sonu), `odeme` (Günlük Ödeme Kontrolü — **tarih-seçimli**
+  son 7 gün giriş ödemeleri + **açık bakiye paneli** res-guest-balance-list), `kasa` (Kasa & POS
+  mutabakatı — **haftalık, çok-dövizli** TL/EUR/USD, banka **xlsx yükleme**, Elektra kart↔banka
+  POS T+1), `iptal` (İptal/Silinen), `indirim`, `bakiye` (Açık bakiye), `parite` (Parite Kontrolü —
+  tarayıcı-içi fiyat girişi), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
+  güçlü/zayıf ayrımı), `stats` (Doluluk/ADR/grafikler), `satis` (Aylık satışlar).
 
 ## Mimari
 - **Tek yayıncı = bulut GitHub Actions** (`.github/workflows/dashboard.yml`). Her `main` push'unda
@@ -81,8 +83,21 @@ Bu repoya **başka Claude oturumları da push edebiliyor** (kullanıcı birden �
 Önemli: fiyatlar **çok para birimli**; TL için `MCTOTALPRICE` (ana para) kullan. Doluluk = **room
 calendar'dan fiziksel (numerik) oda**, iptal/silinen + sanal tur odaları hariç, tekilleştirilmiş;
 bugünün doluluğuna **gelmemiş rezervasyonlar da** dahil (Elektra ile birebir). `ROOMS_TOTAL=55`.
-Folio `TOTAL` alanı **TL**'ye çevrilmiştir (kasa/POS mutabakatı bununla). `USERFULLNAME/CANCELUSER`
-ile her anomali personele bağlanır.
+Folio `TOTAL` **her zaman TL** (ana para); `CTOTAL` = **orijinal para birimi** (EUR satırında EUR).
+`USERFULLNAME/CANCELUSER` ile her anomali personele bağlanır.
+
+## Kasa & POS + Günlük Ödeme — özel notlar
+- **Kasa (`checks.build_kasa`)** haftalık. Elektra kart tahsilatı **döviz-başına** (native) bloğa
+  gömülür: `cardTRY`(TL), `cardEUR`/`cardUSD`(=CTOTAL). Kullanıcı banka **Hesap Hareketleri xlsx**'ini
+  (TL/EUR/USD ayrı dosya) sürükle-bırak yükler. **Mutabakat tamamen tarayıcıda** (`KASA_RECON_JS`):
+  xlsx `DecompressionStream('deflate-raw')` ile açılır (kütüphanesiz), "Döviz Cinsi" satırından
+  para birimi tanınır; POS = `AKPOS PES ODE` (net + `KS:` komisyon = brüt), Elektra kart **T+1**
+  hizalanır. Elektra verisi olmayan gün "karşılaştırma dışı" (yanıltıcı fark yok). Banka verisi
+  dışarı gitmez. Ayrıntı: [[folio-banka-para-modeli]].
+- **Günlük Ödeme (`checks.build_odeme`)** tarih-seçimli: son 7 günün girişleri `paycheck.classify`
+  ile ayrı ayrı bloğa gömülür (JS `daySel` ile değişir) + üstte **açık bakiye paneli**.
+- **`checks.open_balances(env)`** paylaşımlı helper = res-guest-balance-list (net `GENERALBALANCE>0`
+  ve `GUESTBALANCE>0`, konaklayan + son 180g çıkış). Hem `build_bakiye` hem `build_odeme` kullanır.
 
 ## Kart (haftalık) — özel notlar
 - Kapı kilidi dökümleri **~2 aylık geçmiş** tutar; hafta veriden değil **export tarihinden** belirlenir.

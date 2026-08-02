@@ -12,12 +12,13 @@ room_changes.json
 findings.json
 report.html
 report.pdf
-report_bundle.zip
+*.zip
 cardreads/
 testdata/
 discover/
 raporlar/
 reports/
+# not: site_data/cardreads-incoming/*.zip.enc ŞİFRELİ → *.zip ile eşleşmez, commit edilir.
 
 # --- yalnızca yerelde kullanılan, yorumlarında PII olabilen kod ---
 analyze.py
