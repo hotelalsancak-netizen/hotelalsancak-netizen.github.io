@@ -756,37 +756,53 @@ def build_indirim(env):
 
 
 # --------------------------------------------------------------------------- 4) Açık bakiye
+ELEKTRA_RES_GRID = "https://app.elektraweb.com/app/grid/res-all/reservation"
+
+
+def fbal(r):
+    """Net folio balance (TL) from the res-guest-balance-list view."""
+    return num(r.get("FOLIO_BALANCE"))
+
+
+def rez_link(resid):
+    """Reservation number as a link that opens Elektra's reservation grid (they're logged
+    in) and copies the id — Elektra opens cards as modals with no per-card URL, so the id
+    goes to the clipboard to paste into the grid's 'Rez Id' filter."""
+    r = esc(str(resid or "")).strip()
+    if not r:
+        return "—"
+    return (f"<a href='{ELEKTRA_RES_GRID}' target='_blank' rel='noopener' "
+            f"onclick=\"try{{navigator.clipboard.writeText('{r}');this.title='kopyalandı ✓';}}catch(e){{}}\" "
+            f"title='Elektra açılır — Rez Id filtresine {r} yaz (tıklayınca no kopyalanır)' "
+            f"style='font-variant-numeric:tabular-nums'>{r}</a>")
+
+
 def open_balances(env):
-    """res-guest-balance-list equivalent: reservations where the guest STILL OWES net.
-    In-house + last-180-day check-outs, filtered to GENERALBALANCE>0 AND GUESTBALANCE>0
-    (agency-prepaid folios that net to zero are excluded). Each row gets _left=True if the
-    guest already checked out still owing. Sorted: checked-out-owing first, then by amount.
-    Shared by build_bakiye and build_odeme (daily payment control)."""
-    today = dt.date.today()
-    inhouse = E.fetch_reservations(
-        [{"Column": "RESSTATE", "Operator": "=", "Value": "InHouse"}], env=env)
-    recent_out = E.fetch_reservations_between(
-        "CHECKOUT", (today - dt.timedelta(days=180)).isoformat(), today.isoformat(),
-        env=env, extra=[{"Column": "RESSTATE", "Operator": "=", "Value": "CheckOut"}])
-    rows = inhouse + recent_out
-    owed = [r for r in rows if bal_tl(r) > 0.5 and bal_tl(r, "GUESTBALANCE") > 0.5]
+    """res-guest-balance-list (QA_HOTEL_RESERVATION_GUESTFOLIOS): folios that GENUINELY
+    owe money, i.e. FOLIO_BALANCE > 0. This is the authoritative signal because the view
+    already (a) consolidates FOLIO ROUTING — a reservation whose folio is routed to another
+    shows 0, the target carries the combined balance — and (b) nets agency prepayments. So
+    it catches what per-reservation GENERALBALANCE missed: agency-side debts and routed
+    folios. _left=True when the guest checked out (RESSTATEID 4) still owing. Sorted:
+    checked-out-owing first, then by amount. Shared by build_bakiye and build_odeme."""
+    rows = E.fetch_guest_folios(env)
+    owed = [r for r in rows if fbal(r) > 0.5]
     for r in owed:
-        r["_left"] = r.get("RESSTATE") == "CheckOut"        # çıkış yaptı, hâlâ borçlu
-    owed.sort(key=lambda r: (0 if r.get("_left") else 1, -bal_tl(r)))
+        r["_left"] = r.get("RESSTATEID") == 4                # çıkış yaptı, hâlâ borçlu
+    owed.sort(key=lambda r: (0 if r.get("_left") else 1, -fbal(r)))
     return owed
 
 
 def build_bakiye(env):
-    """Bakiye Kontrolü — reservations where the guest STILL OWES money (net), so a
-    walk-in / direct guest who didn't pay isn't forgotten. Uses NET balance
-    (GENERALBALANCE): the guest-folio figure alone over-counts because an agency
-    prepayment can offset it to zero (Booking/Expedia). A guest who CHECKED OUT still
-    owing net is flagged urgent (left without paying)."""
+    """Bakiye Kontrolü — folios with an open balance (res-guest-balance-list, FOLIO_BALANCE>0)
+    so a walk-in / direct guest who didn't pay isn't forgotten. Source handles folio routing
+    and agency-prepayment netting (see open_balances). A guest who CHECKED OUT still owing is
+    flagged urgent (left without paying)."""
     today = dt.date.today()
     owed = open_balances(env)
 
     left = [r for r in owed if r.get("_left")]
-    total = sum(bal_tl(r) for r in owed)
+    total = sum(fbal(r) for r in owed)
     stats = (stat(len(owed), "açık kayıt", "bad" if owed else "ok")
              + stat(f"{tl(total)} ₺", "tahsil edilecek toplam")
              + stat(len(left), "çıkıp borçlu (acil)", "bad" if left else "ok"))
@@ -794,7 +810,7 @@ def build_bakiye(env):
     def age(r):
         if not r.get("_left"):
             return "konaklıyor"
-        co = pdate(r.get("CHECKOUT"))
+        co = pdate(r.get("CHECKOUTDATE"))
         if not co:
             return "—"
         d = (today - co).days
@@ -805,24 +821,26 @@ def build_bakiye(env):
         for r in owed:
             durum = ("🔴 ÇIKTI — borçlu" if r.get("_left") else "Konaklıyor")
             trs.append(f"<tr class='{'bad' if r.get('_left') else ''}'>"
+                       f"<td>{rez_link(r.get('RESID'))}</td>"
                        f"<td>{esc(r.get('ROOMNO') or '—')}</td>"
                        f"<td>{esc((r.get('GUESTNAMES') or '')[:34])}</td>"
                        f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
                        f"<td>{durum}</td>"
-                       f"<td class='r money'>{tl(bal_tl(r))} ₺</td>"
+                       f"<td class='r money'>{tl(fbal(r))} ₺</td>"
                        f"<td>{esc(age(r))}</td></tr>")
         table = ("<h2>Ödemesi alınmamış misafir kayıtları</h2>"
-                 "<p class='lead'>Misafirin gerçekten borçlu olduğu (net) kayıtlar — en acili "
-                 "<b>çıkış yaptığı hâlde borçlu</b> olanlar (kırmızı). Tahsil edilene kadar burada kalır, "
-                 "böylece unutulmaz.</p>"
-                 "<table><tr><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Durum</th>"
+                 "<p class='lead'>Folyosunda gerçekten açık bakiye (net borç) olan kayıtlar — en acili "
+                 "<b>çıkış yaptığı hâlde borçlu</b> olanlar (kırmızı). Rez No'ya tıkla → Elektra açılır "
+                 "(numara kopyalanır, Rez Id filtresine yapıştır). Tahsil edilene kadar burada kalır.</p>"
+                 "<table><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Durum</th>"
                  "<th class='r'>Borç</th><th>Yaş</th></tr>" + "".join(trs) + "</table>")
     else:
         table = empty_ok("Ödemesi alınmamış misafir kaydı yok — hepsi tahsil edilmiş.")
 
-    note = ("<div class='note'>Net borç (GENERALBALANCE, TL) ve misafirin kendi payı (GUESTBALANCE) > 0 olanlar. "
-            "Acenta ön ödemesiyle netlenip sıfırlanan folyolar sayılmaz (yanlış alarm olmasın). "
-            "Konaklayan + son 180 gün çıkış. Kaynak: QA_HOTEL_RESERVATION.</div>")
+    note = ("<div class='note'>Kaynak: <b>res-guest-balance-list</b> (QA_HOTEL_RESERVATION_GUESTFOLIOS), "
+            "<b>FOLIO_BALANCE > 0</b> — folyonun net bakiyesi. Folyo yönlendirme (routing) zaten "
+            "birleştirilmiş, acenta ön ödemesi netlenmiş; borç ister misafir ister acenta tarafında olsun "
+            "yakalanır. Konaklayan + son 180 gün çıkış.</div>")
     sub = f"tahsil edilecek {tl(total)} ₺" + (f" · {len(left)} çıkıp borçlu 🔴" if left else "")
     return {"label": "Bakiye Kontrolü", "count": len(owed),
             "count_label": "açık kayıt", "tone": "bad" if owed else "ok",
@@ -859,16 +877,16 @@ def build_odeme(env):
     # 2) Open balances (the red res-guest-balance-list rows), day-independent.
     owed = open_balances(env)
     left = [r for r in owed if r.get("_left")]
-    owed_total = sum(bal_tl(r) for r in owed)
+    owed_total = sum(fbal(r) for r in owed)
 
-    stats = (stat(len(owed), "açık bakiye (ödenmemiş)", "bad" if owed else "ok")
+    stats = (stat(len(owed), "ödenmemiş rezervasyon", "bad" if owed else "ok")
              + stat(f"{tl(owed_total)} ₺", "tahsil edilecek toplam")
              + stat(len(left), "çıkıp borçlu 🔴", "bad" if left else "ok"))
 
     def age(r):
         if not r.get("_left"):
             return "konaklıyor"
-        co = pdate(r.get("CHECKOUT"))
+        co = pdate(r.get("CHECKOUTDATE"))
         if not co:
             return "—"
         d = (today - co).days
@@ -877,20 +895,22 @@ def build_odeme(env):
     if owed:
         trs = "".join(
             f"<tr class='{'bad' if r.get('_left') else ''}'>"
+            f"<td>{rez_link(r.get('RESID'))}</td>"
             f"<td>{esc(r.get('ROOMNO') or '—')}</td>"
             f"<td>{esc((r.get('GUESTNAMES') or '')[:34])}</td>"
             f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
-            f"<td>{esc(str(r.get('CHECKIN') or '')[:10])}</td>"
-            f"<td>{esc(str(r.get('CHECKOUT') or '')[:10])}</td>"
+            f"<td>{esc(str(r.get('CHECKINDATE') or '')[:10])}</td>"
+            f"<td>{esc(str(r.get('CHECKOUTDATE') or '')[:10])}</td>"
             f"<td>{'🔴 ÇIKTI — borçlu' if r.get('_left') else 'Konaklıyor'}</td>"
-            f"<td class='r money'>{tl(bal_tl(r))} ₺</td><td>{esc(age(r))}</td></tr>"
+            f"<td class='r money'>{tl(fbal(r))} ₺</td><td>{esc(age(r))}</td></tr>"
             for r in owed)
-        openpanel = ("<h2>🔴 Açık bakiyeler — ödenmemiş</h2>"
-                     "<p class='lead'>Geçmiş günlerden kalan, hâlâ tahsil edilmemiş bakiyeler "
-                     "(Elektra'da kırmızı). En acili <b>çıkış yaptığı hâlde borçlu</b> olanlar. "
-                     "Tahsil edilene kadar burada kalır — pazartesi baktığında cumartesinin "
-                     "ödemeyeni de burada görünür.</p>"
-                     "<table><tr><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Giriş</th>"
+        openpanel = ("<h2>🔴 Ödenmemiş rezervasyonlar (açık bakiye)</h2>"
+                     "<p class='lead'>Şu an folyosunda <b>açık bakiye</b> olan tüm rezervasyonlar — "
+                     "Elektra'nın res-guest-balance-list (kırmızı) ekranıyla birebir; folyo yönlendirme "
+                     "ve acenta tarafı dahil, hiçbiri kaçmaz. En acili <b>çıkış yaptığı hâlde borçlu</b>. "
+                     "<b>Rez No'ya tıkla</b> → Elektra açılır, numara kopyalanır (Rez Id filtresine yapıştır). "
+                     "Tahsil edilene kadar burada kalır.</p>"
+                     "<table><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Giriş</th>"
                      "<th>Çıkış</th><th>Durum</th><th class='r'>Borç</th><th>Yaş</th></tr>"
                      + trs + "</table>")
     else:
@@ -934,10 +954,11 @@ def build_odeme(env):
                 "for(var i=0;i<ps.length;i++){ps[i].style.display=ps[i].getAttribute('data-day')===v?'block':'none';}}"
                 "s.addEventListener('change',show);show();})();</script>")
 
-    note = ("<div class='note'>Açık bakiyeler: net borç (GENERALBALANCE>0) ve misafir payı "
-            "(GUESTBALANCE>0) — acenta ön ödemesiyle sıfırlananlar hariç; konaklayan + son 180 gün "
-            "çıkış. Güne göre panel: o gün Geliş = tarih olan rezervasyonlar, Genel Bakiye>0 "
-            "ödenmemiş sayılır. Kaynak: QA_HOTEL_RESERVATION.</div>")
+    note = ("<div class='note'>Ödenmemiş rezervasyonlar: <b>res-guest-balance-list</b> "
+            "(QA_HOTEL_RESERVATION_GUESTFOLIOS) <b>FOLIO_BALANCE>0</b> — folyonun net bakiyesi; "
+            "folyo yönlendirme (routing) birleştirilmiş, acenta ön ödemesi netlenmiş, borç misafir "
+            "veya acenta tarafında olsun yakalanır (hiçbiri kaçmaz). Konaklayan + son 180 gün çıkış. "
+            "Güne göre panel: o gün Geliş = tarih olan rezervasyonların ödeme durumu (paycheck).</div>")
 
     body = f"<div class='stats'>{stats}</div>{openpanel}{selector}{note}"
     sub = (f"{len(owed)} açık bakiye · tahsil {tl(owed_total)} ₺"

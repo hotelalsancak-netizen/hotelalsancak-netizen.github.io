@@ -362,6 +362,33 @@ def fetch_folio(frm, to, env=None, columns=None):
                     per_page=1000)
 
 
+# The view behind /app/grid/res-guest-balance-list. FOLIO_BALANCE is the NET folio
+# balance with FOLIO ROUTING already consolidated (a reservation whose folio is routed
+# to another shows 0 here; the target carries the combined balance) and agency
+# prepayments already netted. So FOLIO_BALANCE > 0 == the folio genuinely owes money
+# (red in Elektra), whichever side (GUEST_BALANCE or AGENCY_BALANCE) it sits on. This is
+# why per-reservation GENERALBALANCE misses cases: an agency-side debt or a routed folio.
+GUESTFOLIO_OBJECT = "QA_HOTEL_RESERVATION_GUESTFOLIOS"
+
+
+def fetch_guest_folios(env=None):
+    """res-guest-balance-list rows: in-house + last-180-day check-outs. Columns include
+    RESID, ROOMNO, GUESTNAMES, AGENCY, CHECKINDATE, CHECKOUTDATE, RESSTATEID (3=InHouse,
+    4=CheckOut), FOLIO_BALANCE, GUEST_BALANCE, AGENCY_BALANCE."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    since = (dt.date.today() - dt.timedelta(days=180)).isoformat()
+    inhouse = e.select(GUESTFOLIO_OBJECT, None, where=[
+        {"Column": "HOTELID", "Operator": "=", "Value": hid},
+        {"Column": "RESSTATEID", "Operator": "=", "Value": 3}], per_page=1000, max_pages=20)
+    recent_out = e.select(GUESTFOLIO_OBJECT, None, where=[
+        {"Column": "HOTELID", "Operator": "=", "Value": hid},
+        {"Column": "RESSTATEID", "Operator": "=", "Value": 4},
+        {"Column": "CHECKOUTDATE", "Operator": ">=", "Value": f"{since} 00:00:00"}],
+        per_page=1000, max_pages=20)
+    return inhouse + recent_out
+
+
 # ---------------------------------------------------------------------------
 # Room changes (Oda Değişimi) — the report behind /app/grid/room-changerapor.
 # Backing view Q_HOTELROOMCHANGE, discovered from GetConfig/grid.room-changerapor
