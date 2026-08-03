@@ -764,17 +764,31 @@ def fbal(r):
     return num(r.get("FOLIO_BALANCE"))
 
 
+# Robust clipboard copy that also works inside the sandboxed dashboard iframe: the old
+# navigator.clipboard API is blocked there without a clipboard-write permission, so fall
+# back to a hidden-textarea + execCommand('copy') which runs on the click gesture.
+REZ_COPY_JS = ("<script>function rivaCopyRez(el,t){var ok=false;"
+               "try{var a=document.createElement('textarea');a.value=t;a.setAttribute('readonly','');"
+               "a.style.position='fixed';a.style.top='-1000px';a.style.opacity='0';document.body.appendChild(a);"
+               "a.select();a.setSelectionRange(0,t.length);ok=document.execCommand('copy');document.body.removeChild(a);}catch(e){}"
+               "try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);ok=true;}}catch(e){}"
+               "if(ok&&el){var o=el.textContent;el.textContent='kopyalandı ✓';setTimeout(function(){el.textContent=o;},1200);}"
+               "return true;}</script>")
+
+
 def rez_link(resid):
-    """Reservation number as a link that opens Elektra's reservation grid (they're logged
-    in) and copies the id — Elektra opens cards as modals with no per-card URL, so the id
-    goes to the clipboard to paste into the grid's 'Rez Id' filter."""
+    """Reservation number as a link: opens Elektra's reservation grid (they're logged in) and
+    copies the id to the clipboard. Elektra opens cards as modals with no per-card URL and its
+    grid filter is not in the URL either, so we can't deep-link the card — the owner pastes the
+    copied id into the grid's 'Rez Id' box (⌘V) and double-clicks the row. Needs REZ_COPY_JS
+    on the page."""
     r = esc(str(resid or "")).strip()
     if not r:
         return "—"
     return (f"<a href='{ELEKTRA_RES_GRID}' target='_blank' rel='noopener' "
-            f"onclick=\"try{{navigator.clipboard.writeText('{r}');this.title='kopyalandı ✓';}}catch(e){{}}\" "
-            f"title='Elektra açılır — Rez Id filtresine {r} yaz (tıklayınca no kopyalanır)' "
-            f"style='font-variant-numeric:tabular-nums'>{r}</a>")
+            f"onclick=\"return rivaCopyRez(this,'{r}')\" "
+            f"title='Tıkla: Elektra açılır + {r} panoya kopyalanır → Rez Id kutusuna ⌘V yapıştır, satıra çift tıkla' "
+            f"style='font-variant-numeric:tabular-nums;font-weight:600'>{r}</a>")
 
 
 def open_balances(env):
@@ -847,7 +861,7 @@ def build_bakiye(env):
             "sub": sub, "updated": now_str(),
             "html": PAGE("Tahsilat — Açık Bakiye", "Bakiye Kontrolü",
                          "ödemesi alınmamış misafir kayıtları",
-                         f"<div class='stats'>{stats}</div>{table}{note}")}
+                         f"<div class='stats'>{stats}</div>{table}{note}{REZ_COPY_JS}")}
 
 
 DAY_ABBR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
@@ -960,7 +974,7 @@ def build_odeme(env):
             "veya acenta tarafında olsun yakalanır (hiçbiri kaçmaz). Konaklayan + son 180 gün çıkış. "
             "Güne göre panel: o gün Geliş = tarih olan rezervasyonların ödeme durumu (paycheck).</div>")
 
-    body = f"<div class='stats'>{stats}</div>{openpanel}{selector}{note}"
+    body = f"<div class='stats'>{stats}</div>{openpanel}{selector}{note}{REZ_COPY_JS}"
     sub = (f"{len(owed)} açık bakiye · tahsil {tl(owed_total)} ₺"
            + (f" · {len(left)} çıkıp borçlu 🔴" if left else ""))
     return {"label": "Günlük Ödeme Kontrolü", "count": len(owed),
