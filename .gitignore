@@ -20,10 +20,9 @@ raporlar/
 reports/
 # not: site_data/cardreads-incoming/*.zip.enc ŞİFRELİ → *.zip ile eşleşmez, commit edilir.
 
-# --- yalnızca yerelde kullanılan, yorumlarında PII olabilen kod ---
-analyze.py
-build_report.py
-parse_cards.py
+# --- kart işleme scriptleri: PII yorumları temizlendi → repoda (ofis git ile çeker) ---
+#     analyze.py, build_report.py, parse_cards.py, kart_yukle.py commit EDİLİR.
+# --- hâlâ yalnızca yerel (yorumlarında PII olabilir, taranmadı) ---
 room_changes.py
 package_report.py
 discover.py
@@ -41,5 +40,4 @@ dist/
 hata.log
 
 # not: site_data/ (şifreli kart bloğu) commit EDİLİR — güvenli.
-kart_yukle.py
 parite.py
