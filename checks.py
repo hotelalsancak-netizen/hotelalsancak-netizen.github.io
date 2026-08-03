@@ -807,6 +807,30 @@ def open_balances(env):
     return owed
 
 
+# OTA channels the owner asked to exclude from cari receivables — they auto-settle, so
+# their running balance is channel float, not "who hasn't paid me".
+CARI_CHANNELS = ("EXPEDIA", "BOOKING", "AGODA", "OTELZ", "HOTELS", "ETSTUR",
+                 "HOTELBEDS", "CTRIP", "TRIP.COM", "PLANET")
+
+
+def cari_receivables(env):
+    """Alıcılar (CODE '120.x', leaf) accounts with a DEBIT balance = they owe the hotel
+    (cari alacak), excluding the auto OTA channels. LOCALBALANCE is the net balance in TL."""
+    out = []
+    for r in E.fetch_credit_accounts(env):
+        code = str(r.get("CODE") or "")
+        name = str(r.get("NAME") or "")
+        if not code.startswith("120.") or not r.get("ISLEAF"):
+            continue
+        if num(r.get("LOCALBALANCE")) <= 0.5 or "D" not in str(r.get("BALANCETEXT", "")):
+            continue
+        if any(ch in name.upper() for ch in CARI_CHANNELS):
+            continue
+        out.append(r)
+    out.sort(key=lambda r: -num(r.get("LOCALBALANCE")))
+    return out
+
+
 def build_bakiye(env):
     """Bakiye Kontrolü — folios with an open balance (res-guest-balance-list, FOLIO_BALANCE>0)
     so a walk-in / direct guest who didn't pay isn't forgotten. Source handles folio routing
@@ -817,9 +841,12 @@ def build_bakiye(env):
 
     left = [r for r in owed if r.get("_left")]
     total = sum(fbal(r) for r in owed)
-    stats = (stat(len(owed), "açık kayıt", "bad" if owed else "ok")
-             + stat(f"{tl(total)} ₺", "tahsil edilecek toplam")
-             + stat(len(left), "çıkıp borçlu (acil)", "bad" if left else "ok"))
+    cari = cari_receivables(env)
+    cari_total = sum(num(r.get("LOCALBALANCE")) for r in cari)
+    stats = (stat(len(owed), "açık misafir kaydı", "bad" if owed else "ok")
+             + stat(f"{tl(total)} ₺", "misafir tahsilat (acil)")
+             + stat(len(cari), "cari alacak (firma)", "bad" if cari else "ok")
+             + stat(f"{tl(cari_total)} ₺", "cari alacak toplam"))
 
     def age(r):
         if not r.get("_left"):
@@ -851,17 +878,37 @@ def build_bakiye(env):
     else:
         table = empty_ok("Ödemesi alınmamış misafir kaydı yok — hepsi tahsil edilmiş.")
 
-    note = ("<div class='note'>Kaynak: <b>res-guest-balance-list</b> (QA_HOTEL_RESERVATION_GUESTFOLIOS), "
-            "<b>FOLIO_BALANCE > 0</b> — folyonun net bakiyesi. Folyo yönlendirme (routing) zaten "
-            "birleştirilmiş, acenta ön ödemesi netlenmiş; borç ister misafir ister acenta tarafında olsun "
-            "yakalanır. Konaklayan + son 180 gün çıkış.</div>")
-    sub = f"tahsil edilecek {tl(total)} ₺" + (f" · {len(left)} çıkıp borçlu 🔴" if left else "")
-    return {"label": "Bakiye Kontrolü", "count": len(owed),
-            "count_label": "açık kayıt", "tone": "bad" if owed else "ok",
+    if cari:
+        crows = "".join(
+            f"<tr><td>{esc(r.get('CODE') or '')}</td>"
+            f"<td>{esc((r.get('NAME') or '')[:36])}</td>"
+            f"<td class='r money'>{tl(num(r.get('LOCALBALANCE')))} ₺</td></tr>"
+            for r in cari)
+        cari_panel = ("<h2>🏢 Cari Alacaklar — acente / firma</h2>"
+                      "<p class='lead'>City ledger'a (cariye) geçmiş, sana <b>borçlu</b> acente/firmalar — "
+                      "net bakiye (TL). Otomatik kanallar (Expedia/Booking/Agoda) hariç. Bunlar bankaya "
+                      "genelde havale ile gelir. <i>Muhtelif Alıcılar</i> = çeşitli küçük müşterilerin toplamı. "
+                      "Rakam Elektra muhasebe <b>net</b> bakiyesidir (kümülatif); ekrandaki dönem-bakiyesinden "
+                      "farklı olabilir.</p>"
+                      "<table><tr><th>Kod</th><th>Cari / Firma</th><th class='r'>Alacak (net)</th></tr>"
+                      + crows +
+                      f"<tr><td></td><td class='r'><b>TOPLAM</b></td>"
+                      f"<td class='r money'><b>{tl(cari_total)} ₺</b></td></tr></table>")
+    else:
+        cari_panel = ""
+
+    note = ("<div class='note'>Misafir kayıtları: <b>res-guest-balance-list</b> "
+            "(QA_HOTEL_RESERVATION_GUESTFOLIOS) FOLIO_BALANCE>0 — routing + acenta/misafir netlenmiş. "
+            "Cari alacaklar: <b>QA_ACCOUNTS</b> (Kredili Hesaplar), Alıcılar 120.x borç (D) bakiye, "
+            "net TL, otomatik kanallar hariç.</div>")
+    sub = (f"misafir {tl(total)} ₺ · cari {tl(cari_total)} ₺"
+           + (f" · {len(left)} çıkıp borçlu 🔴" if left else ""))
+    return {"label": "Bakiye Kontrolü", "count": len(owed) + len(cari),
+            "count_label": "açık + cari", "tone": "bad" if (owed or cari) else "ok",
             "sub": sub, "updated": now_str(),
             "html": PAGE("Tahsilat — Açık Bakiye", "Bakiye Kontrolü",
-                         "ödemesi alınmamış misafir kayıtları",
-                         f"<div class='stats'>{stats}</div>{table}{note}{REZ_COPY_JS}")}
+                         "misafir açık bakiyeleri + cari alacaklar",
+                         f"<div class='stats'>{stats}</div>{table}{cari_panel}{note}{REZ_COPY_JS}")}
 
 
 DAY_ABBR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]

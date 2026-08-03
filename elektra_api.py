@@ -389,6 +389,26 @@ def fetch_guest_folios(env=None):
     return inhouse + recent_out
 
 
+# Kredili Hesaplar (/app/grid/credit-accounts) backing view, discovered via
+# GetConfig {"ConfigName":"grid.credit-accounts.config"} -> Object QA_ACCOUNTS.
+ACCOUNTS_OBJECT = "QA_ACCOUNTS"
+ACCOUNTS_COLUMNS = ["HOTELID", "CODE", "NAME", "ISLEAF", "LOCALDEBIT", "LOCALCREDIT",
+                    "LOCALBALANCE", "BALANCETEXT", "CURRENCYCODE"]
+
+
+def fetch_credit_accounts(env=None):
+    """Chart-of-accounts rows. For receivables use the 'Alıcılar' accounts (CODE starts
+    '120.', ISLEAF). LOCALBALANCE is the cumulative NET balance in local currency (TL);
+    BALANCETEXT '(D)' == a debit balance == the account owes the hotel (receivable), '(C)'
+    == we owe them. (The live grid's period 'Bakiye' comes from a recalc proc we don't run;
+    LOCALBALANCE is the persisted net.)"""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    return e.select(ACCOUNTS_OBJECT, ACCOUNTS_COLUMNS,
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid}],
+                    per_page=2000, max_pages=10)
+
+
 # ---------------------------------------------------------------------------
 # Room changes (Oda Değişimi) — the report behind /app/grid/room-changerapor.
 # Backing view Q_HOTELROOMCHANGE, discovered from GetConfig/grid.room-changerapor
