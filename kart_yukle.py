@@ -134,15 +134,21 @@ def _date_from_name(name: str):
 
 def week_of(override, src_name):
     """(monday, sunday) to publish. --week = any date IN the target week; otherwise
-    the export date is read from the file name and we report the week that just
-    ENDED before it (export on Mon 20.07 -> 13–19). Falls back to yesterday's week."""
+    take the export date from the file name and report the last FULLY-ENDED week —
+    the most recent Mon–Sun period whose SUNDAY falls BEFORE the export date.
+
+    Bug this fixes: the old code did `export - 1 day` and used that day's week, which
+    only lands on the previous week when the export is on a MONDAY. Read the terminal
+    any other day (e.g. Tue 04.08) and it picked the CURRENT, still-empty week
+    (03–09) whose nights haven't happened yet → a meaningless "0 şüpheli". Now Tue
+    04.08 correctly yields 27.07–02.08 (the week that is actually covered by data)."""
     if override:
         ref = dt.date.fromisoformat(override)
-    else:
-        exp = _date_from_name(src_name) or dt.date.today()
-        ref = exp - dt.timedelta(days=1)          # the week that just ended
-    monday = ref - dt.timedelta(days=ref.weekday())
-    return monday, monday + dt.timedelta(days=6)
+        monday = ref - dt.timedelta(days=ref.weekday())
+        return monday, monday + dt.timedelta(days=6)
+    exp = _date_from_name(src_name) or dt.date.today()
+    last_sunday = exp - dt.timedelta(days=exp.weekday() + 1)   # most recent Sunday strictly before exp
+    return last_sunday - dt.timedelta(days=6), last_sunday
 
 
 def load_changes(src_dir: Path, lo: dt.date, hi: dt.date, extra_dirs=()) -> list:
@@ -258,6 +264,17 @@ def _filter_changes(rows, lo, hi):
 
 
 def build_week(cards, changes, occ, lo, hi):
+    # Attach each reservation's "Oda Notu" (ALLNOTES) to its room change, so the
+    # report can show WHY the room change was done — an uncontrolled room change is
+    # itself a leak risk, so the reason must be visible/auditable.
+    try:
+        notes = E.fetch_notes(sorted({c.get("rez_id") for c in changes if c.get("rez_id")}))
+        for c in changes:
+            c["note"] = notes.get(str(c.get("rez_id", "")), "")
+        n = sum(1 for c in changes if c.get("note"))
+        log(f"  oda notları: {n}/{len(changes)} değişimde neden yazılı")
+    except Exception as ex:
+        log(f"  ! oda notları çekilemedi ({str(ex)[:60]}) — nedensiz devam")
     html = build_report.build(cards, changes, occ, lo, hi)
     if not changes:
         banner = ('<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;'

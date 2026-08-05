@@ -465,6 +465,23 @@ def fetch_room_changes(frm, to, env=None):
     return out
 
 
+def fetch_notes(res_ids, env=None):
+    """RESID -> ALLNOTES (a reservation's notes; the reception's 'Oda Notu' — the
+    reason a room change was made, e.g. "321-322'YE RC OLDU YANGIN TADİLATI" — is
+    concatenated here). Used to show WHY each room change happened, so an
+    uncontrolled room change is auditable, not silent."""
+    ids = sorted({int(r) for r in res_ids if str(r).strip().isdigit()})
+    if not ids:
+        return {}
+    e, env = connect(env)
+    hotel_id = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    rows = e.select(RES_OBJECT, ["RESID", "ALLNOTES"],
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hotel_id},
+                           {"Column": "RESID", "Operator": "IN", "Value": ids}])
+    return {str(r["RESID"]): (r.get("ALLNOTES") or "").strip()
+            for r in rows if (r.get("ALLNOTES") or "").strip()}
+
+
 # ---------------------------------------------------------------------------
 # Room calendar — the occupancy source for the room-usage security check.
 # ---------------------------------------------------------------------------

@@ -197,8 +197,11 @@ def room_change_note(room, changes):
         return (f"kontrol edildi — oda değişimi verisi <b>{cov}</b> arasını kapsıyor; "
                 f"bu oda için kayıt yok.")
     dates = ", ".join(sorted({c["when"][:10] for c in rows}))
+    reasons = sorted({(c.get("note") or "").strip() for c in rows if (c.get("note") or "").strip()})
+    reason_html = ("<br><b>📝 neden (Oda Notu):</b> "
+                   + " · ".join(html.escape(n) for n in reasons)) if reasons else ""
     return (f"kontrol edildi — bu oda için {len(rows)} kayıt ({dates}), "
-            f"<b>hiçbiri bu geceyi kapsamıyor</b>.")
+            f"<b>hiçbiri bu geceyi kapsamıyor</b>.{reason_html}")
 
 
 def case_card(f, sold, strong, changes):
@@ -356,6 +359,20 @@ def build(cards, changes, occ, lo=LO, hi=HI):
              '</div>')
     o.append('</header>')
 
+    # ---- Missing-lock warning: rooms Elektra shows active this week but with NO
+    # card PDF in the dump were NOT checked at all (a blind spot — if one is used
+    # off-book, this report can't see it). Never let a missing room pass silently.
+    occ_rooms = {str(r["room"]) for r in occ.get("reservations", []) + occ.get("blocks", [])}
+    missing_cards = sorted(occ_rooms - set(rooms), key=lambda x: (len(x), x))
+    if missing_cards:
+        o.append('<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;'
+                 'padding:12px 16px;border-radius:10px;margin:0 0 16px;font-size:13.5px">'
+                 '⚠️ <b>EKSİK KİLİT OKUMASI — kör nokta.</b> Şu oda(lar) bu hafta Elektra\'da '
+                 'aktifti ama kart dökümünde YOK, yani <b>hiç kontrol edilemedi</b>: '
+                 f'<b>{", ".join(html.escape(r) for r in missing_cards)}</b>. '
+                 'Bu oda(lar) satılmadan kullanılsa bu rapor yakalayamaz — terminalden '
+                 'eksik odaların kilidini de okutup yeniden yükleyin.</div>')
+
     o.append('<div class="stats">')
     o.append(f'<div class="stat bad"><div class="n">{len(strong)}</div>'
              f'<div class="l">GÜÇLÜ şüphe (oda-gecesi)</div></div>')
@@ -408,6 +425,35 @@ def build(cards, changes, occ, lo=LO, hi=HI):
              'şey sessizce atlanmasın diye listelendi.</p>')
     for f in sorted(early, key=lambda f: (f["room"], f["night"])):
         o.append(early_card(f, sold))
+    o.append('</section>')
+
+    # ---- Room changes with their reasons (from the reservation's "Oda Notu") ----
+    # An uncontrolled room change is itself a leak risk, so every move this week is
+    # listed with WHO did it and WHY. A change with no reason written is highlighted.
+    o.append('<section>')
+    o.append('<h2 class="sec">Oda değişimleri <span class="c">bu hafta yapılan taşımalar · '
+             'kim, neden</span></h2>')
+    if not changes:
+        o.append('<p class="lead">Bu hafta oda değişimi kaydı yok (ya da yüklenmedi).</p>')
+    else:
+        o.append('<p class="lead">Resepsiyonun yaptığı her oda değişimi burada. Kontrolsüz '
+                 'taşıma bir güvenlik açığıdır; neden, rezervasyondaki <b>Oda Notu</b>\'ndan '
+                 'gelir. <b style="color:#c0392b">Nedeni yazılmamış</b> değişimler ayrıca '
+                 'işaretli — bunları resepsiyona sorun.</p>')
+        o.append('<div class="scroll"><table><thead><tr><th>Tarih</th><th>Misafir</th>'
+                 '<th>Odadan</th><th>Odaya</th><th>Yapan</th>'
+                 '<th>Neden (Oda Notu)</th></tr></thead><tbody>')
+        for c in sorted(changes, key=lambda c: c.get("when", "")):
+            note = (c.get("note") or "").strip()
+            note_cell = (html.escape(note) if note
+                         else '<span style="color:#c0392b;font-weight:600">— neden yazılmamış</span>')
+            o.append(f'<tr><td>{html.escape(str(c.get("when","")))}</td>'
+                     f'<td>{html.escape(c.get("guest",""))}</td>'
+                     f'<td class="room">{html.escape(c.get("from_room",""))}</td>'
+                     f'<td class="room">{html.escape(c.get("to_room",""))}</td>'
+                     f'<td>{html.escape(c.get("user",""))}</td>'
+                     f'<td>{note_cell}</td></tr>')
+        o.append('</tbody></table></div>')
     o.append('</section>')
 
     # Occupancy matrix
