@@ -52,17 +52,48 @@ def find_pdfs(root: Path):
     return sorted(Path(p) for p in glob.glob(str(root / "**" / "*.pdf"), recursive=True))
 
 
+def decrypt_enc(src: Path) -> Path:
+    """Decrypt a terminal-uploaded .zip.enc back to a plain .zip.
+
+    The resepsiyon-PC uploader (terminal programı) encrypts the weekly zip before
+    putting it in the public repo, so guest data is never public in the clear. Layout
+    (must match the uploader): file = salt(16) + nonce(12) + ciphertext(+GCM tag);
+    key = PBKDF2-HMAC-SHA256(CARD_ZIP_PASSWORD, salt, 200000). Same password on both
+    machines (it lives only in .env, never in the repo)."""
+    import hashlib
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    pw = os.environ.get("CARD_ZIP_PASSWORD", "").strip()
+    if not pw:
+        raise SystemExit("CARD_ZIP_PASSWORD .env'de yok. Terminal programındaki parolanın "
+                         "AYNISINI .env'e ekleyin:  CARD_ZIP_PASSWORD=...")
+    blob = src.read_bytes()
+    salt, nonce, ct = blob[:16], blob[16:28], blob[28:]
+    key = hashlib.pbkdf2_hmac("sha256", pw.encode(), salt, 200000, dklen=32)
+    try:
+        data = AESGCM(key).decrypt(nonce, ct, None)
+    except Exception:
+        raise SystemExit("Şifre çözülemedi — CARD_ZIP_PASSWORD yanlış olabilir "
+                         "(terminal programındakiyle birebir aynı olmalı).")
+    out = Path(tempfile.mkdtemp(prefix="kartdec_")) / src.name[:-4]  # <HAFTA>.zip.enc -> <HAFTA>.zip
+    out.write_bytes(data)
+    log(f"  🔓 .zip.enc çözüldü → {out.name} ({len(data):,} bayt)")
+    return out
+
+
 def extract_source(src: Path) -> Path:
-    """Return a directory holding the PDFs (extracts a zip to a temp dir if needed)."""
+    """Return a directory holding the PDFs (extracts a zip to a temp dir if needed).
+    A terminal-uploaded .zip.enc is decrypted first (CARD_ZIP_PASSWORD)."""
     if src.is_dir():
         return src
+    if src.suffix.lower() == ".enc":
+        src = decrypt_enc(src)
     if src.suffix.lower() == ".zip":
         tmp = Path(tempfile.mkdtemp(prefix="kart_"))
         with zipfile.ZipFile(src) as z:
             z.extractall(tmp)
         log(f"  ZIP açıldı: {tmp}")
         return tmp
-    raise SystemExit(f"Girdi bir .zip veya klasör olmalı: {src}")
+    raise SystemExit(f"Girdi bir .zip, .zip.enc veya klasör olmalı: {src}")
 
 
 def parse_cards_folder(folder: Path) -> dict:
