@@ -114,6 +114,9 @@ h2.sec .c{font-size:13px;font-weight:500;color:var(--muted)}
   font-weight:680;letter-spacing:-.01em}
 .case-h .nt{color:var(--muted);font-size:14px}
 .spacer{flex:1}
+.rc-dl{font:inherit;font-size:12px;font-weight:600;padding:4px 11px;border-radius:8px;
+  border:1px solid var(--crit);background:transparent;color:var(--crit);cursor:pointer;white-space:nowrap}
+.rc-dl:hover{background:var(--crit);color:#fff}
 .tag{font-size:11px;font-weight:660;letter-spacing:.03em;padding:3px 10px;border-radius:99px}
 .tag.crit{background:var(--crit-soft);color:var(--crit)}
 .tag.warn{background:var(--warn-soft);color:var(--warn)}
@@ -204,7 +207,7 @@ def room_change_note(room, changes):
             f"<b>hiçbiri bu geceyi kapsamıyor</b>.{reason_html}")
 
 
-def case_card(f, sold, strong, changes):
+def case_card(f, sold, strong, changes, has_pdf=False):
     room, night = f["room"], f["night"]
     nd = datetime.strptime(night, "%Y-%m-%d").date()
     times = []
@@ -234,6 +237,9 @@ def case_card(f, sold, strong, changes):
     o.append(f'<span class="nt">{tr_long(nd)} gecesi</span>')
     o.append('<span class="spacer"></span>')
     o.append('<span class="tag crit">ŞÜPHELİ</span>' + tag)
+    if has_pdf:
+        o.append(f'<button class="rc-dl" type="button" data-room="{html.escape(room)}" '
+                 f'title="Bu odanın kilit kart-okuma PDF\'ini indir">⤓ Kart PDF</button>')
     o.append('</div><div class="case-b">')
     o.append(f'<div class="row"><span class="k">Misafir kartı açılışı</span>'
              f'<span class="v"><div class="times">{"".join(times)}</div></span></div>')
@@ -322,11 +328,29 @@ def strong_runs(strong_findings):
     return runs
 
 
-def build(cards, changes, occ, lo=LO, hi=HI):
+def _suspicious_room_pdfs(sus, pdf_dir):
+    """{room: base64(pdf)} for the DISTINCT suspicious rooms only (not per night, so
+    a 3-night flag embeds one PDF). Lets each case card offer the raw lock read for
+    that room. Kept to suspicious rooms so the report doesn't carry all 54 PDFs."""
+    import base64, glob
+    out = {}
+    for room in sorted({f["room"] for f in sus}):
+        hits = glob.glob(os.path.join(pdf_dir, "**", f"{room}.pdf"), recursive=True)
+        if hits:
+            try:
+                with open(hits[0], "rb") as fh:
+                    out[room] = base64.b64encode(fh.read()).decode()
+            except OSError:
+                pass
+    return out
+
+
+def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
     grid = collect(cards, lo, hi)
     sold = build_occupancy(occ, changes)
     findings = analyze(cards, occ, changes, lo.isoformat(), hi.isoformat())
     sus = [f for f in findings if f["status"] == "SUSPICIOUS"]
+    room_pdf = _suspicious_room_pdfs(sus, pdf_dir) if pdf_dir else {}
     early = [f for f in findings if f["status"] == "EARLY_CHECKIN"]
     strong_set = classify_strong(sus, sold)
     strong = sorted((f for f in sus if (f["room"], f["night"]) in strong_set),
@@ -402,7 +426,7 @@ def build(cards, changes, occ, lo=LO, hi=HI):
              'bunu açıklayan bir oda değişimi yok. Saatler Türkiye yerel saati. Otel gecesi '
              '14:00 → ertesi gün 12:00.</p>')
     for f in strong:
-        o.append(case_card(f, sold, True, changes))
+        o.append(case_card(f, sold, True, changes, f["room"] in room_pdf))
     o.append('</section>')
 
     # ---- WEAK: single reads / check-out-day lingering, listed for completeness ----
@@ -414,7 +438,7 @@ def build(cards, changes, occ, lo=LO, hi=HI):
                  'ücretli bir misafirin çıkış günü akşamına taşan okuması. Çoğu masum olabilir; '
                  'yine de sessizce atlanmasın diye listelendi.</p>')
         for f in weak:
-            o.append(case_card(f, sold, False, changes))
+            o.append(case_card(f, sold, False, changes, f["room"] in room_pdf))
         o.append('</section>')
 
     o.append('<section>')
@@ -508,6 +532,14 @@ def build(cards, changes, occ, lo=LO, hi=HI):
              f'dolu değil sayılır. Hafta: {lo.strftime("%d.%m")}–{hi.strftime("%d.%m.%Y")}.</footer>')
     o.append('</div>')
     o.append(DOWNLOAD_JS)
+    if room_pdf:
+        o.append("<script>const RIVA_ROOM_PDF=" + json.dumps(room_pdf) + ";"
+                 "document.querySelectorAll('.rc-dl').forEach(function(b){"
+                 "b.addEventListener('click',function(){"
+                 "var r=b.getAttribute('data-room'),d=RIVA_ROOM_PDF[r];"
+                 "if(!d){alert('Bu oda için PDF gömülü değil.');return;}"
+                 "rivaSave(rivaB64ToBlob(d,'application/pdf'),'oda-'+r+'-kart-okuma.pdf');"
+                 "});});</script>")
     return ("<title>Riva Hotel — Satılmadan kullanılan odalar</title>\n"
             f"<style>{CSS}</style>\n" + "\n".join(o))
 

@@ -263,7 +263,7 @@ def _filter_changes(rows, lo, hi):
     return out
 
 
-def build_week(cards, changes, occ, lo, hi):
+def build_week(cards, changes, occ, lo, hi, pdf_dir=None):
     # Attach each reservation's "Oda Notu" (ALLNOTES) to its room change, so the
     # report can show WHY the room change was done — an uncontrolled room change is
     # itself a leak risk, so the reason must be visible/auditable.
@@ -275,7 +275,7 @@ def build_week(cards, changes, occ, lo, hi):
         log(f"  oda notları: {n}/{len(changes)} değişimde neden yazılı")
     except Exception as ex:
         log(f"  ! oda notları çekilemedi ({str(ex)[:60]}) — nedensiz devam")
-    html = build_report.build(cards, changes, occ, lo, hi)
+    html = build_report.build(cards, changes, occ, lo, hi, pdf_dir)
     if not changes:
         banner = ('<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;'
                   'padding:10px 14px;border-radius:10px;margin:0 0 14px;font-size:13px">'
@@ -360,7 +360,7 @@ def main():
     changes = load_changes(src_dir, lo, hi, extra_dirs=(src.parent,))
 
     log("5/6  Rapor üretiliyor + şifreleniyor...")
-    html, sus = build_week(cards, changes, occ, lo, hi)
+    html, sus = build_week(cards, changes, occ, lo, hi, pdf_dir=src_dir)
     section = {
         "label": "Haftalık Kart Güvenliği",
         "count": sus, "count_label": "şüpheli",
