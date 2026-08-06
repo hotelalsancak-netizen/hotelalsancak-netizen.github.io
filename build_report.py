@@ -480,6 +480,35 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
         o.append('</tbody></table></div>')
     o.append('</section>')
 
+    # ---- T-folyo recovery: skip-payment guests whose real room was hidden ----
+    # A guest who leaves without paying is moved to a virtual "T-folyo" room; the
+    # physical room they slept in then reads as VACANT and would be false-flagged.
+    # We rebuild the real room from the reservation log and credit those nights, so
+    # they DON'T appear as suspicious. Shown here for transparency: the room did not
+    # simply "disappear" — a genuine (unpaid) guest was there.
+    tfolyo = sorted({(r["room"], r.get("guest", ""), r.get("checkin", ""), r.get("checkout", ""))
+                     for r in occ.get("reservations", []) if r.get("tfolyo")})
+    o.append('<section>')
+    o.append('<h2 class="sec">T-folyo ile geri kazanılan konaklamalar <span class="c">'
+             'ödemeden ayrılan misafirler · yanlış alarm önlendi</span></h2>')
+    if not tfolyo:
+        o.append('<p class="lead">Bu hafta T-folyoya alınmış (ödemesiz) konaklama bulunamadı.</p>')
+    else:
+        o.append('<p class="lead">Bir misafir <b>ödemeden ayrılınca</b> Elektra onu sanal bir '
+                 '<b>T-folyo</b> odasına taşır; kaldığı gerçek oda o an oda planında <b>boş</b> '
+                 'görünür ve normalde "satılmadan kullanıldı" diye <b>yanlış işaretlenirdi</b>. '
+                 'Gerçek odayı rezervasyon <b>log</b> kaydından bulup o geceleri konaklama saydık — '
+                 'bu yüzden şüpheli listesinde <b>çıkmıyorlar</b>. (Bu misafirlerin ödemesi ayrıca '
+                 'takip edilmeli.)</p>')
+        o.append('<div class="scroll"><table><thead><tr><th>Oda</th><th>Misafir</th>'
+                 '<th>Giriş</th><th>Çıkış</th></tr></thead><tbody>')
+        for room, guest, ci, co in tfolyo:
+            o.append(f'<tr><td class="room">{html.escape(room)}</td>'
+                     f'<td>{html.escape(guest)}</td>'
+                     f'<td>{html.escape(ci)}</td><td>{html.escape(co)}</td></tr>')
+        o.append('</tbody></table></div>')
+    o.append('</section>')
+
     # Occupancy matrix
     o.append('<section>')
     o.append('<h2 class="sec">Doluluk tablosu <span class="c">kilit okumaları / oda planı, '

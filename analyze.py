@@ -121,7 +121,9 @@ def build_occupancy(occ, changes):
     """room -> night -> [reservations that genuinely occupied it that night]."""
     by_rez = defaultdict(list)
     for c in changes:
-        by_rez[norm_id(c["rez_id"])].append(c)
+        rid = norm_id(c.get("rez_id"))
+        if rid:                       # never bucket rez-less changes under '' — they would
+            by_rez[rid].append(c)     # attach to any empty-id reservation and corrupt it
     for v in by_rez.values():
         v.sort(key=lambda c: c["when"])
 

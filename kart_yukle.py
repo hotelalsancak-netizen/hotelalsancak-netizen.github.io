@@ -35,7 +35,7 @@ import dashcrypto
 import elektra_api as E
 import parse_cards
 import build_report
-from analyze import analyze
+from analyze import analyze, norm_id
 
 ROOT = Path(__file__).resolve().parent
 KART_DIR = ROOT / "site_data" / "kart"
@@ -151,16 +151,26 @@ def week_of(override, src_name):
     return last_sunday - dt.timedelta(days=6), last_sunday
 
 
+# A room change on a LONG stay is often recorded days AFTER (or before) the week the
+# guest actually slept in the first room — the guest occupies room A across the week but
+# the move A->B is only logged the following week. A week-only change fetch misses it, so
+# room A reads as "used while vacant". So we pull changes over a WIDE window (±1 month) and
+# let the occupancy reconstruction (room_segments, keyed by reservation) use whichever apply.
+CHANGE_PAD = dt.timedelta(days=31)
+
+
 def load_changes(src_dir: Path, lo: dt.date, hi: dt.date, extra_dirs=()) -> list:
-    """Room changes for the week (best-effort). Looks for an "Oda Değişimi" export —
-    Elektra's Excel/CSV or a JSON — inside the ZIP (or next to it), maps its Turkish
-    headers, and filters to the week. Falls back to the repo's room_changes.json.
+    """Room changes around the week (best-effort), WIDE window (±1 month) so a move
+    recorded outside the week but affecting a week-night is not missed. Primary source
+    is Elektra's Oda Değişimi grid; falls back to an export file or room_changes.json.
     Empty -> the report shows a warning banner (moved guests may read as suspicious)."""
-    # 0) PRIMARY: pull the Oda Değişimi report straight from Elektra for this week.
+    wlo, whi = lo - CHANGE_PAD, hi + CHANGE_PAD
+    # 0) PRIMARY: pull the Oda Değişimi report straight from Elektra, ±1 month.
     try:
-        rows = E.fetch_room_changes(lo.isoformat(), hi.isoformat())
-        log(f"  oda değişimi ELEKTRA'dan otomatik çekildi: {len(rows)} kayıt ({lo}–{hi})")
-        return _filter_changes(rows, lo, hi)
+        rows = E.fetch_room_changes(wlo.isoformat(), whi.isoformat())
+        log(f"  oda değişimi ELEKTRA'dan otomatik çekildi: {len(rows)} kayıt "
+            f"(geniş pencere {wlo}–{whi})")
+        return _filter_changes(rows, wlo, whi)
     except Exception as e:
         log(f"  ! Elektra oda değişimi çekilemedi ({str(e)[:70]}) — dosya/yedeğe düşülüyor")
 
@@ -184,12 +194,12 @@ def load_changes(src_dir: Path, lo: dt.date, hi: dt.date, extra_dirs=()) -> list
             except Exception as e:
                 log(f"  ! {f.name} okunamadı: {e}"); continue
             if rows:
-                wk = _filter_changes(rows, lo, hi)
-                log(f"  oda değişimi dosyadan: {f.name} ({len(rows)} satır, {len(wk)} haftaya ait)")
+                wk = _filter_changes(rows, wlo, whi)
+                log(f"  oda değişimi dosyadan: {f.name} ({len(rows)} satır, {len(wk)} pencerede)")
                 return wk
     rc = ROOT / "room_changes.json"                      # repo fallback
     if rc.exists():
-        wk = _filter_changes([_canon_change(r) for r in json.loads(rc.read_text())], lo, hi)
+        wk = _filter_changes([_canon_change(r) for r in json.loads(rc.read_text())], wlo, whi)
         if wk:
             log(f"  oda değişimi room_changes.json'dan ({len(wk)} satır, haftaya filtreli)")
             return wk
@@ -264,19 +274,36 @@ def _filter_changes(rows, lo, hi):
 
 
 def build_week(cards, changes, occ, lo, hi, pdf_dir=None):
-    # Attach each reservation's "Oda Notu" (ALLNOTES) to its room change, so the
-    # report can show WHY the room change was done — an uncontrolled room change is
-    # itself a leak risk, so the reason must be visible/auditable.
+    # `changes` is the WIDE (±1 month) set — analyze() needs all of it so a move recorded
+    # outside the week still credits the room the guest actually slept in that week. For
+    # the REPORT we show only the changes relevant to this week (the guest was in-house,
+    # or the move itself is dated in the week); otherwise the list fills with a month of
+    # unrelated moves. A move logged a few days AFTER the week is still relevant when the
+    # guest's stay covers the week (matched by reservation id, not by the move's date).
+    week_rez = {norm_id(r.get("rez_id")) for r in occ.get("reservations", [])}
+
+    def relevant(c):
+        try:
+            if lo <= dt.date.fromisoformat(str(c.get("when", ""))[:10]) <= hi:
+                return True
+        except ValueError:
+            return True                        # undated — keep rather than drop evidence
+        return norm_id(c.get("rez_id")) in week_rez
+
+    changes_disp = [c for c in changes if relevant(c)]
+    # Attach each change's reason (the reservation's "Oda Notu") so the report can show
+    # WHY it was done — an uncontrolled room change is itself a leak risk.
     try:
-        notes = E.fetch_notes(sorted({c.get("rez_id") for c in changes if c.get("rez_id")}))
-        for c in changes:
+        notes = E.fetch_notes(sorted({c.get("rez_id") for c in changes_disp if c.get("rez_id")}))
+        for c in changes_disp:
             c["note"] = notes.get(str(c.get("rez_id", "")), "")
-        n = sum(1 for c in changes if c.get("note"))
-        log(f"  oda notları: {n}/{len(changes)} değişimde neden yazılı")
+        n = sum(1 for c in changes_disp if c.get("note"))
+        log(f"  oda notları: {n}/{len(changes_disp)} gösterilen değişimde neden yazılı "
+            f"(bu haftaya ilgili {len(changes_disp)} / toplam {len(changes)} değişim)")
     except Exception as ex:
         log(f"  ! oda notları çekilemedi ({str(ex)[:60]}) — nedensiz devam")
-    html = build_report.build(cards, changes, occ, lo, hi, pdf_dir)
-    if not changes:
+    html = build_report.build(cards, changes_disp, occ, lo, hi, pdf_dir)
+    if not changes_disp:
         banner = ('<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;'
                   'padding:10px 14px;border-radius:10px;margin:0 0 14px;font-size:13px">'
                   '⚠️ Bu hafta için oda değişimi (Oda Değişimi raporu) yüklenmedi — '
@@ -351,11 +378,23 @@ def main():
     dest = CARDREADS / lo.strftime("%Y%m%d")
     dest.mkdir(parents=True, exist_ok=True)
     for p in find_pdfs(src_dir):
-        shutil.copy(p, dest / p.name)
+        d = dest / p.name
+        if p.resolve() != d.resolve():           # arşivden yeniden çalıştırmada aynı dosya
+            shutil.copy(p, d)
     log(f"     PDF'ler arşivlendi: {dest.relative_to(ROOT)}")
 
     log("4/6  Oda planı (doluluk) Elektra'dan çekiliyor...")
     occ = E.fetch_room_calendar(lo.isoformat(), hi.isoformat())
+    # T-folyo (ödemesiz ayrılış) misafirleri: fiziksel odaları oda planından silinir,
+    # o oda "satılmadan kullanılmış" gibi görünür. Gerçek odayı logdan geri getir.
+    try:
+        tf = E.fetch_tfolio_occupancy(lo.isoformat(), hi.isoformat())
+        if tf:
+            occ["reservations"].extend(tf)
+            rooms = ", ".join(sorted({t["room"] for t in tf}))
+            log(f"     T-folyo geri kazanıldı: {len(tf)} oda-kaydı ({rooms}) — yanlış alarm önlendi")
+    except Exception as ex:                       # log erişilemezse analiz yine çalışsın
+        log(f"     (T-folyo logu alınamadı: {ex})")
     # Look inside the export AND next to it (an Oda Değişimi Excel dropped beside the zip).
     changes = load_changes(src_dir, lo, hi, extra_dirs=(src.parent,))
 

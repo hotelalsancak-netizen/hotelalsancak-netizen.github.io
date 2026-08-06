@@ -53,7 +53,7 @@ GUESTBALANCE, AGENCYBALANCE, GENERALBALANCE, AVERAGENIGHTPRICE, CURRENCYRATE,
 CURRENCYCODE, RESSTATE, RESID.
 GENERALBALANCE is the "Genel Bakiye" the whole check turns on.
 """
-import argparse, datetime as dt, json, os, pathlib, sys
+import argparse, datetime as dt, json, os, pathlib, re, sys
 
 import requests
 
@@ -534,6 +534,145 @@ def to_occupancy(rows, frm, to):
             blocks.append(rec)
     return {"fetched": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "from": frm, "to": to, "reservations": res, "blocks": blocks}
+
+
+# ---------------------------------------------------------------------------
+# T-folyo (skip-payment) occupancy recovery — via the reservation LOG.
+# ---------------------------------------------------------------------------
+# When a guest leaves without paying, reception moves their folio to a VIRTUAL
+# room ("T-folyo", ROOMNO is 'T' + the reservation id, USEVIRTUALROOM=True). The physical
+# room they actually slept in is then FREED on the room calendar — so a room
+# that was genuinely occupied (and whose card was legitimately used) looks
+# "used while vacant" and gets falsely flagged. The Oda Değişimi list does NOT
+# capture the move to a virtual room either.
+#
+# The truth survives only in the reservation's LOG. The web client reads it via
+#   POST {base}GetLog/HOTEL_RES   {Object:"HOTEL_RES", PrimaryKey:<RESID>}
+# (the card's BaseObject is HOTEL_RES; "HOTEL" returns nothing). Each entry has
+# a BODY holding the CHANGED fields of that operation; the physical room appears
+# as ROOMID (sometimes a bare number 389624, sometimes a quoted "389624") inside
+# Insert / Update / "Assign Room (SP_EASYPMS_ASSIGNROOM)" entries. Verified live
+# against known skip-payment reservations (mechanism confirmed 08.2026).
+_ROOMID_IN_LOG = re.compile(r'"ROOMID"\s*:\s*"?(\d+)"?')
+
+
+def _reservation_log(e, res_id):
+    """Log records for one reservation using an ALREADY-connected client `e` (no
+    re-login per call). Returns [] on a bad id or unexpected/empty response."""
+    try:
+        d = e._post("GetLog/HOTEL_RES",
+                    {"Object": "HOTEL_RES", "PrimaryKey": int(res_id)},
+                    action_name="GetLog")
+    except (ValueError, TypeError, ElektraError):
+        return []
+    rs = d.get("ResultSets") or [[]]
+    return rs[0] if rs else []
+
+
+def fetch_reservation_log(res_id, env=None):
+    """Raw log records (newest first) for one reservation. Room-assignment history
+    lives here even after the calendar loses it to a virtual T-folyo room."""
+    e, env = connect(env)
+    return _reservation_log(e, res_id)
+
+
+def _log_room_timeline(logs, rmap):
+    """Chronological physical-room assignments from a reservation's log, as ascending
+    [(datetime, roomno)]. ROOMID appears in an entry BODY on Insert / Update / Assign
+    Room; the move to the virtual room writes ROOMID null (no digits) and is skipped, as
+    are ROOMIDs outside rmap. The last ROOMID in an entry is the value it set."""
+    ev = []
+    for lg in logs:
+        body = lg.get("BODY")
+        if not isinstance(body, str):
+            continue
+        phys = [int(m) for m in _ROOMID_IN_LOG.findall(body) if int(m) in rmap]
+        if not phys:
+            continue
+        try:
+            when = dt.datetime.strptime(str(lg.get("LOGTIMEUTC") or "")[:19],
+                                        "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        ev.append((when, rmap[phys[-1]]))
+    ev.sort(key=lambda x: x[0])
+    return ev
+
+
+def fetch_tfolio_occupancy(frm, to, env=None):
+    """Recover physical-room occupancy for T-folyo (skip-payment) guests whose stay was
+    hidden by a move to a virtual room, so those nights are not false-flagged.
+
+    Finds every virtual-room reservation that (a) overlaps [frm, to] and (b) really
+    stayed (RESSTATEID in SOLD_STATES — a Cancelled/no-show virtual folio is skipped so
+    it can't mask a real off-book night), reads each one's log ONCE (shared connection),
+    and reconstructs from the log's ROOMID timeline WHICH physical room the guest held on
+    EACH night. Emits occupancy records shaped like fetch_room_calendar's `reservations`
+    (plus tfolyo=True), one per contiguous run of nights in a room — NOT the union of all
+    rooms across the whole stay, so a card opening a room AFTER the guest left it still
+    reads as suspicious. rez_id is blanked: the room history comes wholly from the log, so
+    these records must not be re-split by Oda Değişimi in build_occupancy."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    # ROOMID -> ROOMNO from a WIDE (±31d) calendar: a walkout's physical room must map
+    # even when it has no OTHER booking in the analysed week, else its log ROOMID would be
+    # dropped and the very false positive we target would silently survive.
+    try:
+        wlo = (dt.date.fromisoformat(str(frm)[:10]) - dt.timedelta(days=31)).isoformat()
+        whi = (dt.date.fromisoformat(str(to)[:10]) + dt.timedelta(days=31)).isoformat()
+    except ValueError:
+        wlo, whi = frm, to
+    cal = e.function(ROOMCAL_FUNCTION,
+                     {"FROM": wlo, "TO": whi, "ROOMTYPEIDS": None, "HOTELID": hid})
+    rmap = {int(r["ROOMID"]): str(r["ROOMNO"]) for r in cal
+            if r.get("ROOMID") and not str(r.get("ROOMNO", "")).startswith("T")}
+    # Reservations overlapping the window (checkout>=frm AND checkin<=to).
+    rows = e.select(env.get("ELEKTRA_RES_OBJECT", RES_OBJECT),
+                    ["RESID", "ROOMNO", "GUESTNAMES", "AGENCY", "CHECKIN", "CHECKOUT",
+                     "RESSTATEID", "USEVIRTUALROOM"],
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
+                           {"Column": "CHECKOUT", "Operator": ">=", "Value": f"{frm} 00:00:00"},
+                           {"Column": "CHECKIN", "Operator": "<=", "Value": f"{to} 23:59:59.999"}],
+                    per_page=500)
+    out = []
+    for r in rows:
+        roomno = str(r.get("ROOMNO") or "")
+        is_virtual = roomno.startswith("T") or r.get("USEVIRTUALROOM") in (True, "True", 1)
+        if not is_virtual or r.get("RESSTATEID") not in SOLD_STATES:
+            continue
+        try:
+            ci = dt.date.fromisoformat(str(r["CHECKIN"])[:10])
+            co = dt.date.fromisoformat(str(r["CHECKOUT"])[:10])
+        except (ValueError, KeyError, TypeError):
+            continue
+        timeline = _log_room_timeline(_reservation_log(e, r["RESID"]), rmap)
+        if not timeline:
+            continue
+        base = dict(guest=(r.get("GUESTNAMES") or "").strip(),
+                    state=r.get("RESSTATEID"),
+                    state_name="T-folyo (ödemesiz ayrılış · oda logdan)",
+                    agency=(r.get("AGENCY") or "").strip(),
+                    rez_id="", tfolyo=True)
+        # Walk nights ci..co-1; each night's room = latest assignment on or before it.
+        # Group contiguous same-room nights into one record.
+        run_room, run_start, d = None, None, ci
+        while d < co:
+            room = timeline[0][1]
+            for when, rm in timeline:
+                if when.date() <= d:
+                    room = rm
+                else:
+                    break
+            if room != run_room:
+                if run_room is not None:
+                    out.append(dict(base, room=run_room,
+                                    checkin=run_start.isoformat(), checkout=d.isoformat()))
+                run_room, run_start = room, d
+            d += dt.timedelta(days=1)
+        if run_room is not None:
+            out.append(dict(base, room=run_room,
+                            checkin=run_start.isoformat(), checkout=co.isoformat()))
+    return out
 
 
 def probe(env=None):
