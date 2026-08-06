@@ -7,6 +7,7 @@ name: Riva Dashboard
 
 on:
   workflow_dispatch:
+  repository_dispatch:        # yerel cron 'riva-rebuild' ile tetikler
   push:
     branches: [main]          # site_data/kart.enc.json güncellenince yeniden yayınla
   schedule:
