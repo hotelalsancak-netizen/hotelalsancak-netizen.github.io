@@ -1,0 +1,73 @@
+name: Kart Analizi (otomatik)
+
+# Yeni bir haftalık kart dosyası (site_data/cardreads-incoming/*.zip.enc) repoya push
+# edilince ÇÖZER → ANALİZ EDER → şifreli kart bloğunu (site_data/kart/) commit'ler.
+# O commit dashboard.yml'i tetikler → dashboard yeniden yayınlanır. Yani terminal
+# programı dosyayı atınca gerisi otomatik; elle "analiz et" demeye gerek kalmaz.
+#
+# GEREKLİ SECRET: CARD_ZIP_PASSWORD (terminal programındaki parolayla BİREBİR aynı).
+# Ayarla: repo → Settings → Secrets and variables → Actions → New repository secret.
+
+on:
+  push:
+    paths: ['site_data/cardreads-incoming/**']   # yeni .zip.enc gelince anında
+  workflow_dispatch:                              # elle tetikleme
+  schedule:
+    - cron: '30 6 * * *'                          # TR 09:30 — yedek günlük tarama
+
+permissions:
+  contents: write        # kart bloğunu geri commit'lemek için
+
+concurrency:
+  group: cards
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: poppler (pdftotext) kur
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Bağımlılıklar
+        run: pip install -r requirements.txt
+      - name: İşlenmemiş kart dosyalarını analiz et
+        env:
+          ELEKTRA_HOTELID: ${{ secrets.ELEKTRA_HOTELID }}
+          ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
+          ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
+          DASH_PW_MANAGER: ${{ secrets.DASH_PW_MANAGER }}
+          DASH_PW_RECEPTION: ${{ secrets.DASH_PW_RECEPTION }}
+          CARD_ZIP_PASSWORD: ${{ secrets.CARD_ZIP_PASSWORD }}
+        run: |
+          python - <<'EOF'
+          import glob, pathlib, subprocess, sys
+          sys.path.insert(0, '.')
+          import kart_yukle
+          todo = []
+          for enc in sorted(glob.glob('site_data/cardreads-incoming/*.zip.enc')):
+              lo, hi = kart_yukle.week_of(None, pathlib.Path(enc).name)
+              wid = lo.strftime('%Y%m%d')
+              if not pathlib.Path(f'site_data/kart/{wid}.enc.json').exists():
+                  todo.append(enc)
+          if not todo:
+              print('Yeni (işlenmemiş) kart dosyası yok — çıkılıyor.')
+          for enc in todo:
+              print('==> İşleniyor:', enc)
+              subprocess.run([sys.executable, 'kart_yukle.py', enc, '--no-publish'], check=True)
+          EOF
+      - name: Kart bloğunu commit'le + push (değiştiyse)
+        run: |
+          if [ -n "$(git status --porcelain site_data/kart/)" ]; then
+            git config user.name "riva-cards-bot"
+            git config user.email "cards-bot@users.noreply.github.com"
+            git add site_data/kart/
+            git commit -m "Kart güvenliği: otomatik analiz ($(date -u +%Y-%m-%d))"
+            git push
+            echo "Kart bloğu push edildi → dashboard yeniden yayınlanacak."
+          else
+            echo "Yeni analiz yok — commit gerekmiyor."
+          fi
