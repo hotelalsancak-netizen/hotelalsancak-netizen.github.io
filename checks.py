@@ -1251,6 +1251,10 @@ PARITE_CHANNELS = [
      "https://www.enuygun.com/otel/detay/riva-hotel-alsancak-428633/?checkInDate={ci_d}&checkOutDate={co_d}&rooms=2"),
     ("tatilbudur", "Tatilbudur",
      "https://www.tatilbudur.com/riva-hotel-alsancak"),
+    ("obilet", "Obilet",
+     "https://www.obilet.com/otel-detay/riva-hotel-alsancak-751493/{ci_c}-{co_c}/2ad"),
+    ("tripcom", "Trip.com",
+     "https://tr.trip.com/hotels/detail/?city=1216&hotelid=102583877&checkin={ci}&checkout={co}&adult=2&crn=1&curr=TRY&locale=tr_TR"),
     ("trivago", "Trivago",
      "https://www.trivago.com.tr/tr/lm/konaklama-hizmeti-verilen-apart-daire-riva-hotel-alsancak-izmir"),
 ]
@@ -1281,8 +1285,10 @@ def build_parite(env):
       var co=tom.getFullYear()+'-'+pad(tom.getMonth()+1)+'-'+pad(tom.getDate());
       var ci_d=pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear();
       var co_d=pad(tom.getDate())+'.'+pad(tom.getMonth()+1)+'.'+tom.getFullYear();
-      // Uzun jetonları (ci_d/co_d) önce değiştir ki {{ci}} onların içine denk gelmesin.
-      function chUrl(c){{return c.url.replace('{{ci_d}}',ci_d).replace('{{co_d}}',co_d).replace('{{ci}}',ci).replace('{{co}}',co);}}
+      var ci_c=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate());
+      var co_c=tom.getFullYear()+pad(tom.getMonth()+1)+pad(tom.getDate());
+      // Uzun jetonları (ci_d/co_d/ci_c/co_c) önce değiştir ki {{ci}} onların içine denk gelmesin.
+      function chUrl(c){{return c.url.replace('{{ci_d}}',ci_d).replace('{{co_d}}',co_d).replace('{{ci_c}}',ci_c).replace('{{co_c}}',co_c).replace('{{ci}}',ci).replace('{{co}}',co);}}
       // Kanal adı = otelin ilanına giden link (Aç → ile aynı hedef).
       function nameHtml(c){{return '<a href="'+chUrl(c)+'" target="_blank" rel="noopener" title="'+c.name+' — otelin ilanını aç" style="color:inherit;text-decoration:none;border-bottom:1px solid var(--brand,#0e7490);font-weight:600">'+c.name+'</a>';}}
       var KEY='parite-'+ci;
