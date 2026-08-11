@@ -988,7 +988,8 @@ def build_odeme(env):
         opts += f"<option value='{iso}'>{esc(day_label(iso))} — {tag}</option>"
         if unpaid:
             rows_html = "".join(
-                f"<tr><td>{esc(r.get('room') or '—')}</td>"
+                f"<tr><td>{rez_link(r.get('rez_id'))}</td>"
+                f"<td>{esc(r.get('room') or '—')}</td>"
                 f"<td>{esc((r.get('guest') or '')[:34])}</td>"
                 f"<td>{esc((r.get('agency') or '')[:16])}</td>"
                 f"<td>{esc(str(r.get('checkin') or '')[:10])} → {esc(str(r.get('checkout') or '')[:10])}</td>"
@@ -996,7 +997,7 @@ def build_odeme(env):
                 for r in unpaid)
             inner = (f"<p class='lead'><b class='miss'>{len(unpaid)} rezervasyonda ödeme eksik</b> — "
                      f"toplam {tl(sum(r['_balance'] for r in unpaid))} ₺. Resepsiyona sorulmalı.</p>"
-                     "<table><tr><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Giriş→Çıkış</th>"
+                     "<table><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Giriş→Çıkış</th>"
                      "<th class='r'>Genel Bakiye</th></tr>" + rows_html + "</table>")
         elif not arrivals:
             inner = "<p class='lead'>Bu tarihte giriş yok.</p>"

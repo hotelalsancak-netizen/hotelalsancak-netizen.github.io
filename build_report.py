@@ -464,14 +464,16 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
                  'taşıma bir güvenlik açığıdır; neden, rezervasyondaki <b>Oda Notu</b>\'ndan '
                  'gelir. <b style="color:#c0392b">Nedeni yazılmamış</b> değişimler ayrıca '
                  'işaretli — bunları resepsiyona sorun.</p>')
-        o.append('<div class="scroll"><table><thead><tr><th>Tarih</th><th>Misafir</th>'
+        o.append('<div class="scroll"><table><thead><tr><th>Rez No</th><th>Tarih</th><th>Misafir</th>'
                  '<th>Odadan</th><th>Odaya</th><th>Yapan</th>'
                  '<th>Neden (Oda Notu)</th></tr></thead><tbody>')
         for c in sorted(changes, key=lambda c: c.get("when", "")):
             note = (c.get("note") or "").strip()
             note_cell = (html.escape(note) if note
                          else '<span style="color:#c0392b;font-weight:600">— neden yazılmamış</span>')
-            o.append(f'<tr><td>{html.escape(str(c.get("when","")))}</td>'
+            rez = html.escape(str(c.get("rez_id", "") or "").strip()) or "—"
+            o.append(f'<tr><td style="font-variant-numeric:tabular-nums;font-weight:600">{rez}</td>'
+                     f'<td>{html.escape(str(c.get("when","")))}</td>'
                      f'<td>{html.escape(c.get("guest",""))}</td>'
                      f'<td class="room">{html.escape(c.get("from_room",""))}</td>'
                      f'<td class="room">{html.escape(c.get("to_room",""))}</td>'
