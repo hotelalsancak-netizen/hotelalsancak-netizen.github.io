@@ -1233,21 +1233,26 @@ def build_satis(env):
 # OTA'lar kendi indirimlerini (Booking Genius, promosyon, mobil) OTA tarafında uygular;
 # Elektra bunu görmez. Gerçek EKRAN fiyatını yakalamanın tek güvenilir yolu: kullanıcı
 # gördüğü fiyatı girer. Her kanal "Aç →" ile açılır; kapıdandan ucuz OTA = parite ihlali.
+# DOĞRUDAN otel sayfaları (arama değil) — tek tıkla otelin kendi ilanına gider.
+# {ci}/{co} = bu gece → yarın (YYYY-AA-GG); {ci_d}/{co_d} aynı tarihler GG.AA.YYYY
+# biçiminde (Türk OTA'ları böyle ister). JS bunları çalışma anında doldurur.
 PARITE_CHANNELS = [
     ("kapidan", "🏠 Kapıdan (rezervasyonal)",
      "https://rivahotelalsancak.rezervasyonal.com/?Checkin={ci}&Checkout={co}&Adult=2&child=0&ChildAges=&language=tr"),
     ("booking", "Booking.com",
-     "https://www.booking.com/searchresults.tr.html?ss=Riva+Hotel+Alsancak+Izmir&checkin={ci}&checkout={co}&group_adults=2&no_rooms=1&group_children=0"),
-    ("hotels", "Hotels.com",
-     "https://tr.hotels.com/Hotel-Search?destination=Riva%20Hotel%20Alsancak&startDate={ci}&endDate={co}&adults=2"),
+     "https://www.booking.com/hotel/tr/apart-alsancak.html?checkin={ci}&checkout={co}&group_adults=2&no_rooms=1&group_children=0"),
+    ("hotels", "Hotels.com / Expedia",
+     "https://tr.hotels.com/ho657763/hotel-apart-alsancak-izmir-turkiye/?chkin={ci}&chkout={co}&rm1=a2"),
     ("etstur", "Etstur",
-     "https://www.etstur.com/oteller?aramaMetni=Riva+Hotel+Alsancak"),
+     "https://www.etstur.com/Riva-Hotel-Alsancak?check_in={ci_d}&check_out={co_d}&adult_1=2&child_1=0"),
     ("tatilsepeti", "Tatilsepeti",
-     "https://www.tatilsepeti.com/arama?SearchText=Riva+Hotel+Alsancak"),
+     "https://www.tatilsepeti.com/riva-hotel-alsancak?ara=oda:2;tarih:{ci_d},{co_d}"),
     ("enuygun", "Enuygun",
-     "https://www.enuygun.com/otel/?query=Riva+Hotel+Alsancak"),
+     "https://www.enuygun.com/otel/detay/riva-hotel-alsancak-428633/?checkInDate={ci_d}&checkOutDate={co_d}&rooms=2"),
     ("tatilbudur", "Tatilbudur",
-     "https://www.tatilbudur.com/oteller?q=Riva+Hotel+Alsancak"),
+     "https://www.tatilbudur.com/riva-hotel-alsancak"),
+    ("trivago", "Trivago",
+     "https://www.trivago.com.tr/tr/lm/konaklama-hizmeti-verilen-apart-daire-riva-hotel-alsancak-izmir"),
 ]
 
 
@@ -1274,14 +1279,19 @@ def build_parite(env):
       var now=new Date(),tom=new Date(Date.now()+864e5);
       var ci=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
       var co=tom.getFullYear()+'-'+pad(tom.getMonth()+1)+'-'+pad(tom.getDate());
+      var ci_d=pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear();
+      var co_d=pad(tom.getDate())+'.'+pad(tom.getMonth()+1)+'.'+tom.getFullYear();
+      // Uzun jetonları (ci_d/co_d) önce değiştir ki {{ci}} onların içine denk gelmesin.
+      function chUrl(c){{return c.url.replace('{{ci_d}}',ci_d).replace('{{co_d}}',co_d).replace('{{ci}}',ci).replace('{{co}}',co);}}
+      // Kanal adı = otelin ilanına giden link (Aç → ile aynı hedef).
+      function nameHtml(c){{return '<a href="'+chUrl(c)+'" target="_blank" rel="noopener" title="'+c.name+' — otelin ilanını aç" style="color:inherit;text-decoration:none;border-bottom:1px solid var(--brand,#0e7490);font-weight:600">'+c.name+'</a>';}}
       var KEY='parite-'+ci;
       var saved={{}}; try{{saved=JSON.parse(localStorage.getItem(KEY)||'{{}}');}}catch(e){{}}
       var rows=document.getElementById('prows');
       CH.forEach(function(c){{
-        var url=c.url.replace('{{ci}}',ci).replace('{{co}}',co);
         var tr=document.createElement('tr'); tr.id='row-'+c.key;
-        tr.innerHTML='<td class="pn">'+c.name+'</td>'+
-          '<td><a href="'+url+'" target="_blank" rel="noopener" style="color:var(--brand,#0e7490);font-weight:600">Aç →</a></td>'+
+        tr.innerHTML='<td class="pn">'+nameHtml(c)+'</td>'+
+          '<td><a href="'+chUrl(c)+'" target="_blank" rel="noopener" style="color:var(--brand,#0e7490);font-weight:600">Aç →</a></td>'+
           '<td class="r"><input type="number" inputmode="decimal" data-k="'+c.key+'" placeholder="—" '+
           'style="width:130px;text-align:right;padding:7px 9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"'+
           (saved[c.key]!=null?' value="'+saved[c.key]+'"':'')+'></td>';
@@ -1299,7 +1309,7 @@ def build_parite(env):
         var viol=0;
         CH.forEach(function(c){{
           var tr=document.getElementById('row-'+c.key); var v=vals[c.key]; tr.className='';
-          var td=tr.querySelector('.pn'); td.innerHTML=c.name;
+          var td=tr.querySelector('.pn'); td.innerHTML=nameHtml(c);
           if(v==null) return;
           if(cheap!=null && Math.abs(v-cheap)<0.5) td.innerHTML+=' <span style="color:#16a34a;font-weight:700">· en ucuz</span>';
           if(c.key!=='kapidan' && direct!=null && v<direct-0.5){{ td.innerHTML+=' <span style="color:#dc2626;font-weight:700">· kapıdandan ucuz!</span>'; tr.className='bad'; viol++; }}
