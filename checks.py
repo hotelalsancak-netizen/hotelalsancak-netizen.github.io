@@ -92,47 +92,59 @@ def now_str():
 # --------------------------------------------------------------------------- page shell
 PAGE_CSS = """
 *{box-sizing:border-box}
+/* Renkler tek yerde değişken olarak. Gündüz = :root. Gece: OS karanlıksa VE kullanıcı
+   'aydınlık'a zorlamadıysa, ya da düğmeyle 'dark' seçildiyse. Böylece shell'deki
+   gündüz/gece düğmesi (html[data-theme=...]) bu iframe'e de işler. */
+:root{
+  --bg:#f4f6f9;--fg:#0f172a;--eyebrow:#0e7490;--sub:#64748b;--card:#fff;--border:#e2e8f0;
+  --statbad:#dc2626;--statok:#16a34a;--tbl:#fff;--th-bg:#f1f5f9;--th-fg:#475569;--td-line:#eef2f7;
+  --who-bg:#eef2ff;--who-fg:#4338ca;--empty-bg:#f0fdf4;--empty-line:#bbf7d0;--empty-fg:#166534;
+  --input-bg:#fff;--input-line:#cbd5e1;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0b1120;--fg:#e8eef7;--eyebrow:#22b8cf;--sub:#94a3b8;--card:#111a2e;--border:#243049;
+  --statbad:#f87171;--statok:#4ade80;--tbl:#111a2e;--th-bg:#182338;--th-fg:#94a3b8;--td-line:#1e2a44;
+  --who-bg:#1e2450;--who-fg:#a5b4fc;--empty-bg:#0f2417;--empty-line:#14532d;--empty-fg:#4ade80;
+  --input-bg:#0b1120;--input-line:#334155;
+}}
+:root[data-theme=dark]{
+  --bg:#0b1120;--fg:#e8eef7;--eyebrow:#22b8cf;--sub:#94a3b8;--card:#111a2e;--border:#243049;
+  --statbad:#f87171;--statok:#4ade80;--tbl:#111a2e;--th-bg:#182338;--th-fg:#94a3b8;--td-line:#1e2a44;
+  --who-bg:#1e2450;--who-fg:#a5b4fc;--empty-bg:#0f2417;--empty-line:#14532d;--empty-fg:#4ade80;
+  --input-bg:#0b1120;--input-line:#334155;
+}
 body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-  color:#0f172a;background:#f4f6f9;padding:22px}
-@media (prefers-color-scheme:dark){body{color:#e8eef7;background:#0b1120}}
+  color:var(--fg);background:var(--bg);padding:22px}
 .wrap{max-width:960px;margin:0 auto}
-.eyebrow{color:#0e7490;font-weight:700;font-size:12px;letter-spacing:.4px;text-transform:uppercase}
-@media (prefers-color-scheme:dark){.eyebrow{color:#22b8cf}}
+.eyebrow{color:var(--eyebrow);font-weight:700;font-size:12px;letter-spacing:.4px;text-transform:uppercase}
 h1{font-size:22px;margin:4px 0 2px}
-.sub{color:#64748b;font-size:13px;margin-bottom:18px}
-@media (prefers-color-scheme:dark){.sub{color:#94a3b8}}
+.sub{color:var(--sub);font-size:13px;margin-bottom:18px}
 .stats{display:flex;flex-wrap:wrap;gap:12px;margin:16px 0}
-.stat{background:#fff;border:1px solid #e2e8f0;border-radius:13px;padding:14px 18px;min-width:130px;flex:1}
-@media (prefers-color-scheme:dark){.stat{background:#111a2e;border-color:#243049}}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:14px 18px;min-width:130px;flex:1}
 .stat .n{font-size:24px;font-weight:800}
-.stat .l{color:#64748b;font-size:12px;margin-top:2px}
-.stat.bad .n{color:#dc2626}.stat.ok .n{color:#16a34a}
-@media (prefers-color-scheme:dark){.stat.bad .n{color:#f87171}.stat.ok .n{color:#4ade80}}
-table{width:100%;border-collapse:collapse;margin:10px 0 22px;font-size:13px;background:#fff;border-radius:12px;overflow:hidden}
-@media (prefers-color-scheme:dark){table{background:#111a2e}}
-th{background:#f1f5f9;text-align:left;padding:9px 11px;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;color:#475569}
-@media (prefers-color-scheme:dark){th{background:#182338;color:#94a3b8}}
-td{padding:9px 11px;border-top:1px solid #eef2f7}
-@media (prefers-color-scheme:dark){td{border-color:#1e2a44}}
+.stat .l{color:var(--sub);font-size:12px;margin-top:2px}
+.stat.bad .n{color:var(--statbad)}.stat.ok .n{color:var(--statok)}
+table{width:100%;border-collapse:collapse;margin:10px 0 22px;font-size:13px;background:var(--tbl);border-radius:12px;overflow:hidden}
+th{background:var(--th-bg);text-align:left;padding:9px 11px;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--th-fg)}
+td{padding:9px 11px;border-top:1px solid var(--td-line)}
 .r{text-align:right;font-variant-numeric:tabular-nums}
-.who{display:inline-block;background:#eef2ff;color:#4338ca;border-radius:6px;padding:1px 7px;font-size:11.5px;font-weight:600}
-@media (prefers-color-scheme:dark){.who{background:#1e2450;color:#a5b4fc}}
-.bad td:first-child{box-shadow:inset 3px 0 #dc2626}
+.who{display:inline-block;background:var(--who-bg);color:var(--who-fg);border-radius:6px;padding:1px 7px;font-size:11.5px;font-weight:600}
+.bad td:first-child{box-shadow:inset 3px 0 var(--statbad)}
 .money{font-weight:700;font-variant-numeric:tabular-nums}
 h2{font-size:15px;margin:22px 0 4px}
-.lead{color:#64748b;font-size:12.5px;margin:0 0 8px}
-.empty{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:11px;padding:14px 16px;font-weight:600}
-@media (prefers-color-scheme:dark){.empty{background:#0f2417;border-color:#14532d;color:#4ade80}}
-.note{color:#94a3b8;font-size:11.5px;margin-top:18px;line-height:1.6}
+.lead{color:var(--sub);font-size:12.5px;margin:0 0 8px}
+.empty{background:var(--empty-bg);border:1px solid var(--empty-line);color:var(--empty-fg);border-radius:11px;padding:14px 16px;font-weight:600}
+.note{color:var(--sub);font-size:11.5px;margin-top:18px;line-height:1.6}
 .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px}
-@media (prefers-color-scheme:dark){.card{background:#111a2e;border-color:#243049}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
 .card h3{margin:0 0 10px;font-size:13.5px}
-input{font:inherit;padding:9px 11px;border:1px solid #cbd5e1;border-radius:9px;width:100%;background:#fff;color:inherit}
-@media (prefers-color-scheme:dark){input{background:#0b1120;border-color:#334155}}
-label{font-size:12px;color:#64748b;display:block;margin:8px 0 3px}
-.vrow{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid #eef2f7}
-.match{color:#16a34a;font-weight:700}.miss{color:#dc2626;font-weight:700}
+input,select,textarea{font:inherit;padding:9px 11px;border:1px solid var(--input-line);border-radius:9px;background:var(--input-bg);color:var(--fg)}
+input{width:100%}
+select{max-width:100%;cursor:pointer}
+select option{background:var(--card);color:var(--fg)}
+label{font-size:12px;color:var(--sub);display:block;margin:8px 0 3px}
+.vrow{display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--td-line)}
+.match{color:var(--statok);font-weight:700}.miss{color:var(--statbad);font-weight:700}
 """
 
 
@@ -233,9 +245,8 @@ def svg_hbars(pairs, unit="₺"):
 
 # --------------------------------------------------------------------------- 1) Kasa & POS
 KASA_EXTRA_CSS = """<style>
-textarea{width:100%;font:12px/1.4 ui-monospace,Menlo,monospace;padding:10px;border:1px solid #cbd5e1;
-  border-radius:10px;background:#fff;color:inherit;resize:vertical}
-@media (prefers-color-scheme:dark){textarea{background:#0b1120;border-color:#334155}}
+textarea{width:100%;font:12px/1.4 ui-monospace,Menlo,monospace;padding:10px;border:1px solid var(--input-line);
+  border-radius:10px;background:var(--input-bg);color:var(--fg);resize:vertical}
 .btnrow{display:flex;gap:10px;align-items:center;margin:10px 0 4px;flex-wrap:wrap}
 .btn{font:inherit;font-weight:700;padding:9px 16px;border-radius:10px;border:1px solid #0e7490;
   background:#0e7490;color:#fff;cursor:pointer}
@@ -247,8 +258,7 @@ label.btn{display:inline-block}
 @media (prefers-color-scheme:dark){.drop{background:#0c1a24;border-color:#1f4a52}}
 .drop.over{background:#dcf5f8;border-color:#0e7490}
 .drop-ic{font-size:30px}
-.recon{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin:14px 0}
-@media (prefers-color-scheme:dark){.recon{background:#111a2e;border-color:#243049}}
+.recon{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;margin:14px 0}
 .recon h3{margin:0 0 4px;font-size:15px}
 .ok{color:#16a34a}.warn{color:#dc2626}.amber{color:#d97706}
 .pill{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700;margin-left:6px}
@@ -1008,8 +1018,7 @@ def build_odeme(env):
     selector = ("<h2>Güne göre giriş ödemeleri</h2>"
                 "<p class='lead'>Bir gün seç — o gün <b>giriş yapan</b> misafirlerin ödeme durumu. "
                 "Pazartesi baktığında cumartesi ve pazarı ayrı ayrı görebilirsin.</p>"
-                "<select id='daySel' style='font:inherit;padding:8px 11px;border:1px solid #cbd5e1;"
-                "border-radius:9px;background:#fff;color:inherit;max-width:100%'>" + opts + "</select>"
+                "<select id='daySel'>" + opts + "</select>"
                 + panels +
                 "<script>(function(){var s=document.getElementById('daySel');"
                 "function show(){var v=s.value;var ps=document.querySelectorAll('.daypanel');"
