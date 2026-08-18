@@ -824,17 +824,17 @@ CARI_CHANNELS = ("EXPEDIA", "BOOKING", "AGODA", "OTELZ", "HOTELS", "ETSTUR",
 
 
 def cari_receivables(env):
-    """Alıcılar (CODE '120.x', leaf) accounts with a DEBIT balance = they owe the hotel
-    (cari alacak), excluding the auto OTA channels. LOCALBALANCE is the net balance in TL."""
+    """Alıcılar (120.x) hesapları — sana borçlu olanlar — GERÇEK ekstre bakiyesiyle
+    (E.fetch_account_balances). QA_ACCOUNTS'un kayıtlı bakiyesi BAYAT: hem şişiriyor (borcunu
+    ödemiş bir acenteyi hâlâ eski borcuyla gösteriyor) hem kaçırıyor (yeni bir borcu 0
+    gösterip listeden düşürüyor). Ekstre proc'u canlı/doğru. LOCALBALANCE burada = ekstre
+    Σ(borç−alacak); > 0 = borç = bize borçlu. Otomatik OTA kanalları hariç (kendileri
+    mahsuplaşır)."""
     out = []
-    for r in E.fetch_credit_accounts(env):
-        code = str(r.get("CODE") or "")
-        name = str(r.get("NAME") or "")
-        if not code.startswith("120.") or not r.get("ISLEAF"):
+    for r in E.fetch_account_balances(env, master_code="120"):
+        if num(r.get("LOCALBALANCE")) <= 0.5:          # sadece borç bakiyeliler (bize borçlu)
             continue
-        if num(r.get("LOCALBALANCE")) <= 0.5 or "D" not in str(r.get("BALANCETEXT", "")):
-            continue
-        if any(ch in name.upper() for ch in CARI_CHANNELS):
+        if any(ch in str(r.get("NAME") or "").upper() for ch in CARI_CHANNELS):
             continue
         out.append(r)
     out.sort(key=lambda r: -num(r.get("LOCALBALANCE")))

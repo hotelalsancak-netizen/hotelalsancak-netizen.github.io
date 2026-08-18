@@ -409,6 +409,48 @@ def fetch_credit_accounts(env=None):
                     per_page=2000, max_pages=10)
 
 
+# The Elektra 'Hesap İşlemleri' (account statement / ekstre) grid is backed by the proc
+# SP_ACC_TRANS_WITH_STARTING_BALANCE (found via grid.account-transactions.config: rowAction
+# "Transactions"). It returns EVERY posting under a master code with the correct
+# per-transaction LOCALDEBIT/LOCALCREDIT — the LIVE figures. This matters because the cached
+# QA_ACCOUNTS.LOCALBALANCE lags reality until SP_ACCOUNTING_RECALCULATEBALANCES is run, so it
+# both OVERSTATES (a paid-down agency still showing its old debt) and MISSES (a new debt still
+# showing 0) real receivables. Verified live 08.2026: the proc's per-account totals match the
+# Elektra ekstre exactly. Params: HOTELID, CODE (master, e.g. '120'), FROM, TO.
+ACC_TRANS_PROC = "SP_ACC_TRANS_WITH_STARTING_BALANCE"
+
+
+def fetch_account_balances(env=None, master_code="120"):
+    """TRUE current balance of every leaf account under `master_code` ('120' = Alıcılar /
+    receivables), from the statement proc (one Execute call), grouped by leaf ACCOUNTCODE.
+    Each item: {CODE, NAME, LOCALBALANCE} where LOCALBALANCE = Σ(LOCALDEBIT − LOCALCREDIT);
+    > 0 means the account owes the hotel (debit / receivable). Use this, NOT the stale cached
+    balance, for who-owes-us figures. FROM spans all history so no opening balance is missed."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    d = e._post("Execute/" + ACC_TRANS_PROC,
+                {"Object": ACC_TRANS_PROC, "Action": "Execute", "Select": ["*"],
+                 "Parameters": {"HOTELID": hid, "CODE": master_code,
+                                "FROM": "2000-01-01", "TO": "2099-12-31"}},
+                action_name="Execute")
+    # The proc endpoint returns [[...rows...]] (a list holding one result set).
+    if isinstance(d, list):
+        rows = d[0] if (d and isinstance(d[0], list)) else d
+    else:
+        rs = (d or {}).get("ResultSets") or [[]]
+        rows = rs[0] if rs else []
+    agg = {}
+    for r in rows:
+        code = str(r.get("ACCOUNTCODE") or "").strip()
+        if not code or code == master_code:
+            continue
+        a = agg.setdefault(code, {"CODE": code,
+                                  "NAME": (r.get("ACCOUNTNAME") or "").strip(),
+                                  "LOCALBALANCE": 0.0})
+        a["LOCALBALANCE"] += (r.get("LOCALDEBIT") or 0) - (r.get("LOCALCREDIT") or 0)
+    return list(agg.values())
+
+
 # ---------------------------------------------------------------------------
 # Room changes (Oda Değişimi) — the report behind /app/grid/room-changerapor.
 # Backing view Q_HOTELROOMCHANGE, discovered from GetConfig/grid.room-changerapor
