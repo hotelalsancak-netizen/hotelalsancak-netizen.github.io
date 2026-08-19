@@ -362,6 +362,28 @@ def fetch_folio(frm, to, env=None, columns=None):
                     per_page=1000)
 
 
+# Ön Kasa (front-cash) hareket defteri — Elektra'nın /app/grid/front-cash detayının
+# (QA_EASYPMS_DAILYCASHDETAIL, grid.front-cash2.config'ten) kaynağı. Nakdin resepsiyon →
+# otel kasası → banka yolculuğunu görünür kılar. TYPE: 'Folio Cash'/'Folio Credit Card'/
+# 'Folio Wire Transfer'/'Folio Cityledger' (misafir tahsilatı) ve 'Safe Advance' (kasalar
+# arası devir / bankaya yatırma / nakit gider — hepsi tek tip, notla ayrılır). CASHTAKEN =
+# kasaya giren, CASHGIVEN = kasadan çıkan; LOCALAMOUNT = TL tutar. NOT: giderler de nakitten
+# ödendiği ve notlar serbest-metin olduğu için OTOMATİK hırsızlık-flag'i GÜVENİLİR DEĞİL —
+# bu veriyi yalnızca ŞEFFAF GÖSTERİM için kullan; sahip kendi iş akışıyla farkı görür.
+CASHDETAIL_OBJECT = "QA_EASYPMS_DAILYCASHDETAIL"
+
+
+def fetch_cash_detail(frm, to, env=None):
+    """Ön Kasa hareketleri (nakit/kart/havale tahsilat + kasa devir/banka/gider) [frm,to]."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    return e.select(CASHDETAIL_OBJECT, None,
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
+                           {"Column": "DATE", "Operator": ">=", "Value": f"{frm} 00:00:00"},
+                           {"Column": "DATE", "Operator": "<=", "Value": f"{to} 23:59:59.999"}],
+                    per_page=2000, max_pages=10)
+
+
 # The view behind /app/grid/res-guest-balance-list. FOLIO_BALANCE is the NET folio
 # balance with FOLIO ROUTING already consolidated (a reservation whose folio is routed
 # to another shows 0 here; the target carries the combined balance) and agency

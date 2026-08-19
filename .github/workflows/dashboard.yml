@@ -11,9 +11,8 @@ on:
   push:
     branches: [main]          # site_data/kart.enc.json güncellenince yeniden yayınla
   schedule:
-    # UTC. TR = UTC+3. Gunduz de yenilensin (eskiden sadece geceydi). Her 2 saatte:
-    # TR 08 / 10 / 12 / 14 / 16 / 18 / 20 / 22 / 00 / 02 / 04.
-    - cron: '0 5,7,9,11,13,15,17,19,21,23,1 * * *'
+    # SAAT BAŞI (her saat) — açık bakiye / tahsilat listeleri gün içinde bayat kalmasın.
+    - cron: '0 * * * *'
 
 permissions:
   contents: read

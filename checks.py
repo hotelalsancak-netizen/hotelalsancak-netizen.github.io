@@ -644,6 +644,71 @@ def build_kasa(env):
                "<th class='r'>Yabancı kart</th><th class='r'>Nakit</th><th class='r'>Havale</th>"
                "<th class='r'>Acente/Cari</th></tr>" + trows + "</table>")
 
+    # --- Nakit akışı (Ön Kasa): resepsiyon folyo nakdi → otel kasasına devir → banka. ---
+    # ŞEFFAF GÖSTERİM (otomatik suçlama YOK): tahsil edilen nakdin kasaya tam geçip geçmediğini
+    # sahibin kendi iş akışıyla görebilmesi için. Fark çoğunlukla o gün nakitten ödenen giderdir;
+    # Kasa hareketlerinden doğrulanır (giderler de nakitten çıkar, notlar serbest-metin — bu
+    # yüzden güvenilir bir otomatik hırsızlık-flag'i mümkün değil). Kaynak: Ön Kasa defteri.
+    import re as _re
+    try:
+        cdet = [r for r in E.fetch_cash_detail(
+                    start.isoformat(), (end + dt.timedelta(days=2)).isoformat(), env=env)
+                if (r.get("CURRENCY") or "") == "TRY"]
+        folio_cash = defaultdict(float)
+        for r in cdet:
+            if r.get("TYPE") == "Folio Cash":
+                folio_cash[str(r.get("DATE"))[:10]] += num(r.get("LOCALAMOUNT"))
+        DATE_RE = _re.compile(r"(\d{1,2})[.\-/](\d{1,2})")
+        to_safe = defaultdict(float)
+        moves = []
+        for r in cdet:
+            if r.get("TYPE") != "Safe Advance":
+                continue
+            cin = num(r.get("CASHTAKEN")); cout = num(r.get("CASHGIVEN"))
+            nt = (r.get("NOTES") or "").strip()
+            if cin or cout:
+                moves.append((str(r.get("DATE"))[:10], cin, cout, nt))
+            # Sadece NET tek-tarihli "GG.AA kasa" devirlerini o güne ata (yüksek kesinlik).
+            # Çok-günlü ("14.08-15.08-16.08"), "önceki kasa", "ana kasadan avans" gibi notlar
+            # atfedilmez — yalnızca aşağıdaki hareketler listesinde görünür.
+            dmatches = DATE_RE.findall(nt)
+            if cin > 0 and len(dmatches) == 1 and "kasa" in nt.lower() \
+                    and "önceki" not in nt.lower() and "ana kasa" not in nt.lower():
+                dd, mm = int(dmatches[0][0]), int(dmatches[0][1])
+                to_safe[f"{start.year}-{mm:02d}-{dd:02d}"] += cin
+        crows = ""
+        for dk in list(days):
+            fc = folio_cash.get(dk, 0.0); ts = to_safe.get(dk, 0.0)
+            if fc <= 0.5 and ts <= 0.5:
+                continue
+            gap = fc - ts
+            gcell = (f"<span style='color:#b45309;font-weight:700'>{tl(gap)} ₺</span>"
+                     if (ts > 0.5 and abs(gap) > 0.5) else ("0" if ts > 0.5 else "—"))
+            crows += (f"<tr><td>{tr_g(dt.date.fromisoformat(dk))}</td>"
+                      f"<td class='r money'>{tl(fc)} ₺</td>"
+                      f"<td class='r'>{tl(ts) + ' ₺' if ts > 0.5 else '—'}</td>"
+                      f"<td class='r'>{gcell}</td></tr>")
+        mrows = ""
+        for dk, cin, cout, nt in sorted(moves, key=lambda x: x[0], reverse=True):
+            mrows += (f"<tr><td>{tr_g(dt.date.fromisoformat(dk))}</td>"
+                      f"<td class='r'>{tl(cin) + ' ₺' if cin > 0.5 else ''}</td>"
+                      f"<td class='r'>{tl(cout) + ' ₺' if cout > 0.5 else ''}</td>"
+                      f"<td>{esc(nt) or '—'}</td></tr>")
+        cash_html = (
+            "<h2>Nakit akışı — Ön Kasa (resepsiyon → otel kasası → banka)</h2>"
+            "<p class='lead'>Resepsiyonun tahsil ettiği <b>folyo nakdi</b>, ertesi gün "
+            "<b>“GG.AA kasa”</b> notuyla otel kasasına devredilir; oradan bankaya yatar. Aşağıda "
+            "o günkü tahsilat ile kasaya devredilen yan yana. <b>Fark</b> çoğunlukla o gün nakitten "
+            "ödenen giderdir — alttaki <b>Kasa hareketleri</b>nden doğrula; açıklanamayan fark varsa "
+            "resepsiyon/muhasebeye sor. (“—” = o gün için henüz net devir kaydı yok.)</p>"
+            "<table><tr><th>Gün</th><th class='r'>Folyo nakit tahsilat</th>"
+            "<th class='r'>Otel kasasına devir</th><th class='r'>Fark</th></tr>" + crows + "</table>"
+            "<h2 style='font-size:14px;margin-top:18px'>Kasa hareketleri (devir · banka · gider)</h2>"
+            "<div class='scroll'><table><tr><th>Gün</th><th class='r'>Kasaya giren</th>"
+            "<th class='r'>Kasadan çıkan</th><th>Not</th></tr>" + mrows + "</table></div>")
+    except Exception as ex:
+        cash_html = f"<p class='lead'>(Ön Kasa nakit akışı alınamadı: {esc(str(ex)[:90])})</p>"
+
     note = ("<div class='note'>POS parası bankaya genelde <b>ertesi gün</b> geçer (T+1); tablo "
             "bunu hizalar. Banka <b>net</b> yatırır (komisyon düşülür) — rapor komisyonu geri "
             "ekleyip <b>brüt</b> karşılaştırır. Her para birimi kendi hesabına geçer: TL kartlar "
@@ -656,7 +721,7 @@ def build_kasa(env):
         ensure_ascii=False) + ";</script>")
 
     body = (KASA_EXTRA_CSS + f"<div class='stats'>{stats}</div>" + intro + form
-            + user_tbl + eltable + note + data_script + KASA_RECON_JS)
+            + user_tbl + eltable + cash_html + note + data_script + KASA_RECON_JS)
     return {"label": "Kasa & POS Mutabakatı", "count": int(round(wk_cardTRY + wk_foreigntl)),
             "count_label": "₺ kart (7g)", "tone": "ok",
             "sub": f"{tr_g(start)}–{tr_g(end)} · POS için banka Excel'ini yükle",
@@ -867,6 +932,10 @@ def build_bakiye(env):
         d = (today - co).days
         return "bugün çıktı" if d <= 0 else f"{d} gün önce çıktı"
 
+    def ci_co(r):
+        ci = pdate(r.get("CHECKINDATE")); co = pdate(r.get("CHECKOUTDATE"))
+        return f"{tr_g(ci) if ci else '—'} → {tr_g(co) if co else '—'}"
+
     if owed:
         trs = []
         for r in owed:
@@ -876,6 +945,7 @@ def build_bakiye(env):
                        f"<td>{esc(r.get('ROOMNO') or '—')}</td>"
                        f"<td>{esc((r.get('GUESTNAMES') or '')[:34])}</td>"
                        f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
+                       f"<td style='white-space:nowrap'>{ci_co(r)}</td>"
                        f"<td>{durum}</td>"
                        f"<td class='r money'>{tl(fbal(r))} ₺</td>"
                        f"<td>{esc(age(r))}</td></tr>")
@@ -883,7 +953,8 @@ def build_bakiye(env):
                  "<p class='lead'>Folyosunda gerçekten açık bakiye (net borç) olan kayıtlar — en acili "
                  "<b>çıkış yaptığı hâlde borçlu</b> olanlar (kırmızı). Rez No'ya tıkla → Elektra açılır "
                  "(numara kopyalanır, Rez Id filtresine yapıştır). Tahsil edilene kadar burada kalır.</p>"
-                 "<table><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Durum</th>"
+                 "<table><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th>"
+                 "<th>Giriş → Çıkış</th><th>Durum</th>"
                  "<th class='r'>Borç</th><th>Yaş</th></tr>" + "".join(trs) + "</table>")
     else:
         table = empty_ok("Ödemesi alınmamış misafir kaydı yok — hepsi tahsil edilmiş.")
