@@ -10,12 +10,13 @@ boş oda satılıp cebe mi atıldı?"
 
 - **Canlı adres:** https://hotelalsancak-netizen.github.io/  (girişte parola sorar)
 - **Repo (public):** `hotelalsancak-netizen/hotelalsancak-netizen.github.io` — GitHub Pages
-- **10 bölüm (tile):** `gunsonu` (Gün Sonu), `odeme` (Günlük Ödeme Kontrolü — **tarih-seçimli**
+- **11 bölüm (tile):** `gunsonu` (Gün Sonu), `odeme` (Günlük Ödeme Kontrolü — **tarih-seçimli**
   son 7 gün giriş ödemeleri + **açık bakiye paneli** res-guest-balance-list), `kasa` (Kasa & POS
   mutabakatı — **haftalık, çok-dövizli** TL/EUR/USD, banka **xlsx yükleme**, Elektra kart↔banka
   POS T+1), `iptal` (İptal/Silinen), `indirim`, `bakiye` (Açık bakiye), `parite` (Parite Kontrolü —
   tarayıcı-içi fiyat girişi), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
-  güçlü/zayıf ayrımı), `stats` (Doluluk/ADR/grafikler), `satis` (Aylık satışlar).
+  güçlü/zayıf ayrımı), `stats` (Doluluk/ADR/grafikler), `satis` (Aylık satışlar), `vergi` (**Vergi Sayfası** —
+  muhasebe mizanından aylık KDV + konaklama vergisi + dönemsel kurumlar/geçici vergi).
 
 ## Mimari
 - **Tek yayıncı = bulut GitHub Actions** (`.github/workflows/dashboard.yml`). Her `main` push'unda
@@ -24,9 +25,12 @@ boş oda satılıp cebe mi atıldı?"
   yazar → Pages'e deploy. Kart bölümü `site_data/kart/` içindeki commit'li şifreli haftalardan gelir.
 - **Şifreleme:** `dashcrypto.encrypt_multi` (PBKDF2-SHA256 + AES-256-GCM, `v2` çok-alıcılı).
   Yayınlanan her şey **ciphertext**; tarayıcı doğru parolayla bellekte çözer (`dashboard_shell.html`).
-- **İKİ ROL:** `DASH_PW_MANAGER` (yönetim — her şeyi görür), `DASH_PW_RECEPTION` (resepsiyon —
-  yalnızca `dashboard.py` içindeki `RECEPTION_SECTIONS`, şu an `{"gunsonu"}`). Kart yönetim-only.
-  Parolalar **Secrets/.env**'de; **repoda ASLA yok.**
+- **İKİ ROL:** `DASH_PW_MANAGER` (yönetim/sahip — her şeyi görür), `DASH_PW_RECEPTION`
+  (resepsiyon — yalnızca `dashboard.py` içindeki `RECEPTION_SECTIONS`, şu an
+  `{"gunsonu", "odeme", "bakiye"}`). Denetim sayfaları (`kart`, `iptal`, `indirim`, `kasa`,
+  `parite`) ve finans sayfaları (`vergi`, `satis`, `stats`) **yönetime özeldir** — bunlar
+  resepsiyon kaynaklı kaçağı yakalamak için var, resepsiyon görürse neyin yakalandığını da
+  görür (sahibin kararı, 24.08.2026). Parolalar **Secrets/.env**'de; **repoda ASLA yok.**
 
 ## Dosyalar
 **Repoda (public, bulut derlemesi kullanır):** `dashboard.py`, `checks.py`, `dashcrypto.py`,
@@ -98,6 +102,28 @@ Folio `TOTAL` **her zaman TL** (ana para); `CTOTAL` = **orijinal para birimi** (
   ile ayrı ayrı bloğa gömülür (JS `daySel` ile değişir) + üstte **açık bakiye paneli**.
 - **`checks.open_balances(env)`** paylaşımlı helper = res-guest-balance-list (net `GENERALBALANCE>0`
   ve `GUESTBALANCE>0`, konaklayan + son 180g çıkış). Hem `build_bakiye` hem `build_odeme` kullanır.
+
+## Vergi Sayfası — özel notlar
+- Kaynak **fatura listesi değil, MUHASEBE MİZANI**: `elektra_api.fetch_trial_balance` →
+  `Execute/SP_EASYPMS_ACCOUNT_TRIALBALANCE4` (grid `acctrialbalance4`'ün arkasındaki proc,
+  parametreler `FROMDATE/TODATE/FROMCODE/TOCODE/LNG/LEVEL`). Mizanda muhasebecinin işlediği
+  **her şey** var (fatura + elden fiş + bordro + banka); fatura listesi bordroyu görmez.
+- `checks.build_vergi` cari yılın **her ayı için bir mizan** çeker (+1 tane yıl başı–bugün),
+  ~12 çağrı / ~15 sn. Tek düzen hesap planı **2 haneli GRUP** bazında okunur; grup kendi
+  yansıtma hesabını netler (74 = 740 − 741), böylece gider iki kez sayılmaz:
+  60/64/67 gelir · 61 satış iadesi (gelirden düş) · 62/63/65/66/68 + 7x gider · 689 K.K.E.G.
+  (gidere girer, **matraha geri eklenir**).
+- **KDV'de tek taraf alınır**: hesaplanan = `391` ALACAK, indirilecek = `191` BORÇ. Sebep:
+  muhasebeci ay sonu kapanış fişi atıyor (391 borç / 191 alacak / 360 alacak); net alırsak
+  kapanış kendi kendini götürür ve ay sıfırlanır. `191.03` = sorumlu sıfatıyla (KDV-2) dâhil.
+- **Konaklama vergisi** = `360` altındaki "KONAKLAMA" yaprak hesabının **ALACAĞI** (tahakkuk).
+  Net alınırsa o ay yapılan ödeme (borç) düşülüp eksiye döner.
+- **YALNIZCA CARİ YIL** hesaplanır: kapanmış yılda 690/691/692 kapanış fişleri gelir/gider
+  hesaplarının borcunu alacağına eşitler, o yüzden geçmiş yıl bu yöntemle hesaplanamaz.
+- Kurumlar vergisi **tahminidir** — amortisman/kıdem/enflasyon düzeltmesi genelde yıl sonunda
+  işlenir. Geçici vergi dönemleri kümülatif, 4. dönem 2024'te kaldırıldı. Oran `KV_RATE=0.25`.
+- Sayfada **tarayıcı-içi düzeltme** kartı var (`VERGI_ADJUST_HTML`): yıl başı devreden KDV +
+  Elektra'ya henüz girilmemiş fişler; localStorage (`riva_vergi_v1`), sunucuya hiçbir şey gitmez.
 
 ## Kart (haftalık) — özel notlar
 - Kapı kilidi dökümleri **~2 aylık geçmiş** tutar; hafta veriden değil **export tarihinden** belirlenir.

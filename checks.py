@@ -1309,6 +1309,367 @@ def build_satis(env):
 
 
 
+# --------------------------------------------------------------------------- 7) Vergi Sayfası
+# KAYNAK = ELEKTRA MUHASEBE MİZANI (elektra_api.fetch_trial_balance). Muhasebecinin
+# işlediği HER şey oradadır: otel satış faturaları, alış faturaları, elden girilen
+# fişler, bordro, SGK. Vergiyi fatura listesinden değil MİZANDAN hesaplıyoruz — fatura
+# listesi bordroyu/fişi görmez, mizan görür.
+#
+# TEK DÜZEN HESAP PLANI — 2 HANELİ GRUP bazında okunur. Grup, yansıtma hesabını kendi
+# içinde netler (74 = 740 gider − 741 yansıtma), böylece gider iki kez sayılmaz:
+#   60 Brüt satışlar · 64 Diğer faaliyet gelirleri · 67 Olağandışı gelir → GELİR (alacak)
+#   61 Satıştan iade/iskonto                                            → gelirden DÜŞÜLÜR
+#   62/63/65/66/68 ve 7x maliyet grupları                               → GİDER (borç)
+#   689 K.K.E.G. → gidere girer, matraha GERİ EKLENİR (kanunen kabul edilmeyen)
+#   391 Hesaplanan KDV (alacak) · 191 İndirilecek KDV (borç)
+#   360 Ödenecek vergi ve fonlar (konaklama v., muhtasar, damga, tevkifat)
+#
+# KDV'de neden tek taraf? Muhasebeci ay sonunda kapanış fişi atar (391 borç / 191 alacak
+# / 360 alacak). Net alırsak kapanış hareketleri kendi kendini götürür ve ay sıfırlanır.
+# Bu yüzden ayın gerçek rakamı: hesaplanan = 391 ALACAK, indirilecek = 191 BORÇ.
+#
+# UYARI: kapanmış yılda 690/691/692 kapanış fişleri gelir/gider hesaplarının borcunu
+# alacağına eşitler — bu sayfa bu yüzden YALNIZCA CARİ YILI hesaplar.
+KV_RATE = 0.25          # kurumlar vergisi / geçici vergi oranı (2026)
+
+# Geçici vergi dönemleri: 4. dönem 2024'te kaldırıldı, yıl sonu beyannameye bağlanır.
+KV_PERIODS = [(3, "1. Dönem", "Oca–Mar", "17 Mayıs"),
+              (6, "2. Dönem", "Oca–Haz", "17 Ağustos"),
+              (9, "3. Dönem", "Oca–Eyl", "17 Kasım"),
+              (12, "Yıllık beyan", "Oca–Ara", "30 Nisan")]
+
+
+def _pl(rows):
+    """Mizandan gelir tablosu kalemleri -> (gelir, satış indirimi, gider, kkeg).
+    Yalnızca 2 haneli GRUP satırları toplanır (çift sayım olmasın diye)."""
+    gelir = indirim = gider = kkeg = 0.0
+    for r in rows:
+        c = r["code"]
+        if c.isdigit() and len(c) == 2:
+            if c in ("60", "64", "67"):
+                gelir += r["credit"] - r["debit"]
+            elif c == "61":
+                indirim += r["debit"] - r["credit"]
+            elif c in ("62", "63", "65", "66", "68") or c[0] == "7":
+                gider += r["debit"] - r["credit"]
+        elif c == "689":                       # K.K.E.G. — matraha geri eklenecek
+            kkeg += r["debit"] - r["credit"]
+    return gelir, indirim, gider, kkeg
+
+
+def _acc(rows, code, side):
+    """3 haneli ana hesabın dönem hareketi. side: 'd' borç, 'c' alacak."""
+    for r in rows:
+        if r["code"] == code:
+            return r["debit"] if side == "d" else r["credit"]
+    return 0.0
+
+
+def _leaves(rows, prefix):
+    """`prefix` altındaki EN ALT (çocuğu olmayan) hesaplar — kırılım tabloları için."""
+    kids = [r for r in rows if r["code"].startswith(prefix + ".")]
+    codes = {r["code"] for r in kids}
+    return [r for r in kids
+            if not any(o != r["code"] and o.startswith(r["code"] + ".") for o in codes)]
+
+
+def _month_bounds(y, m):
+    first = dt.date(y, m, 1)
+    last = dt.date(y + (m == 12), (m % 12) + 1, 1) - dt.timedelta(days=1)
+    return first, last
+
+
+def build_vergi(env):
+    """Vergi Sayfası — Elektra muhasebesinden aylık KDV, konaklama vergisi ve
+    dönemsel kurumlar (geçici) vergisi hesabı."""
+    today = dt.date.today()
+    year = today.year
+
+    # Cari yılın her ayı için bir mizan (ay bittiyse ay sonu, bu ay ise bugüne kadar).
+    months = []
+    for m in range(1, today.month + 1):
+        first, last = _month_bounds(year, m)
+        to = min(last, today)
+        rows = E.fetch_trial_balance(first.isoformat(), to.isoformat(), env=env)
+        gelir, indirim, gider, kkeg = _pl(rows)
+        # Yalnızca ALACAK = o ayın tahakkuku. Borç, geçen ayın vergisinin ödenmesidir;
+        # netlersek tahakkuk eksiye düşer.
+        kon = sum(r["credit"] for r in _leaves(rows, "360")
+                  if "KONAKLAMA" in r["name"].upper())
+        months.append({
+            "m": m, "kismi": (m == today.month and last > today),
+            "hesaplanan": _acc(rows, "391", "c"),   # ayın hesaplanan (satış) KDV'si
+            "indirilecek": _acc(rows, "191", "d"),  # ayın indirilecek (alış) KDV'si
+            "konaklama": kon,
+            "gelir": gelir, "indirim": indirim, "gider": gider, "kkeg": kkeg,
+            "rows": rows,
+        })
+    # Yıl başından bugüne tek mizan — kırılım tabloları ve yıllık matrah için.
+    ytd = E.fetch_trial_balance(dt.date(year, 1, 1).isoformat(), today.isoformat(), env=env)
+    y_gelir, y_indirim, y_gider, y_kkeg = _pl(ytd)
+
+    # ---- KDV: ay ay devreden mahsuplu ------------------------------------
+    devreden = 0.0                       # yıl başı devreden (tarayıcıdan düzeltilebilir)
+    kdv_rows, kdv_json = [], []
+    for mo in months:
+        onceki = devreden
+        fark = mo["hesaplanan"] - mo["indirilecek"] - onceki
+        odenecek = max(0.0, fark)
+        devreden = max(0.0, -fark)
+        mo.update(onceki=onceki, odenecek=odenecek, devreden=devreden)
+        kdv_json.append({"ay": mo["m"], "h": round(mo["hesaplanan"], 2),
+                         "i": round(mo["indirilecek"], 2), "kismi": mo["kismi"]})
+        kdv_rows.append(
+            f"<tr{' class=bad' if odenecek else ''}><td>{TR_MON_FULL[mo['m']]}"
+            f"{' <span class=who>bugüne kadar</span>' if mo['kismi'] else ''}</td>"
+            f"<td class='r money'>{tl(mo['hesaplanan'])}</td>"
+            f"<td class='r money'>{tl(mo['indirilecek'])}</td>"
+            f"<td class='r'>{tl(onceki) if onceki else '—'}</td>"
+            f"<td class='r money'>{tl(odenecek) + ' ₺' if odenecek else '—'}</td>"
+            f"<td class='r'>{tl(devreden) if devreden else '—'}</td>"
+            f"<td class='r money'>{tl(mo['konaklama'])}</td></tr>")
+
+    kdv_yil = sum(m["odenecek"] for m in months)
+    kon_yil = sum(m["konaklama"] for m in months)
+    bu_ay = months[-1]
+    gecen_ay = months[-2] if len(months) > 1 else None
+
+    kdv_tbl = (
+        "<h2>1) KDV — aylık</h2>"
+        "<p class='lead'>Hesaplanan KDV (satış) − İndirilecek KDV (alış) − önceki aydan devreden. "
+        "Beyan ve ödeme: takip eden ayın 28'i.</p>"
+        "<table><tr><th>Ay</th><th class='r'>Hesaplanan<br>KDV (satış)</th>"
+        "<th class='r'>İndirilecek<br>KDV (alış)</th><th class='r'>Devreden<br>(önceki ay)</th>"
+        "<th class='r'>Ödenecek KDV</th><th class='r'>Sonraki aya<br>devreden</th>"
+        "<th class='r'>Konaklama<br>vergisi</th></tr>"
+        + "".join(kdv_rows) +
+        f"<tr><td><b>{year} toplam</b></td>"
+        f"<td class='r money'>{tl(sum(m['hesaplanan'] for m in months))}</td>"
+        f"<td class='r money'>{tl(sum(m['indirilecek'] for m in months))}</td><td></td>"
+        f"<td class='r money'>{tl(kdv_yil)} ₺</td><td></td>"
+        f"<td class='r money'>{tl(kon_yil)} ₺</td></tr></table>")
+
+    # ---- Kurumlar / geçici vergi: kümülatif dönemler ----------------------
+    kv_rows, onceki_vergi, kv_bugun = [], 0.0, None
+    for son_ay, ad, aralik, vade in KV_PERIODS:
+        ms = [m for m in months if m["m"] <= son_ay]
+        if not ms:
+            kv_rows.append(f"<tr><td>{ad}<div class='lead'>{aralik}</div></td>"
+                           "<td class='r' colspan='7'>dönem başlamadı</td></tr>")
+            continue
+        g = sum(m["gelir"] for m in ms) - sum(m["indirim"] for m in ms)
+        gd = sum(m["gider"] for m in ms)
+        kk = sum(m["kkeg"] for m in ms)
+        ticari = g - gd
+        matrah = max(0.0, ticari + kk)
+        vergi = matrah * KV_RATE
+        odenecek = max(0.0, vergi - onceki_vergi)
+        tamam = today.month > son_ay
+        durum = "tamamlandı" if tamam else ("yıl sonunda kesinleşir" if son_ay == 12
+                                            else "devam ediyor")
+        # Yıl bitmeden yıllık beyan satırı 3. dönemin kopyasıdır — rakam yazmıyoruz.
+        son_hucre = (f"{tl(odenecek)} ₺" if (tamam or son_ay < 12) else "yıl sonunda")
+        kv_rows.append(
+            f"<tr{'' if tamam else ' class=bad'}><td>{ad}<div class='lead'>{aralik} · {durum}"
+            f"<br>beyan/ödeme: {vade}</div></td>"
+            f"<td class='r money'>{tl(g)}</td><td class='r money'>{tl(gd)}</td>"
+            f"<td class='r money'>{tl(ticari)}</td><td class='r'>{tl(kk)}</td>"
+            f"<td class='r money'>{tl(matrah)}</td><td class='r money'>{tl(vergi)}</td>"
+            f"<td class='r money'>{son_hucre}</td></tr>")
+        if today.month <= son_ay and kv_bugun is None:
+            kv_bugun = {"ad": ad, "matrah": matrah, "vergi": vergi, "odenecek": odenecek}
+        onceki_vergi = vergi
+
+    kv_tbl = (
+        "<h2>2) Kurumlar (geçici) vergisi — dönemsel</h2>"
+        f"<p class='lead'>Dönemler <b>kümülatif</b>tir (yıl başından itibaren); her dönemde "
+        f"önceki dönemde hesaplanan vergi mahsup edilir. Oran %{int(KV_RATE*100)}. "
+        "4. geçici vergi dönemi 2024'te kaldırıldı — son hesap yıllık beyannamededir.</p>"
+        "<table><tr><th>Dönem</th><th class='r'>Gelir</th><th class='r'>Gider</th>"
+        "<th class='r'>Ticari kâr</th><th class='r'>+ K.K.E.G.</th><th class='r'>Matrah</th>"
+        f"<th class='r'>Vergi %{int(KV_RATE*100)}</th><th class='r'>Bu dönem ödenecek</th></tr>"
+        + "".join(kv_rows) + "</table>")
+
+    # ---- Gelir / gider kırılımı (yıl başından bugüne) ---------------------
+    gel_pairs = sorted(((r["name"][:38], r["credit"] - r["debit"])
+                        for r in _leaves(ytd, "600") + _leaves(ytd, "649") + _leaves(ytd, "679")
+                        if r["credit"] - r["debit"] > 0), key=lambda t: -t[1])[:8]
+    gid_pairs = sorted(((r["name"][:38], r["debit"])
+                        for r in _leaves(ytd, "740") + _leaves(ytd, "770") + _leaves(ytd, "780")
+                        if r["debit"] > 0), key=lambda t: -t[1])[:12]
+    kirilim = (
+        "<h2>3) Gelir ve gider kırılımı (yıl başından bugüne)</h2>"
+        "<div class='grid2'>"
+        f"<div class='card'><h3>Gelir hesapları</h3>{svg_hbars(gel_pairs) or '<div class=lead>veri yok</div>'}</div>"
+        f"<div class='card'><h3>En büyük gider hesapları</h3>{svg_hbars(gid_pairs) or '<div class=lead>veri yok</div>'}</div>"
+        "</div>")
+
+    # ---- 360 Ödenecek vergi ve fonlar: tahakkuk / ödenen / kalan ----------
+    v360 = sorted(_leaves(ytd, "360"), key=lambda r: -(r["credit"]))
+    v360_rows = "".join(
+        f"<tr><td>{esc(r['name'])}</td><td class='r money'>{tl(r['credit'])}</td>"
+        f"<td class='r'>{tl(r['debit'])}</td>"
+        f"<td class='r money'>{tl(r['cbal'] - r['dbal'])} ₺</td></tr>"
+        for r in v360 if r["credit"] or r["debit"])
+    v360_tbl = (
+        "<h2>4) Muhasebede tahakkuk eden vergiler (360 hesabı)</h2>"
+        "<p class='lead'>Muhasebecinizin bu yıl kayda aldığı vergi tahakkukları ve ödemeleri. "
+        "“Kalan” > 0 = henüz ödenmemiş; eksi = fazla/peşin ödenmiş görünüyor. "
+        "Yukarıdaki KDV tablosuyla fark varsa sebebi, muhasebecinin son ayların "
+        "kapanış fişini henüz atmamış olmasıdır.</p>"
+        "<table><tr><th>Vergi</th><th class='r'>Tahakkuk eden</th><th class='r'>Ödenen</th>"
+        "<th class='r'>Kalan (borç)</th></tr>" + (v360_rows or
+        "<tr><td colspan='4'>kayıt yok</td></tr>") + "</table>")
+
+    # ---- Tarayıcıda düzeltme: yıl başı devreden + Elektra'da olmayan fişler
+    duzelt = VERGI_ADJUST_HTML.replace("__DATA__", json.dumps(
+        {"aylar": kdv_json, "gelir": round(y_gelir - y_indirim, 2),
+         "gider": round(y_gider, 2), "kkeg": round(y_kkeg, 2),
+         "oran": KV_RATE, "buAy": today.month,
+         "adlar": TR_MON_FULL}, ensure_ascii=False))
+
+    stats = (stat(f"{tl(bu_ay['odenecek'])} ₺", f"{TR_MON_FULL[today.month]} ödenecek KDV",
+                  "bad" if bu_ay["odenecek"] else "ok")
+             + stat(f"{tl(gecen_ay['odenecek']) if gecen_ay else '—'} ₺", "geçen ay KDV")
+             + stat(f"{tl(bu_ay['konaklama'])} ₺", "bu ay konaklama vergisi")
+             + stat(f"{tl(kv_bugun['odenecek'] if kv_bugun else 0)} ₺",
+                    f"{kv_bugun['ad'] if kv_bugun else 'dönem'} kurumlar vergisi", "bad"))
+
+    note = (
+        "<div class='note'><b>Bu sayfa nereden hesaplıyor?</b> Elektra muhasebe "
+        "<b>mizanından</b> (Muhasebe → Mizan). Muhasebecinizin işlediği her fatura, fiş, "
+        "bordro ve banka kaydı mizanda olduğu için rakamlar beyannameyle aynı mantıkta çıkar."
+        "<br>• <b>KDV</b>: 391 Hesaplanan KDV (alacak) − 191 İndirilecek KDV (borç) − devreden. "
+        "191'e “sorumlu sıfatıyla” (tevkifat / 2 No'lu KDV) de dâhildir."
+        "<br>• <b>Kurumlar vergisi</b>: 60/64/67 gelir − 61 iade − (62/63/65/66/68 + 7x maliyet) "
+        "gider = ticari kâr; üstüne 689 K.K.E.G. eklenerek matrah bulunur."
+        "<br>• <b>Konaklama vergisi</b>: 360 altındaki konaklama vergisi tahakkuku."
+        f"<br>• Yalnızca <b>{year}</b> hesaplanır: kapanmış yıllarda kapanış fişleri gelir-gider "
+        "hesaplarını sıfırladığı için geçmiş yıl bu yöntemle hesaplanamaz."
+        "<br>• Amortisman, kıdem tazminatı karşılığı, enflasyon düzeltmesi ve yıl sonu "
+        "düzeltmeleri genelde <b>yıl sonunda</b> işlenir; bu yüzden kurumlar vergisi rakamı "
+        "<b>tahminidir</b>. Beyanname öncesi muhasebecinize doğrulatın.</div>")
+
+    body = (f"<div class='stats'>{stats}</div>{kdv_tbl}{kv_tbl}{kirilim}{v360_tbl}{duzelt}{note}")
+    return {"label": "Vergi Sayfası", "count": int(round(bu_ay["odenecek"] / 1000)),
+            "count_label": "bin ₺ · bu ay KDV",
+            "tone": "bad" if bu_ay["odenecek"] else "ok",
+            "sub": (f"{TR_MON_FULL[today.month]} KDV {tl(bu_ay['odenecek'])} ₺ · "
+                    f"{year} KDV {tl(kdv_yil)} ₺ · kurumlar v. matrahı {tl(max(0.0, y_gelir - y_indirim - y_gider + y_kkeg))} ₺"),
+            "updated": now_str(),
+            "html": PAGE("Muhasebe & Vergi", "Vergi Sayfası",
+                         f"{year} · aylık KDV, konaklama vergisi ve kurumlar (geçici) vergisi",
+                         body)}
+
+
+# Tarayıcı-içi düzeltme kartı: yıl başı devreden KDV + Elektra'ya HENÜZ girilmemiş
+# fiş/gider satırları. Hiçbir şey sunucuya gitmez; localStorage'da durur (parite
+# sayfasındaki fiyat girişiyle aynı mantık).
+VERGI_ADJUST_HTML = """
+<h2>5) Elle düzeltme — Elektra'da görünmeyen fiş/gider</h2>
+<p class='lead'>Muhasebeye <b>henüz girilmemiş</b> fişleri buraya yazın; KDV ve kurumlar
+vergisi rakamı anında güncellensin. Girdikleriniz yalnızca bu tarayıcıda saklanır.</p>
+<div class='card'>
+  <div class='grid2'>
+    <div><label>Yıl başından devreden KDV (₺)</label><input id='dev0' type='number' step='0.01' value='0'></div>
+    <div><label>Hangi ay için hesaplansın?</label><select id='aysec'></select></div>
+  </div>
+  <div id='fisler'></div>
+  <div class='btnrow'><button class='btn' id='ekle'>+ Fiş/gider satırı ekle</button>
+    <button class='btn ghost' id='temizle'>Temizle</button></div>
+  <div id='sonuc'></div>
+</div>
+<script>
+(function(){
+  var D = __DATA__;
+  var KEY = 'riva_vergi_v1';
+  var st = {dev0:0, ay:D.buAy, fis:[]};
+  try { var s = JSON.parse(localStorage.getItem(KEY)||'null'); if (s) st = Object.assign(st, s); } catch(e){}
+  var $ = function(id){ return document.getElementById(id); };
+  var money = function(v){ return (v<0?'-':'') + Math.abs(v).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+
+  var sel = $('aysec');
+  D.aylar.forEach(function(a){
+    var o = document.createElement('option');
+    o.value = a.ay; o.textContent = D.adlar[a.ay] + (a.kismi ? ' (bugüne kadar)' : '');
+    sel.appendChild(o);
+  });
+
+  function fisRows(){
+    var h = '';
+    st.fis.forEach(function(f,i){
+      h += "<div class='grid2' style='margin-top:8px;align-items:end'>"
+        +  "<div><label>Açıklama</label><input data-i='"+i+"' data-k='ad' value='"+(f.ad||'').replace(/"/g,'&quot;')+"' placeholder='ör. market fişi'></div>"
+        +  "<div style='display:flex;gap:8px'>"
+        +    "<div style='flex:1'><label>Tutar (KDV dâhil ₺)</label><input data-i='"+i+"' data-k='tutar' type='number' step='0.01' value='"+(f.tutar||0)+"'></div>"
+        +    "<div style='width:110px'><label>KDV oranı</label><select data-i='"+i+"' data-k='oran'>"
+        +      [0,1,10,20].map(function(o){ return "<option value='"+o+"'"+((+f.oran===o)?" selected":"")+">%"+o+"</option>"; }).join('')
+        +    "</select></div>"
+        +    "<div style='width:44px'><label>&nbsp;</label><button class='btn ghost' data-sil='"+i+"' style='width:100%'>✕</button></div>"
+        +  "</div></div>";
+    });
+    $('fisler').innerHTML = h;
+  }
+
+  function hesapla(){
+    var ay = +sel.value || D.buAy;
+    var exKdv = 0, kdv = 0;
+    st.fis.forEach(function(f){
+      var t = +f.tutar || 0, o = +f.oran || 0;
+      var net = t / (1 + o/100);
+      exKdv += net; kdv += t - net;
+    });
+    // KDV: yıl başı devredenden başlayarak seçilen aya kadar zincirle
+    var dev = +st.dev0 || 0, satir = null;
+    D.aylar.forEach(function(a){
+      var ind = a.i + (a.ay === ay ? kdv : 0);
+      var fark = a.h - ind - dev;
+      var ode = Math.max(0, fark);
+      dev = Math.max(0, -fark);
+      if (a.ay === ay) satir = {h:a.h, i:ind, ode:ode, dev:dev};
+    });
+    // Kurumlar vergisi matrahı: yıllık gider fişlerin KDV'siz bedeli kadar artar
+    var matrah = Math.max(0, D.gelir - (D.gider + exKdv) + D.kkeg);
+    var vergi = matrah * D.oran;
+    $('sonuc').innerHTML =
+      "<div class='vrow'><span>"+D.adlar[ay]+" hesaplanan KDV</span><span class='money'>"+money(satir.h)+" ₺</span></div>"
+    + "<div class='vrow'><span>"+D.adlar[ay]+" indirilecek KDV (fişler dâhil)</span><span class='money'>"+money(satir.i)+" ₺</span></div>"
+    + "<div class='vrow'><span><b>"+D.adlar[ay]+" ödenecek KDV</b></span><span class='"+(satir.ode?'miss':'match')+"'>"+money(satir.ode)+" ₺</span></div>"
+    + (satir.dev ? "<div class='vrow'><span>sonraki aya devreden</span><span class='money'>"+money(satir.dev)+" ₺</span></div>" : "")
+    + "<div class='vrow' style='margin-top:6px'><span>Yıllık kurumlar vergisi matrahı (fişler dâhil)</span><span class='money'>"+money(matrah)+" ₺</span></div>"
+    + "<div class='vrow'><span><b>Yıllık kurumlar vergisi (%"+(D.oran*100)+")</b></span><span class='miss'>"+money(vergi)+" ₺</span></div>"
+    + (exKdv ? "<div class='muted' style='margin-top:8px'>Eklenen fişler: "+money(exKdv)+" ₺ KDV'siz gider + "+money(kdv)+" ₺ indirilecek KDV</div>" : "");
+  }
+
+  function kaydet(){ try { localStorage.setItem(KEY, JSON.stringify(st)); } catch(e){} }
+  function ciz(){ fisRows(); hesapla(); }
+
+  document.addEventListener('input', function(e){
+    var t = e.target;
+    if (t.id === 'dev0') { st.dev0 = +t.value || 0; kaydet(); hesapla(); return; }
+    if (t.dataset && t.dataset.k !== undefined) {
+      st.fis[+t.dataset.i][t.dataset.k] = t.value; kaydet(); hesapla();
+    }
+  });
+  document.addEventListener('change', function(e){
+    if (e.target.id === 'aysec') hesapla();
+    if (e.target.dataset && e.target.dataset.k === 'oran') { st.fis[+e.target.dataset.i].oran = e.target.value; kaydet(); hesapla(); }
+  });
+  document.addEventListener('click', function(e){
+    if (e.target.id === 'ekle') { st.fis.push({ad:'', tutar:0, oran:20}); kaydet(); ciz(); }
+    else if (e.target.id === 'temizle') { st.fis = []; st.dev0 = 0; $('dev0').value = 0; kaydet(); ciz(); }
+    else if (e.target.dataset && e.target.dataset.sil !== undefined) { st.fis.splice(+e.target.dataset.sil,1); kaydet(); ciz(); }
+  });
+
+  $('dev0').value = st.dev0 || 0;
+  sel.value = st.ay || D.buAy;
+  sel.addEventListener('change', function(){ st.ay = +sel.value; kaydet(); });
+  ciz();
+})();
+</script>
+"""
+
+
 # --------------------------------------------------------------------------- Parite (fiyat) — elle giriş
 # OTA'lar kendi indirimlerini (Booking Genius, promosyon, mobil) OTA tarafında uygular;
 # Elektra bunu görmez. Gerçek EKRAN fiyatını yakalamanın tek güvenilir yolu: kullanıcı

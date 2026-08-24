@@ -8,9 +8,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# .env'den DASH_PASSWORD + GITHUB_TOKEN yükle.
+# .env'den DASH_PW_MANAGER + GITHUB_TOKEN yükle.
 set -a; source .env; set +a
-: "${DASH_PASSWORD:?.env içinde DASH_PASSWORD yok}"
+: "${DASH_PW_MANAGER:=${DASH_PASSWORD:-}}"
+: "${DASH_PW_MANAGER:?.env içinde DASH_PW_MANAGER yok}"
 : "${GITHUB_TOKEN:?.env içinde GITHUB_TOKEN yok}"
 export GH_TOKEN="$GITHUB_TOKEN"
 

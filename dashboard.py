@@ -7,7 +7,7 @@ published on GitHub Pages. Each list is a "section"; adding a new list later is 
 matter of writing one more build_* function and appending it to SECTION_ORDER.
 
 SECURITY MODEL
-  Every section is encrypted with DASH_PASSWORD (PBKDF2-SHA256 + AES-256-GCM, see
+  Every section is encrypted per role (PBKDF2-SHA256 + AES-256-GCM, see
   dashcrypto.py) BEFORE it is written to disk. The published files — and therefore
   the public repo and the public URL — hold ciphertext only. The browser decrypts
   in memory after the correct password is entered (dashboard_shell.html). So guest
@@ -24,7 +24,8 @@ TWO BUILD MODES
               The next --build picks it up. Run kart-yayinla.sh to build+push+deploy.
 
 Env: ELEKTRA_HOTELID / ELEKTRA_USER / ELEKTRA_PASS (Secrets in cloud, .env locally),
-     DASH_PASSWORD (the single dashboard password, same in both places).
+     DASH_PW_MANAGER (yönetim/sahip — her bölümü açar),
+     DASH_PW_RECEPTION (resepsiyon — yalnızca RECEPTION_SECTIONS).
 """
 import argparse
 import datetime as dt
@@ -43,7 +44,8 @@ SHELL = ROOT / "dashboard_shell.html"
 
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
-SECTION_ORDER = ["gunsonu", "odeme", "kasa", "iptal", "indirim", "bakiye", "parite", "kart", "stats", "satis"]
+SECTION_ORDER = ["gunsonu", "odeme", "kasa", "iptal", "indirim", "bakiye", "parite", "kart",
+                 "stats", "satis", "vergi"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -112,9 +114,15 @@ def build_kart() -> dict:
 # ---------------------------------------------------------------------------
 
 # --- Roles ---------------------------------------------------------------
-# Reception sees ONLY the sections listed here; the manager sees everything.
-# To let reception see another list later, add its key (e.g. "bakiye").
-RECEPTION_SECTIONS = {"gunsonu"}
+# Reception sees ONLY the sections listed here; the manager (owner) sees everything.
+#
+# Resepsiyon YALNIZCA kendi işini gören sayfaları görür: gün sonu, günlük ödeme
+# kontrolü, açık bakiye. Denetim sayfaları (kart güvenliği, iptal/silinen, indirim,
+# kasa & POS, parite) ve finans sayfaları (vergi, aylık satışlar, istatistikler)
+# YÖNETİME ÖZELDİR — bunlar zaten resepsiyon kaynaklı kaçağı yakalamak için var;
+# resepsiyon bunları görürse neyin yakalandığını da görmüş olur. (Sahibin kararı,
+# 24.08.2026.) Bir listeyi resepsiyona açmak istersen anahtarını buraya ekle.
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye"}
 
 
 def passwords() -> dict:
@@ -189,7 +197,8 @@ def build_cloud():
             ("kasa", checks.build_kasa), ("iptal", checks.build_iptal),
             ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
             ("parite", checks.build_parite),
-            ("stats", checks.build_stats), ("satis", checks.build_satis))
+            ("stats", checks.build_stats), ("satis", checks.build_satis),
+            ("vergi", checks.build_vergi))
     for key, fn in live:
         try:
             section = fn(env)

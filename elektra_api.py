@@ -474,6 +474,48 @@ def fetch_account_balances(env=None, master_code="120"):
 
 
 # ---------------------------------------------------------------------------
+# Muhasebe MİZANI — /app/grid/acctrialbalance4 ("Trial Balance") ekranının arkasındaki
+# proc. GetConfig/grid.acctrialbalance4.config -> Object SP_EASYPMS_ACCOUNT_TRIALBALANCE4.
+# Bir tarih aralığındaki HER hesabın (1 haneli sınıf, 2 haneli grup, 3 haneli ana hesap,
+# alt kırılımlar) borç/alacak HAREKETİNİ ve bakiyesini döner. Vergi sayfası bunu kullanır:
+# muhasebecinin işlediği her fiş/fatura/bordro buradadır — fatura listesi ise sadece
+# faturaları görür, o yüzden vergi hesabı MİZANDAN yapılır.
+# Kolonlar: CO=kod, NM=ad, D/C=dönem borç/alacak hareketi, DB/CB=borç/alacak bakiyesi.
+# DİKKAT: kapanmış bir yılda (690/691/692 kapanış fişleri atıldıktan sonra) gelir/gider
+# hesaplarının borcu ve alacağı eşitlenir; bu yüzden gelir-gider yalnızca CARİ yıl için
+# anlamlıdır. Doğrulandı 20.08.2026 (07.2026 mizanı Elektra ekranıyla birebir).
+# ---------------------------------------------------------------------------
+TRIALBALANCE_PROC = "SP_EASYPMS_ACCOUNT_TRIALBALANCE4"
+
+
+def fetch_trial_balance(frm, to, env=None):
+    """Mizan for [frm, to] (YYYY-MM-DD): [{code, name, debit, credit, dbal, cbal}].
+    debit/credit are the PERIOD movements, dbal/cbal the resulting balance. Codes
+    arrive at every level ('6', '60', '600', '600.01', '600.01.0001') — pick the
+    level you need by prefix/length; summing levels would double-count."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    d = e._post("Execute/" + TRIALBALANCE_PROC,
+                {"Object": TRIALBALANCE_PROC, "Action": "Execute", "Select": ["*"],
+                 "Parameters": {"HOTELID": hid, "FROMDATE": frm, "TODATE": to,
+                                "FROMCODE": "", "TOCODE": "", "LNG": "TR", "LEVEL": 1}},
+                action_name="Execute")
+    if isinstance(d, list):
+        rows = d[0] if (d and isinstance(d[0], list)) else d
+    else:
+        rows = ((d or {}).get("ResultSets") or [[]])[0]
+    out = []
+    for r in rows:
+        code = str(r.get("CO") or "").strip()
+        if not code:
+            continue
+        out.append({"code": code, "name": (r.get("NM") or "").strip(),
+                    "debit": float(r.get("D") or 0), "credit": float(r.get("C") or 0),
+                    "dbal": float(r.get("DB") or 0), "cbal": float(r.get("CB") or 0)})
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Room changes (Oda Değişimi) — the report behind /app/grid/room-changerapor.
 # Backing view Q_HOTELROOMCHANGE, discovered from GetConfig/grid.room-changerapor
 # .config and verified live (54 rows for 13–20.07 == the Elektra grid). Feeds the
