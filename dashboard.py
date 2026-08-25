@@ -122,7 +122,7 @@ def build_kart() -> dict:
 # YÖNETİME ÖZELDİR — bunlar zaten resepsiyon kaynaklı kaçağı yakalamak için var;
 # resepsiyon bunları görürse neyin yakalandığını da görmüş olur. (Sahibin kararı,
 # 24.08.2026.) Bir listeyi resepsiyona açmak istersen anahtarını buraya ekle.
-RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye"}
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk"}
 
 
 def passwords() -> dict:

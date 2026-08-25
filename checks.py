@@ -2053,7 +2053,7 @@ def build_gunluk(env):
         "<button id='dprev' title='önceki gün'>‹</button>"
         "<div class='cur' id='curday'>—</div>"
         "<button id='dnext' title='sonraki gün'>›</button></div>"
-        "<div><div class='eyebrow'>Riva Hotel Alsancak · Günlük Defter</div>"
+        "<div><div class='eyebrow'>Riva Hotel Alsancak · Günlük Rapor</div>"
         "<h1 style='margin:2px 0 0'>Günlük Rapor</h1></div></div>"
         "<div class='sub'>Seçilen günün olayları + müdürün açıklamaları. Girilenler otomatik saklanır.</div>"
         "<div class='tabs' id='tabs'></div>"
@@ -2066,5 +2066,5 @@ def build_gunluk(env):
             "tone": "bad" if (n_open or left) else "ok",
             "sub": f"günlük defter · {tr_g(today)} · {len(changes)} oda değişimi (14g)",
             "updated": now_str(),
-            "html": PAGE("Günlük Defter", "Günlük Rapor",
+            "html": PAGE("Günlük Rapor", "Günlük Rapor",
                          f"gün seçici + oda değişimleri, açık bakiye/cari, problemler, yorumlar", body)}
