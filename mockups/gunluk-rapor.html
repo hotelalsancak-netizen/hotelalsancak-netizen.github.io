@@ -1,0 +1,262 @@
+<!doctype html><html lang='tr'><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Günlük Rapor — TASLAK</title>
+<style>
+*{box-sizing:border-box}
+:root{
+  --bg:#f4f6f9;--fg:#0f172a;--eyebrow:#0e7490;--sub:#64748b;--card:#fff;--border:#e2e8f0;
+  --statbad:#dc2626;--statok:#16a34a;--tbl:#fff;--th-bg:#f1f5f9;--th-fg:#475569;--td-line:#eef2f7;
+  --who-bg:#eef2ff;--who-fg:#4338ca;--empty-bg:#f0fdf4;--empty-line:#bbf7d0;--empty-fg:#166534;
+  --input-bg:#fff;--input-line:#cbd5e1;--brand:#0e7490;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  --bg:#0b1120;--fg:#e8eef7;--eyebrow:#22b8cf;--sub:#94a3b8;--card:#111a2e;--border:#243049;
+  --statbad:#f87171;--statok:#4ade80;--tbl:#111a2e;--th-bg:#182338;--th-fg:#94a3b8;--td-line:#1e2a44;
+  --who-bg:#1e2450;--who-fg:#a5b4fc;--empty-bg:#0f2417;--empty-line:#14532d;--empty-fg:#4ade80;
+  --input-bg:#0b1120;--input-line:#334155;--brand:#22b8cf;
+}}
+body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  color:var(--fg);background:var(--bg);padding:22px}
+.wrap{max-width:1040px;margin:0 auto}
+.eyebrow{color:var(--eyebrow);font-weight:700;font-size:12px;letter-spacing:.4px;text-transform:uppercase}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--sub);font-size:13px;margin-bottom:16px}
+h2{font-size:15px;margin:20px 0 4px}
+.lead{color:var(--sub);font-size:12.5px;margin:0 0 10px;max-width:80ch}
+.note{color:var(--sub);font-size:11.5px;margin-top:18px;line-height:1.6}
+table{width:100%;border-collapse:collapse;margin:10px 0 14px;font-size:13px;background:var(--tbl);border-radius:12px;overflow:hidden}
+th{background:var(--th-bg);text-align:left;padding:9px 11px;font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--th-fg)}
+td{padding:9px 11px;border-top:1px solid var(--td-line);vertical-align:top}
+.money{font-weight:700;font-variant-numeric:tabular-nums}
+.mono{font-family:ui-monospace,Menlo,monospace}
+.draft{background:#fef3c7;color:#92400e;border:1px dashed #f59e0b;border-radius:11px;
+  padding:10px 14px;font-size:12.5px;font-weight:600;margin-bottom:16px}
+@media (prefers-color-scheme:dark){.draft{background:#3a2e12;color:#fbbf24;border-color:#b45309}}
+
+/* ---- üst bar: gün seçici (sol üst) ---- */
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.daynav{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border);
+  border-radius:12px;padding:5px 6px;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.daynav button{border:0;background:none;color:var(--brand);font-size:18px;font-weight:800;
+  width:32px;height:32px;border-radius:8px;cursor:pointer}
+.daynav button:hover{background:var(--th-bg)}
+.daynav .cur{font-weight:800;font-size:14px;min-width:170px;text-align:center;padding:0 6px}
+.daynav .cur small{display:block;color:var(--sub);font-weight:600;font-size:11px}
+
+/* ---- sekmeler ---- */
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--border);margin:18px 0 0}
+.tab{border:0;background:none;color:var(--sub);font:inherit;font-weight:700;font-size:13px;
+  padding:10px 14px;border-radius:9px 9px 0 0;cursor:pointer;position:relative;top:2px;white-space:nowrap}
+.tab:hover{color:var(--fg)}
+.tab.active{color:var(--brand);border-bottom:2px solid var(--brand);background:var(--card)}
+.tab .cnt{display:inline-block;background:var(--statbad);color:#fff;border-radius:999px;
+  font-size:10.5px;padding:0 6px;margin-left:5px;font-weight:800;vertical-align:1px}
+.panel{display:none;padding-top:14px}
+.panel.active{display:block}
+
+/* ---- oda değişimi tablosu ---- */
+.chg{font-family:ui-monospace,Menlo,monospace;font-weight:700}
+.chg .arw{color:var(--brand);padding:0 4px}
+.reason-none{color:var(--statbad);font-weight:600}
+.reason-ok{color:var(--fg)}
+td textarea{width:100%;min-height:38px;font:inherit;font-size:12.5px;padding:7px 9px;
+  border:1px solid var(--input-line);border-radius:8px;background:var(--input-bg);color:var(--fg);resize:vertical}
+td textarea:focus{border-color:var(--brand);outline:none}
+.saverow{display:flex;align-items:center;gap:12px;margin:6px 0 4px}
+.btn{font:inherit;font-weight:700;padding:9px 18px;border-radius:10px;border:1px solid var(--brand);
+  background:var(--brand);color:#fff;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--brand)}
+.saved{color:var(--statok);font-weight:700;font-size:13px;display:none}
+.ph{background:var(--card);border:1px dashed var(--border);border-radius:12px;padding:26px;
+  text-align:center;color:var(--sub);font-size:13px}
+.addbar{display:flex;gap:8px;align-items:center;margin:2px 0 10px;flex-wrap:wrap}
+.addbar input{flex:1;min-width:120px}
+td input[type=checkbox]{width:auto;transform:scale(1.35);cursor:pointer;accent-color:var(--brand)}
+</style></head><body><div class='wrap'>
+
+<div class='draft'>🎨 TASLAK / MOCKUP — örnek verilerle. Sekmeler tıklanabilir. "Şu değişsin, bu eklensin" de; sonra gerçek sayfayı kurarız.</div>
+
+<!-- ÜST BAR: gün seçici sol üstte -->
+<div class='topbar'>
+  <div class='daynav'>
+    <button title='önceki gün'>‹</button>
+    <div class='cur'>24 Ağustos 2026<small>Pazar</small></div>
+    <button title='sonraki gün'>›</button>
+  </div>
+  <div>
+    <div class='eyebrow'>Riva Hotel Alsancak · Günlük Defter</div>
+    <h1 style='margin:2px 0 0'>Günlük Rapor</h1>
+  </div>
+</div>
+<div class='sub'>Seçilen günün olayları + müdürün açıklamaları. Her panel ayrı; girilenler <b>Kaydet</b> ile saklanır.</div>
+
+<!-- SEKMELER -->
+<div class='tabs'>
+  <button class='tab active'>Oda Değişimleri <span class='cnt'>4</span></button>
+  <button class='tab'>Açık Bakiyeler <span class='cnt'>3</span></button>
+  <button class='tab'>Açık Cariler <span class='cnt'>4</span></button>
+  <button class='tab'>Oda Problemleri <span class='cnt'>2</span></button>
+  <button class='tab'>Temizlik Problemleri <span class='cnt'>1</span></button>
+  <button class='tab'>İstenilen Yorumlar</button>
+</div>
+
+<!-- PANEL 1: ODA DEĞİŞİMLERİ -->
+<div class='panel active'>
+  <h2>Oda Değişimleri — 24 Ağustos 2026</h2>
+  <p class='lead'>O gün yapılan oda değişimleri (Elektra Oda Değişimi raporundan). <b>Neden</b> sütunu
+  Elektra'da rezervasyonun <b>Oda Notu</b> alanından okunur; boşsa <span class='reason-none'>⚠ girilmemiş</span>
+  gösterilir. En sağda <b>müdür açıklaması</b> — gece resepsiyonun yaptığı değişimi sen analiz edip buraya yazarsın.</p>
+  <table>
+    <tr><th>Saat</th><th>Misafir</th><th>Oda Değişimi</th><th>Yapan</th><th>Neden (Oda Notu)</th><th style='width:26%'>Müdür açıklaması</th></tr>
+    <tr>
+      <td class='mono'>02:14</td><td>Örnek Misafir A</td>
+      <td class='chg'>211<span class='arw'>→</span>311</td>
+      <td>resepsiyon (Ali)</td>
+      <td class='reason-ok'>Klima arızası, müşteri şikâyeti</td>
+      <td><textarea placeholder='(açıklama gir)'></textarea></td>
+    </tr>
+    <tr>
+      <td class='mono'>03:40</td><td>Örnek Misafir B</td>
+      <td class='chg'>324<span class='arw'>→</span>204</td>
+      <td>resepsiyon (Ali)</td>
+      <td class='reason-none'>⚠ girilmemiş</td>
+      <td><textarea placeholder='(neden boş — incele ve yaz)'></textarea></td>
+    </tr>
+    <tr>
+      <td class='mono'>11:05</td><td>Örnek Misafir C</td>
+      <td class='chg'>135<span class='arw'>→</span>233</td>
+      <td>müdür (sen)</td>
+      <td class='reason-ok'>Üst kata talep, ücret farkı alındı</td>
+      <td><textarea placeholder='(açıklama gir)'></textarea></td>
+    </tr>
+    <tr>
+      <td class='mono'>23:50</td><td>Örnek Misafir D</td>
+      <td class='chg'>401<span class='arw'>→</span>135</td>
+      <td>resepsiyon (Veli)</td>
+      <td class='reason-none'>⚠ girilmemiş</td>
+      <td><textarea placeholder='(neden boş — incele ve yaz)'></textarea></td>
+    </tr>
+  </table>
+  <div class='saverow'>
+    <button class='btn' onclick="this.parentNode.querySelector('.saved').style.display='inline'">💾 Kaydet</button>
+    <button class='btn ghost'>Sıfırla</button>
+    <span class='saved'>✓ kaydedildi (taslak)</span>
+  </div>
+  <div class='note'>Not: "girilmemiş" satırlar, resepsiyonun Oda Notu'na neden yazmadığı değişimlerdir — asıl incelenmesi gerekenler bunlardır.</div>
+</div>
+
+<!-- PANEL 2: AÇIK BAKİYELER -->
+<div class='panel'>
+  <h2>Açık Bakiyeler — ödenmemiş rezervasyonlar</h2>
+  <p class='lead'>Folyosunda <b>açık bakiye</b> olan tüm rezervasyonlar (Günlük Ödeme Kontrolü'ndeki panelin aynısı — folyo yönlendirme + acenta tarafı dahil). En acili <b>çıkış yaptığı hâlde borçlu</b> olanlar (🔴). Rez No tıklanınca Elektra açılır. En sağda <b>müdür açıklaması</b>.</p>
+  <table>
+    <tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Durum</th><th class='r'>Borç</th><th style='width:24%'>Müdür açıklaması</th></tr>
+    <tr><td class='mono'><u>96309378</u></td><td>111</td><td>Örnek Misafir E</td><td>Walk-in</td><td>Konaklıyor</td><td class='r money'>8.000 ₺</td><td><textarea placeholder='(açıklama gir)'></textarea></td></tr>
+    <tr><td class='mono'><u>95945968</u></td><td>122</td><td>Örnek Misafir F</td><td>Telefon</td><td>Konaklıyor</td><td class='r money'>750 ₺</td><td><textarea placeholder='(açıklama gir)'></textarea></td></tr>
+    <tr style='box-shadow:inset 3px 0 var(--statbad)'><td class='mono'><u>96328706</u></td><td>T-306</td><td>Örnek Misafir G</td><td>Walk-in</td><td><span class='reason-none'>🔴 ÇIKTI — borçlu</span></td><td class='r money'>200 ₺</td><td><textarea placeholder='(çıkıp borçlu — incele ve yaz)'></textarea></td></tr>
+  </table>
+  <div class='saverow'>
+    <button class='btn' onclick="this.parentNode.querySelector('.saved').style.display='inline'">💾 Kaydet</button>
+    <button class='btn ghost'>Sıfırla</button>
+    <span class='saved'>✓ kaydedildi (taslak)</span>
+  </div>
+</div>
+
+<!-- PANEL 3: AÇIK CARİLER -->
+<div class='panel'>
+  <h2>Açık Cariler — acente / firma alacakları</h2>
+  <p class='lead'>City ledger'a (cariye) geçmiş, sana <b>borçlu</b> acente/firmalar (Bakiye Kontrolü'ndeki Cari Alacaklar). Otomatik kanallar (Expedia/Booking) hariç. En sağda <b>müdür açıklaması</b> (ör. "ödeme sözü verildi, 30 Ağu").</p>
+  <table>
+    <tr><th>Kod</th><th>Cari / Firma</th><th class='r'>Alacak</th><th style='width:28%'>Müdür açıklaması</th></tr>
+    <tr><td class='mono'>120.0016</td><td>Tatil Budur</td><td class='r money'>27.595 ₺</td><td><textarea placeholder='(açıklama gir)'></textarea></td></tr>
+    <tr><td class='mono'>120.0161</td><td>Obilet</td><td class='r money'>20.604 ₺</td><td><textarea placeholder='(açıklama gir)'></textarea></td></tr>
+    <tr><td class='mono'>120.01.0003</td><td>ETS Ersoy A.Ş.</td><td class='r money'>6.777 ₺</td><td><textarea placeholder='(açıklama gir)'></textarea></td></tr>
+    <tr><td class='mono'>120.01.0001</td><td>Muhtelif Alıcılar</td><td class='r money'>—</td><td><textarea placeholder='(çeşitli müşteriler)'></textarea></td></tr>
+  </table>
+  <div class='saverow'>
+    <button class='btn' onclick="this.parentNode.querySelector('.saved').style.display='inline'">💾 Kaydet</button>
+    <button class='btn ghost'>Sıfırla</button>
+    <span class='saved'>✓ kaydedildi (taslak)</span>
+  </div>
+</div>
+<!-- PANEL 4: ODA PROBLEMLERİ -->
+<div class='panel'>
+  <h2>Oda Problemleri</h2>
+  <p class='lead'>O gün fark edilen oda arıza/eksikleri. Alttan <b>oda no + problem</b> yaz, <b>+ Ekle</b> ile listeye ekle, açıklamayı yaz, <b>Kaydet</b>.</p>
+  <table>
+    <thead><tr><th style='width:90px'>Oda No</th><th>Problem</th><th style='width:34%'>Müdür açıklama</th></tr></thead>
+    <tbody id='op'>
+      <tr><td class='mono'>204</td><td>Lavabo akıtıyor</td><td><textarea>Tesisatçı çağrıldı, 25 Ağu gelecek.</textarea></td></tr>
+      <tr><td class='mono'>312</td><td>TV açılmıyor</td><td><textarea placeholder='(açıklama gir)'></textarea></td></tr>
+    </tbody>
+  </table>
+  <div class='addbar'>
+    <input placeholder='Oda no' style='max-width:120px'>
+    <input placeholder='Problem'>
+    <button class='btn ghost' onclick="addRow(this,'op')">+ Ekle</button>
+  </div>
+  <div class='saverow'>
+    <button class='btn' onclick="this.parentNode.querySelector('.saved').style.display='inline'">💾 Kaydet</button>
+    <span class='saved'>✓ kaydedildi (taslak)</span>
+  </div>
+</div>
+
+<!-- PANEL 5: TEMİZLİK PROBLEMLERİ -->
+<div class='panel'>
+  <h2>Temizlik Problemleri</h2>
+  <p class='lead'>O gün fark edilen temizlik eksikleri. Oda no + problem yaz, listeye ekle, kaydet.</p>
+  <table>
+    <thead><tr><th style='width:90px'>Oda</th><th>Problem</th><th style='width:34%'>Müdür açıklama</th></tr></thead>
+    <tbody id='tp'>
+      <tr><td class='mono'>118</td><td>Banyo tam temizlenmemiş</td><td><textarea>Kat görevlisi uyarıldı.</textarea></td></tr>
+    </tbody>
+  </table>
+  <div class='addbar'>
+    <input placeholder='Oda no' style='max-width:120px'>
+    <input placeholder='Problem'>
+    <button class='btn ghost' onclick="addRow(this,'tp')">+ Ekle</button>
+  </div>
+  <div class='saverow'>
+    <button class='btn' onclick="this.parentNode.querySelector('.saved').style.display='inline'">💾 Kaydet</button>
+    <span class='saved'>✓ kaydedildi (taslak)</span>
+  </div>
+</div>
+
+<!-- PANEL 6: İSTENİLEN YORUMLAR -->
+<div class='panel'>
+  <h2>İstenilen Yorumlar — çıkış yapan misafirler</h2>
+  <p class='lead'>O günün <b>oda çıkışları</b>. Yorum karşılığı <b>%10 indirim</b> vereceğin misafiri işaretle, misafirin <b>yorumunu</b> yaz.</p>
+  <table>
+    <thead><tr><th style='width:80px'>Oda</th><th>Misafir</th><th style='text-align:center;width:110px'>%10 indirim</th><th style='width:44%'>Misafir yorumu</th></tr></thead>
+    <tbody>
+      <tr><td class='mono'>108</td><td>Örnek Misafir H</td><td style='text-align:center'><input type='checkbox'></td><td><textarea placeholder='(misafir yorumu)'></textarea></td></tr>
+      <tr><td class='mono'>223</td><td>Örnek Misafir I</td><td style='text-align:center'><input type='checkbox' checked></td><td><textarea>Çok memnun kaldık, personel ilgiliydi. Tekrar geliriz.</textarea></td></tr>
+      <tr><td class='mono'>301</td><td>Örnek Misafir J</td><td style='text-align:center'><input type='checkbox'></td><td><textarea placeholder='(misafir yorumu)'></textarea></td></tr>
+    </tbody>
+  </table>
+  <div class='saverow'>
+    <button class='btn' onclick="this.parentNode.querySelector('.saved').style.display='inline'">💾 Kaydet</button>
+    <span class='saved'>✓ kaydedildi (taslak)</span>
+  </div>
+</div>
+
+<script>
+function esc(s){return String(s).replace(/[&<>]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;'}[c];});}
+function addRow(btn,id){
+  var inp=btn.parentNode.querySelectorAll('input');
+  var oda=inp[0].value.trim(), prob=inp[1].value.trim();
+  if(!oda && !prob) return;
+  var tr=document.createElement('tr');
+  tr.innerHTML="<td class='mono'>"+esc(oda)+"</td><td>"+esc(prob)+"</td><td><textarea placeholder='(açıklama gir)'></textarea></td>";
+  document.getElementById(id).appendChild(tr);
+  inp[0].value=''; inp[1].value=''; inp[0].focus();
+}
+var tabs=[].slice.call(document.querySelectorAll('.tab'));
+var panels=[].slice.call(document.querySelectorAll('.panel'));
+tabs.forEach(function(t,i){t.addEventListener('click',function(){
+  tabs.forEach(function(x){x.classList.remove('active')});
+  panels.forEach(function(x){x.classList.remove('active')});
+  t.classList.add('active'); panels[i].classList.add('active');
+});});
+</script>
+</div></body></html>

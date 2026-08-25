@@ -1775,3 +1775,248 @@ def build_parite(env):
             "updated": now_str(),
             "html": PAGE("Fiyat / Parite", "Parite Kontrolü",
                          "gördüğün gerçek fiyatları gir (Genius/indirim dahil)", body)}
+
+
+# --------------------------------------------------------------------------- Günlük Rapor (defter)
+GUNLUK_CSS = """<style>
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+.daynav{display:inline-flex;align-items:center;gap:4px;background:var(--card);border:1px solid var(--border);
+  border-radius:12px;padding:5px 6px}
+.daynav button{border:0;background:none;color:var(--eyebrow);font-size:18px;font-weight:800;
+  width:32px;height:32px;border-radius:8px;cursor:pointer}
+.daynav button:hover{background:var(--th-bg)}
+.daynav button:disabled{opacity:.35;cursor:default}
+.daynav .cur{font-weight:800;font-size:14px;min-width:180px;text-align:center;padding:0 6px}
+.daynav .cur small{display:block;color:var(--sub);font-weight:600;font-size:11px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid var(--border);margin:18px 0 0}
+.tab{border:0;background:none;color:var(--sub);font:inherit;font-weight:700;font-size:13px;
+  padding:10px 14px;border-radius:9px 9px 0 0;cursor:pointer;position:relative;top:2px;white-space:nowrap}
+.tab:hover{color:var(--fg)}
+.tab.active{color:var(--eyebrow);border-bottom:2px solid var(--eyebrow);background:var(--card)}
+.tab .cnt{display:inline-block;background:var(--statbad);color:#fff;border-radius:999px;
+  font-size:10.5px;padding:0 6px;margin-left:5px;font-weight:800;vertical-align:1px}
+.panel{display:none;padding-top:14px}.panel.active{display:block}
+.mono{font-family:ui-monospace,Menlo,monospace}
+.chg{font-family:ui-monospace,Menlo,monospace;font-weight:700}.chg .arw{color:var(--eyebrow);padding:0 4px}
+.reason-none{color:var(--statbad);font-weight:600}
+td textarea{width:100%;min-height:38px;font:inherit;font-size:12.5px;padding:7px 9px;
+  border:1px solid var(--input-line);border-radius:8px;background:var(--input-bg);color:var(--fg);resize:vertical}
+td textarea:focus{border-color:var(--eyebrow);outline:none}
+td input[type=checkbox]{width:auto;transform:scale(1.35);cursor:pointer;accent-color:var(--eyebrow)}
+.addbar{display:flex;gap:8px;align-items:center;margin:2px 0 10px;flex-wrap:wrap}
+.addbar input{flex:1;min-width:120px}
+.saverow{display:flex;align-items:center;gap:12px;margin:8px 0 6px}
+.btn{font:inherit;font-weight:700;padding:9px 18px;border-radius:10px;border:1px solid var(--eyebrow);
+  background:var(--eyebrow);color:#fff;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--eyebrow)}
+.saved{color:var(--statok);font-weight:700;font-size:13px;opacity:0;transition:opacity .2s}
+.saved.show{opacity:1}
+.ph{background:var(--card);border:1px dashed var(--border);border-radius:12px;padding:24px;
+  text-align:center;color:var(--sub);font-size:13px}
+.rowdel{border:0;background:none;color:var(--statbad);cursor:pointer;font-size:15px;padding:2px 6px}
+</style>"""
+GUNLUK_JS = r"""<script>
+(function(){
+  var D = window.__GUNLUK__ || {days:{},openbal:[],cari:[],today:''};
+  var alldays = Object.keys(D.days).sort();
+  var cur = (D.today && D.days[D.today]) ? D.today : (alldays[alldays.length-1] || D.today);
+  var curTab = 'rc';
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function money(n){return (Math.round((+n||0)*100)/100).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  var MON=['','Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+  var DOW=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
+  function fday(iso){var p=iso.split('-');return (+p[2])+' '+MON[+p[1]]+' '+p[0];}
+  function dow(iso){var p=iso.split('-');return DOW[new Date(Date.UTC(+p[0],+p[1]-1,+p[2])).getUTCDay()];}
+  // ---- storage (v1: tarayıcı; sonra buluta taşınır) ----
+  function sset(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+  function sget(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
+  function K(tab,row){return 'RG:'+cur+':'+tab+':'+row;}
+  function listKey(tab){return 'RG:'+cur+':'+tab;}
+  function loadList(tab){try{var s=localStorage.getItem(listKey(tab));return s?JSON.parse(s):[];}catch(e){return [];}}
+  function saveList(tab,a){sset(listKey(tab),JSON.stringify(a));}
+  function note(tab,row){return "<td><textarea data-k='"+K(tab,row)+"' placeholder='(açıklama gir)'>"+esc(sget(K(tab,row)))+"</textarea></td>";}
+  function savebar(tab){return "<div class='saverow'><button class='btn' data-save>💾 Kaydet</button>"
+    +"<span class='saved' data-savedmsg>✓ kaydedildi</span></div>";}
+
+  // ---- panel içerikleri ----
+  function pRC(){
+    var rows=(D.days[cur]||{}).rc||[];
+    if(!rows.length) return "<h2>Oda Değişimleri — "+fday(cur)+"</h2><div class='ph'>Bu gün oda değişimi yok.</div>";
+    var h="<h2>Oda Değişimleri — "+fday(cur)+"</h2>"
+      +"<p class='lead'><b>Neden</b> Elektra Oda Notu'ndan okunur; boşsa <span class='reason-none'>⚠ girilmemiş</span>. En sağda müdür açıklaması — otomatik saklanır.</p>"
+      +"<table><thead><tr><th>Saat</th><th>Misafir</th><th>Oda Değişimi</th><th>Yapan</th><th>Neden (Oda Notu)</th><th style='width:26%'>Müdür açıklaması</th></tr></thead><tbody>";
+    rows.forEach(function(r,i){
+      var reason=r.reason?"<span>"+esc(r.reason)+"</span>":"<span class='reason-none'>⚠ girilmemiş</span>";
+      h+="<tr><td class='mono'>"+esc(r.saat)+"</td><td>"+esc(r.guest)+"</td>"
+        +"<td class='chg'>"+esc(r.from)+"<span class='arw'>→</span>"+esc(r.to)+"</td>"
+        +"<td>"+esc(r.user)+"</td><td>"+reason+"</td>"+note('rc','rc'+i)+"</tr>";
+    });
+    return h+"</tbody></table>"+savebar('rc');
+  }
+  function pBal(){
+    var rows=D.openbal||[];
+    if(!rows.length) return "<h2>Açık Bakiyeler</h2><div class='ph'>Açık (ödenmemiş) bakiye yok.</div>";
+    var h="<h2>Açık Bakiyeler — ödenmemiş rezervasyonlar</h2>"
+      +"<p class='lead'>Folyosunda açık bakiye olanlar (güncel). 🔴 çıkış yaptığı hâlde borçlu. En sağda müdür açıklaması.</p>"
+      +"<table><thead><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Durum</th><th class='r'>Borç</th><th style='width:24%'>Müdür açıklaması</th></tr></thead><tbody>";
+    rows.forEach(function(r){
+      var durum=r.left?"<span class='reason-none'>🔴 ÇIKTI — borçlu</span>":"Konaklıyor";
+      h+="<tr"+(r.left?" style='box-shadow:inset 3px 0 var(--statbad)'":"")+"><td class='mono'>"+esc(r.rezid)+"</td>"
+        +"<td>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td><td>"+esc(r.agency)+"</td><td>"+durum+"</td>"
+        +"<td class='r money'>"+money(r.borc)+" ₺</td>"+note('bal',r.rezid)+"</tr>";
+    });
+    return h+"</tbody></table>"+savebar('bal');
+  }
+  function pCari(){
+    var rows=D.cari||[];
+    if(!rows.length) return "<h2>Açık Cariler</h2><div class='ph'>Açık cari alacak yok.</div>";
+    var h="<h2>Açık Cariler — acente / firma alacakları</h2>"
+      +"<p class='lead'>Sana borçlu acente/firmalar (güncel ekstre). Otomatik kanallar hariç. En sağda müdür açıklaması.</p>"
+      +"<table><thead><tr><th>Kod</th><th>Cari / Firma</th><th class='r'>Alacak</th><th style='width:28%'>Müdür açıklaması</th></tr></thead><tbody>";
+    rows.forEach(function(r){
+      h+="<tr><td class='mono'>"+esc(r.kod)+"</td><td>"+esc(r.name)+"</td>"
+        +"<td class='r money'>"+money(r.alacak)+" ₺</td>"+note('cari',r.kod)+"</tr>";
+    });
+    return h+"</tbody></table>"+savebar('cari');
+  }
+  function pProb(tab,title){
+    var a=loadList(tab);
+    var h="<h2>"+title+" — "+fday(cur)+"</h2>"
+      +"<p class='lead'>Oda no + problem yaz, <b>+ Ekle</b>; açıklamayı yaz; <b>Kaydet</b>. Otomatik da saklanır.</p>"
+      +"<table><thead><tr><th style='width:90px'>Oda</th><th>Problem</th><th style='width:34%'>Müdür açıklama</th><th style='width:34px'></th></tr></thead><tbody data-list='"+tab+"'>";
+    a.forEach(function(r,i){
+      h+="<tr><td><input data-f='oda' data-i='"+i+"' value='"+esc(r.oda)+"' style='max-width:80px'></td>"
+        +"<td><input data-f='problem' data-i='"+i+"' value='"+esc(r.problem)+"'></td>"
+        +"<td><textarea data-f='note' data-i='"+i+"'>"+esc(r.note||'')+"</textarea></td>"
+        +"<td><button class='rowdel' data-del='"+i+"' title='sil'>✕</button></td></tr>";
+    });
+    if(!a.length) h+="<tr><td colspan='4' class='sub' style='padding:14px;color:var(--sub)'>Henüz kayıt yok — alttan ekle.</td></tr>";
+    h+="</tbody></table>"
+      +"<div class='addbar'><input data-add='oda' placeholder='Oda no' style='max-width:120px'>"
+      +"<input data-add='problem' placeholder='Problem'>"
+      +"<button class='btn ghost' data-addbtn='"+tab+"'>+ Ekle</button></div>"+savebar(tab);
+    return h;
+  }
+  function pYorum(){
+    var rows=(D.days[cur]||{}).dep||[];
+    if(!rows.length) return "<h2>İstenilen Yorumlar</h2><div class='ph'>Bu gün çıkış yok.</div>";
+    var h="<h2>İstenilen Yorumlar — çıkış yapan misafirler ("+fday(cur)+")</h2>"
+      +"<p class='lead'>O günün çıkışları. Yorum karşılığı <b>%10 indirim</b> vereceğin misafiri işaretle, <b>yorumunu</b> yaz.</p>"
+      +"<table><thead><tr><th>Oda</th><th>Misafir</th><th style='text-align:center;width:100px'>%10 indirim</th><th style='width:44%'>Misafir yorumu</th></tr></thead><tbody>";
+    rows.forEach(function(r,i){
+      var ck=sget(K('yind',i+'@'+cur))==='1'?'checked':'';
+      h+="<tr><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td>"
+        +"<td style='text-align:center'><input type='checkbox' data-ck='"+K('yind',i+'@'+cur)+"' "+ck+"></td>"
+        +"<td><textarea data-k='"+K('yyor',i+'@'+cur)+"'>"+esc(sget(K('yyor',i+'@'+cur)))+"</textarea></td></tr>";
+    });
+    return h+"</tbody></table>"+savebar('yorum');
+  }
+  var TABS=[
+    {k:'rc',   t:'Oda Değişimleri', cnt:function(){return ((D.days[cur]||{}).rc||[]).filter(function(x){return !x.reason;}).length;}, f:pRC},
+    {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
+    {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
+    {k:'odap', t:'Oda Problemleri', cnt:function(){return loadList('odap').length;}, f:function(){return pProb('odap','Oda Problemleri');}},
+    {k:'temp', t:'Temizlik Problemleri', cnt:function(){return loadList('temp').length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
+    {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum}
+  ];
+  // ---- render ----
+  function renderTabs(){
+    document.getElementById('tabs').innerHTML=TABS.map(function(tb){
+      var c=tb.cnt(); var b=c>0?" <span class='cnt'>"+c+"</span>":"";
+      return "<button class='tab"+(tb.k===curTab?" active":"")+"' data-tab='"+tb.k+"'>"+tb.t+b+"</button>";
+    }).join('');
+  }
+  function renderPanel(){
+    var tb=TABS.filter(function(x){return x.k===curTab;})[0]||TABS[0];
+    document.getElementById('panels').innerHTML="<div class='panel active'>"+tb.f()+"</div>";
+  }
+  function renderDay(){
+    var el=document.getElementById('curday');
+    el.innerHTML=esc(fday(cur))+"<small>"+esc(dow(cur))+"</small>";
+    var i=alldays.indexOf(cur);
+    document.getElementById('dprev').disabled=(i<=0);
+    document.getElementById('dnext').disabled=(i>=alldays.length-1);
+  }
+  function full(){renderDay();renderTabs();renderPanel();}
+  // ---- events ----
+  document.getElementById('dprev').onclick=function(){var i=alldays.indexOf(cur);if(i>0){cur=alldays[i-1];full();}};
+  document.getElementById('dnext').onclick=function(){var i=alldays.indexOf(cur);if(i<alldays.length-1){cur=alldays[i+1];full();}};
+  document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(b){curTab=b.getAttribute('data-tab');renderTabs();renderPanel();}});
+  // otomatik kayıt (textarea[data-k], checkbox[data-ck]) + problem listeleri
+  document.getElementById('panels').addEventListener('input',function(e){
+    var t=e.target;
+    if(t.hasAttribute&&t.hasAttribute('data-k')) sset(t.getAttribute('data-k'),t.value);
+    var f=t.getAttribute&&t.getAttribute('data-f');
+    if(f){ var tbody=t.closest('[data-list]'); if(tbody){var tab=tbody.getAttribute('data-list');var a=loadList(tab);var i=+t.getAttribute('data-i');if(a[i]){a[i][f]=t.value;saveList(tab,a);}} }
+  });
+  document.getElementById('panels').addEventListener('change',function(e){
+    var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')) sset(t.getAttribute('data-ck'),t.checked?'1':'0');
+  });
+  document.getElementById('panels').addEventListener('click',function(e){
+    var add=e.target.closest('[data-addbtn]');
+    if(add){var tab=add.getAttribute('data-addbtn');var box=add.parentNode;
+      var oda=box.querySelector("[data-add='oda']").value.trim(), prob=box.querySelector("[data-add='problem']").value.trim();
+      if(!oda&&!prob)return; var a=loadList(tab);a.push({oda:oda,problem:prob,note:''});saveList(tab,a);renderTabs();renderPanel();return;}
+    var del=e.target.closest('[data-del]');
+    if(del){var tbody=del.closest('[data-list]');var tab=tbody.getAttribute('data-list');var a=loadList(tab);a.splice(+del.getAttribute('data-del'),1);saveList(tab,a);renderPanel();renderTabs();return;}
+    var sv=e.target.closest('[data-save]');
+    if(sv){var m=sv.parentNode.querySelector('[data-savedmsg]');if(m){m.classList.add('show');setTimeout(function(){m.classList.remove('show');},1400);}}
+  });
+  full();
+})();
+</script>"""
+
+
+def build_gunluk(env):
+    today = dt.date.today()
+    start = today - dt.timedelta(days=13)          # son 14 gün
+    changes = E.fetch_room_changes(start.isoformat(), today.isoformat(), env=env)
+    notes = E.fetch_notes({c["rez_id"] for c in changes if c["rez_id"]}, env=env) if changes else {}
+    deps = E.fetch_departed_range(start.isoformat(), today.isoformat(), env=env)
+    owed = open_balances(env)
+    cari = cari_receivables(env)
+
+    days = OrderedDict()
+    d = start
+    while d <= today:
+        days[d.isoformat()] = {"rc": [], "dep": []}
+        d += dt.timedelta(days=1)
+    for c in changes:
+        day = c["when"][:10]
+        if day in days:
+            days[day]["rc"].append({"saat": c["when"][11:16], "guest": c["guest"],
+                                    "from": c["from_room"], "to": c["to_room"],
+                                    "user": c["user"], "reason": notes.get(c["rez_id"], "")})
+    for r in deps:
+        day = str(r.get("checkout") or "")[:10]
+        if day in days:
+            days[day]["dep"].append({"room": r.get("room") or "",
+                                     "guest": (r.get("guest") or "")[:40],
+                                     "agency": (r.get("agency") or "")[:20]})
+    ob = [{"rezid": str(r.get("RESID") or ""), "room": r.get("ROOMNO") or "",
+           "guest": (r.get("GUESTNAMES") or "")[:34], "agency": (r.get("AGENCY") or "")[:16],
+           "left": bool(r.get("_left")), "borc": round(fbal(r), 2)} for r in owed]
+    cr = [{"kod": r.get("CODE") or "", "name": (r.get("NAME") or "")[:36],
+           "alacak": round(num(r.get("LOCALBALANCE")), 2)} for r in cari]
+
+    data = {"today": today.isoformat(), "days": days, "openbal": ob, "cari": cr}
+    skeleton = (
+        "<div class='topbar'><div class='daynav'>"
+        "<button id='dprev' title='önceki gün'>‹</button>"
+        "<div class='cur' id='curday'>—</div>"
+        "<button id='dnext' title='sonraki gün'>›</button></div>"
+        "<div><div class='eyebrow'>Riva Hotel Alsancak · Günlük Defter</div>"
+        "<h1 style='margin:2px 0 0'>Günlük Rapor</h1></div></div>"
+        "<div class='sub'>Seçilen günün olayları + müdürün açıklamaları. Girilenler otomatik saklanır.</div>"
+        "<div class='tabs' id='tabs'></div>"
+        "<div id='panels'></div>")
+    body = (GUNLUK_CSS + skeleton + "<script>window.__GUNLUK__="
+            + json.dumps(data, ensure_ascii=False, default=str) + ";</script>" + GUNLUK_JS)
+    n_open = len(ob)
+    left = sum(1 for r in ob if r["left"])
+    return {"label": "Günlük Rapor", "count": n_open, "count_label": "açık bakiye",
+            "tone": "bad" if (n_open or left) else "ok",
+            "sub": f"günlük defter · {tr_g(today)} · {len(changes)} oda değişimi (14g)",
+            "updated": now_str(),
+            "html": PAGE("Günlük Defter", "Günlük Rapor",
+                         f"gün seçici + oda değişimleri, açık bakiye/cari, problemler, yorumlar", body)}
