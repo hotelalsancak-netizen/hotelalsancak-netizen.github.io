@@ -1889,18 +1889,26 @@ GUNLUK_JS = r"""<script>
     });
     return h+"</tbody></table>"+savebar('cari');
   }
+  function agdl(rows){var s={};rows.forEach(function(r){if(r.agency)s[r.agency]=1;});
+    return "<datalist id='agdl'>"+Object.keys(s).map(function(a){return "<option value='"+esc(a)+"'>";}).join('')+"</datalist>";}
   function pSales(){
     var rows=(D.days[cur]||{}).sales||[];
     if(!rows.length) return "<h2>Oda Satış Fiyatları — "+fday(cur)+"</h2><div class='ph'>Bu gün oda satışı (giriş) yok.</div>";
     var h="<h2>Oda Satış Fiyatları — "+fday(cur)+"</h2>"
-      +"<p class='lead'>O gün <b>giriş yapan</b> odaların ortalama gece fiyatı. <span class='reason-none'>🔴 "+money(D.pricemin||3500)+" ₺ altı</span> = düşük fiyat (incele). <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat var (kontrol et). Müdür açıklamasını sağda gir — otomatik saklanır.</p>"
-      +"<div style='overflow-x:auto'><table><thead><tr><th>Oda</th><th>Misafir</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı</th><th>Ödeme</th><th style='width:26%'>Müdür açıklaması</th></tr></thead><tbody>";
+      +"<p class='lead'>O gün <b>giriş yapan</b> odalar — fiyatlar <b>TL</b>. <span class='reason-none'>🔴 Walk-in / Telefon</span> satışı "+money(D.pricemin||3500)+" ₺ altındaysa kırmızı (resepsiyon fiyatı, incele) — acente kontrat fiyatları düşük olabilir, normaldir. <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat. Açıklamayı sağa gir — otomatik saklanır.</p>"
+      +agdl(rows)
+      +"<div class='filtbar'>🔎 <input data-sfilt list='agdl' placeholder='Oda / acenta / misafir / rez ara'> "
+      +"<label style='display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer'><input type='checkbox' data-sflag> sadece 🔴 işaretli</label></div>"
+      +"<div style='overflow-x:auto'><table><thead><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı (₺)</th><th>Ödeme</th><th style='width:20%'>Müdür açıklaması</th></tr></thead><tbody id='salesbody'>";
     rows.forEach(function(r){
       var price=r.avg>0?(money(r.avg)+" ₺"):"—";
       if(r.low) price="<span class='reason-none'>"+price+" 🔴</span>";
       var methods=(r.pay||[]).map(payname).join(', ');
       var pay=methods?(r.cash?("💵 <b style='color:var(--statbad)'>"+esc(methods)+"</b>"):esc(methods)):"<span class='reason-none'>ödeme yok</span>";
-      h+="<tr"+((r.low||r.cash)?" style='box-shadow:inset 3px 0 var(--statbad)'":"")+"><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td>"
+      var flag=(r.low||r.cash)?'1':'0';
+      var txt=esc(((r.room||'')+' '+(r.agency||'')+' '+(r.guest||'')+' '+(r.rez||'')).toLowerCase());
+      h+="<tr data-flag='"+flag+"' data-txt=\""+txt+"\""+((r.low||r.cash)?" style='box-shadow:inset 3px 0 var(--statbad)'":"")
+        +"><td class='mono'>"+esc(r.rez)+"</td><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td><td>"+esc(r.agency)+"</td>"
         +"<td class='r'>"+esc(r.night)+"</td><td class='r mono'>"+price+"</td><td>"+pay+"</td>"+note('sales','r'+r.rez)+"</tr>";
     });
     return h+"</tbody></table></div>"+savebar('sales');
@@ -1979,11 +1987,13 @@ GUNLUK_JS = r"""<script>
     var f=t.getAttribute&&t.getAttribute('data-f');
     if(f){ var tbody=t.closest('[data-list]'); if(tbody){var tab=tbody.getAttribute('data-list');var a=loadList(tab);var i=+t.getAttribute('data-i');if(a[i]){a[i][f]=t.value;saveList(tab,a);did=true;}} }
     if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
+    if(t.getAttribute&&t.getAttribute('data-sfilt')!=null){ applySalesFilter(); }
     if(did) flash();
   });
   document.getElementById('panels').addEventListener('change',function(e){
     var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')){ sset(t.getAttribute('data-ck'),t.checked?'1':'0'); flash(); }
     if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
+    if(t.getAttribute&&t.getAttribute('data-sflag')!=null){ applySalesFilter(); }
   });
   document.getElementById('panels').addEventListener('click',function(e){
     var add=e.target.closest('[data-addbtn]');
@@ -2000,12 +2010,29 @@ GUNLUK_JS = r"""<script>
       tr.style.display=(!q||String(oda).indexOf(q)>=0)?'':'none';
     });
   }
+  function applySalesFilter(){
+    var body=document.querySelector('#salesbody'); if(!body)return;
+    var qi=document.querySelector('[data-sfilt]'), fi=document.querySelector('[data-sflag]');
+    var q=((qi&&qi.value)||'').trim().toLowerCase(), onlyFlag=!!(fi&&fi.checked);
+    [].slice.call(body.rows).forEach(function(tr){
+      var txt=tr.getAttribute('data-txt')||'', flag=tr.getAttribute('data-flag')==='1';
+      tr.style.display=((!q||txt.indexOf(q)>=0)&&(!onlyFlag||flag))?'':'none';
+    });
+  }
   full();
 })();
 </script>"""
 
 
 SATIS_MIN_FIYAT = 3500     # ort. gece fiyatı bunun altındaysa "düşük" işaretlenir (istenirse değiştir)
+
+
+def _is_direct_agency(agency):
+    """Resepsiyonun kendi fiyatladığı satış mı (Walk-in / Telefon / acentasız)? Acente
+    rezervasyonları (Booking, Expedia, Setur…) kontrat fiyatıyla gelir — düşük olması normal,
+    kırmızı işaretlenmez. Kırmızı SADECE resepsiyon fiyatı düşükse."""
+    a = str(agency or "").strip().upper()
+    return (not a) or ("WALK" in a) or ("TELEFON" in a) or ("PHONE" in a)
 
 
 def build_gunluk(env):
@@ -2069,13 +2096,15 @@ def build_gunluk(env):
         if day not in days:
             continue
         kur = num(a.get("CURRENCYRATE")) or 1
-        avg = round(num(a.get("AVERAGENIGHTPRICE")) * kur, 2)
+        avg = round(num(a.get("AVERAGENIGHTPRICE")) * kur, 2)   # TL (rezervasyon parası × kur)
         methods = sorted(pay_map.get(str(a.get("RESID")), set()))
         cash = any(("cash" in m.lower() or "nakit" in m.lower()) for m in methods)
+        agency = (a.get("AGENCY") or "").strip()
+        direct = _is_direct_agency(agency)        # kırmızı sadece Walk-in/Telefon/acentasız
         days[day]["sales"].append({
-            "room": room, "guest": (a.get("GUESTNAMES") or "")[:34],
+            "room": room, "guest": (a.get("GUESTNAMES") or "")[:34], "agency": agency[:22],
             "night": a.get("NIGHT") or "", "avg": avg, "pay": methods, "cash": cash,
-            "low": (0 < avg < SATIS_MIN_FIYAT), "rez": str(a.get("RESID") or "")})
+            "low": (0 < avg < SATIS_MIN_FIYAT) and direct, "rez": str(a.get("RESID") or "")})
     for dd in days.values():
         # işaretliler (düşük fiyat / nakit) üstte, sonra ucuzdan pahalıya
         dd["sales"].sort(key=lambda s: (not (s["low"] or s["cash"]), s["avg"]))
