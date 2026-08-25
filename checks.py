@@ -1811,6 +1811,9 @@ td input[type=checkbox]{width:auto;transform:scale(1.35);cursor:pointer;accent-c
 .btn.ghost{background:transparent;color:var(--eyebrow)}
 .saved{color:var(--statok);font-weight:700;font-size:13px;opacity:0;transition:opacity .2s}
 .saved.show{opacity:1}
+.autosave{color:var(--sub);font-size:12px}
+.filtbar{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+.filtbar input{max-width:220px}
 .ph{background:var(--card);border:1px dashed var(--border);border-radius:12px;padding:24px;
   text-align:center;color:var(--sub);font-size:13px}
 .rowdel{border:0;background:none;color:var(--statbad);cursor:pointer;font-size:15px;padding:2px 6px}
@@ -1837,8 +1840,9 @@ GUNLUK_JS = r"""<script>
   function loadList(tab){try{var s=localStorage.getItem(listKey(tab));return s?JSON.parse(s):[];}catch(e){return [];}}
   function saveList(tab,a){sset(listKey(tab),JSON.stringify(a));}
   function note(tab,row){return "<td><textarea data-k='"+K(tab,row)+"' placeholder='(açıklama gir)'>"+esc(sget(K(tab,row)))+"</textarea></td>";}
-  function savebar(tab){return "<div class='saverow'><button class='btn' data-save>💾 Kaydet</button>"
-    +"<span class='saved' data-savedmsg>✓ kaydedildi</span></div>";}
+  function savebar(tab){return "<div class='saverow'><span class='autosave'>✓ Otomatik kaydedilir</span>"
+    +"<span class='saved' data-savedmsg>kaydedildi ✓</span></div>";}
+  function flash(){var m=document.querySelector('[data-savedmsg]');if(m){m.classList.add('show');clearTimeout(m._t);m._t=setTimeout(function(){m.classList.remove('show');},1200);}}
 
   // ---- panel içerikleri ----
   function pRC(){
@@ -1849,7 +1853,7 @@ GUNLUK_JS = r"""<script>
       +"<div style='overflow-x:auto'><table><thead><tr><th>Tarih-Saat</th><th>Misafir</th><th>Konaklama</th><th>Oda Değişimi</th><th>Yapan</th><th>Oda Notu (neden)</th><th style='width:22%'>Müdür açıklaması</th></tr></thead><tbody>";
     rows.forEach(function(r,i){
       var reason=r.reason?"<span>"+esc(r.reason)+"</span>":"<span class='reason-none'>oda değişim notu yazılmamış</span>";
-      var stay=(r.gin||r.cout)?(fdshort(r.gin)+"<span class='arw'>→</span>"+fdshort(r.cout)):"—";
+      var stay=(r.gin||r.cout)?(fdshort(r.gin)+(r.cintime?" <b title='check-in saati'>"+esc(r.cintime)+"</b>":"")+"<span class='arw'>→</span>"+fdshort(r.cout)):"—";
       h+="<tr"+(r.reason?"":" style='box-shadow:inset 3px 0 var(--statbad)'")+"><td class='mono'>"+esc(fdt(r.when))+"</td><td>"+esc(r.guest)+"</td>"
         +"<td class='mono'>"+stay+"</td>"
         +"<td class='chg'>"+esc(r.from)+"<span class='arw'>→</span>"+esc(r.to)+"</td>"
@@ -1883,20 +1887,23 @@ GUNLUK_JS = r"""<script>
     });
     return h+"</tbody></table>"+savebar('cari');
   }
+  function roomdl(){return "<datalist id='roomdl'>"+(D.rooms||[]).map(function(rm){return "<option value='"+esc(rm)+"'>";}).join('')+"</datalist>";}
   function pProb(tab,title){
     var a=loadList(tab);
     var h="<h2>"+title+" — "+fday(cur)+"</h2>"
-      +"<p class='lead'>Oda no + problem yaz, <b>+ Ekle</b>; açıklamayı yaz; <b>Kaydet</b>. Otomatik da saklanır.</p>"
-      +"<table><thead><tr><th style='width:90px'>Oda</th><th>Problem</th><th style='width:34%'>Müdür açıklama</th><th style='width:34px'></th></tr></thead><tbody data-list='"+tab+"'>";
+      +"<p class='lead'>Oda seç (yazınca aranır) + problem yaz, <b>+ Ekle</b>; açıklamayı yaz. <b>Otomatik kaydedilir.</b></p>"
+      +roomdl()
+      +"<div class='filtbar'>🔎 <input data-rfilt list='roomdl' placeholder='Odaya göre filtrele (ör. 204)'></div>"
+      +"<table><thead><tr><th style='width:110px'>Oda</th><th>Problem</th><th style='width:32%'>Müdür açıklama</th><th style='width:34px'></th></tr></thead><tbody data-list='"+tab+"' id='probbody'>";
     a.forEach(function(r,i){
-      h+="<tr><td><input data-f='oda' data-i='"+i+"' value='"+esc(r.oda)+"' style='max-width:80px'></td>"
+      h+="<tr><td><input data-f='oda' data-i='"+i+"' list='roomdl' value='"+esc(r.oda)+"' style='max-width:96px'></td>"
         +"<td><input data-f='problem' data-i='"+i+"' value='"+esc(r.problem)+"'></td>"
         +"<td><textarea data-f='note' data-i='"+i+"'>"+esc(r.note||'')+"</textarea></td>"
         +"<td><button class='rowdel' data-del='"+i+"' title='sil'>✕</button></td></tr>";
     });
-    if(!a.length) h+="<tr><td colspan='4' class='sub' style='padding:14px;color:var(--sub)'>Henüz kayıt yok — alttan ekle.</td></tr>";
+    if(!a.length) h+="<tr><td colspan='4' style='padding:14px;color:var(--sub)'>Henüz kayıt yok — alttan ekle.</td></tr>";
     h+="</tbody></table>"
-      +"<div class='addbar'><input data-add='oda' placeholder='Oda no' style='max-width:120px'>"
+      +"<div class='addbar'><input data-add='oda' list='roomdl' placeholder='Oda (seç/yaz)' style='max-width:130px'>"
       +"<input data-add='problem' placeholder='Problem'>"
       +"<button class='btn ghost' data-addbtn='"+tab+"'>+ Ekle</button></div>"+savebar(tab);
     return h;
@@ -1948,24 +1955,32 @@ GUNLUK_JS = r"""<script>
   document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(b){curTab=b.getAttribute('data-tab');renderTabs();renderPanel();}});
   // otomatik kayıt (textarea[data-k], checkbox[data-ck]) + problem listeleri
   document.getElementById('panels').addEventListener('input',function(e){
-    var t=e.target;
-    if(t.hasAttribute&&t.hasAttribute('data-k')) sset(t.getAttribute('data-k'),t.value);
+    var t=e.target, did=false;
+    if(t.hasAttribute&&t.hasAttribute('data-k')){ sset(t.getAttribute('data-k'),t.value); did=true; }
     var f=t.getAttribute&&t.getAttribute('data-f');
-    if(f){ var tbody=t.closest('[data-list]'); if(tbody){var tab=tbody.getAttribute('data-list');var a=loadList(tab);var i=+t.getAttribute('data-i');if(a[i]){a[i][f]=t.value;saveList(tab,a);}} }
+    if(f){ var tbody=t.closest('[data-list]'); if(tbody){var tab=tbody.getAttribute('data-list');var a=loadList(tab);var i=+t.getAttribute('data-i');if(a[i]){a[i][f]=t.value;saveList(tab,a);did=true;}} }
+    if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
+    if(did) flash();
   });
   document.getElementById('panels').addEventListener('change',function(e){
-    var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')) sset(t.getAttribute('data-ck'),t.checked?'1':'0');
+    var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')){ sset(t.getAttribute('data-ck'),t.checked?'1':'0'); flash(); }
+    if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
   });
   document.getElementById('panels').addEventListener('click',function(e){
     var add=e.target.closest('[data-addbtn]');
     if(add){var tab=add.getAttribute('data-addbtn');var box=add.parentNode;
       var oda=box.querySelector("[data-add='oda']").value.trim(), prob=box.querySelector("[data-add='problem']").value.trim();
-      if(!oda&&!prob)return; var a=loadList(tab);a.push({oda:oda,problem:prob,note:''});saveList(tab,a);renderTabs();renderPanel();return;}
+      if(!oda&&!prob)return; var a=loadList(tab);a.push({oda:oda,problem:prob,note:''});saveList(tab,a);renderTabs();renderPanel();flash();return;}
     var del=e.target.closest('[data-del]');
-    if(del){var tbody=del.closest('[data-list]');var tab=tbody.getAttribute('data-list');var a=loadList(tab);a.splice(+del.getAttribute('data-del'),1);saveList(tab,a);renderPanel();renderTabs();return;}
-    var sv=e.target.closest('[data-save]');
-    if(sv){var m=sv.parentNode.querySelector('[data-savedmsg]');if(m){m.classList.add('show');setTimeout(function(){m.classList.remove('show');},1400);}}
+    if(del){var tbody=del.closest('[data-list]');var tab=tbody.getAttribute('data-list');var a=loadList(tab);a.splice(+del.getAttribute('data-del'),1);saveList(tab,a);renderPanel();renderTabs();flash();return;}
   });
+  function applyFilter(inp){
+    var q=(inp.value||'').trim(); var tbody=document.querySelector('#probbody');
+    if(!tbody)return; [].slice.call(tbody.rows).forEach(function(tr){
+      var oda=(tr.querySelector("[data-f='oda']")||{}).value||'';
+      tr.style.display=(!q||String(oda).indexOf(q)>=0)?'':'none';
+    });
+  }
   full();
 })();
 </script>"""
@@ -1992,11 +2007,11 @@ def build_gunluk(env):
     for c in changes:
         day = c["when"][:10]
         if day in days:
-            gin, cout = resdates.get(c["rez_id"], ("", ""))
+            gin, cout, cintime = resdates.get(c["rez_id"], ("", "", ""))
             days[day]["rc"].append({"when": c["when"], "guest": c["guest"],
                                     "from": c["from_room"], "to": c["to_room"],
                                     "user": c["user"], "reason": notes.get(c["rez_id"], ""),
-                                    "gin": gin, "cout": cout, "rez": c["rez_id"]})
+                                    "gin": gin, "cout": cout, "cintime": cintime, "rez": c["rez_id"]})
     for r in deps:
         day = str(r.get("checkout") or "")[:10]
         if day in days:
@@ -2009,7 +2024,24 @@ def build_gunluk(env):
     cr = [{"kod": r.get("CODE") or "", "name": (r.get("NAME") or "")[:36],
            "alacak": round(num(r.get("LOCALBALANCE")), 2)} for r in cari]
 
-    data = {"today": today.isoformat(), "days": days, "openbal": ob, "cari": cr}
+    # oda listesi (problem panelinde aramalı seçim için) — son 45 günün doluluğundaki
+    # fiziksel (numerik) odalar + oda değişimlerindeki odalar.
+    rooms = set()
+    try:
+        for x in E.fetch_room_calendar((today - dt.timedelta(days=45)).isoformat(),
+                                       today.isoformat(), env=env, raw=True):
+            rn = str(x.get("ROOMNO") or "").strip()
+            if rn.isdigit():
+                rooms.add(rn)
+    except Exception:
+        pass
+    for c in changes:
+        for rm in (c["from_room"], c["to_room"]):
+            if str(rm).isdigit():
+                rooms.add(str(rm))
+    rooms = sorted(rooms, key=lambda s: int(s))
+
+    data = {"today": today.isoformat(), "days": days, "openbal": ob, "cari": cr, "rooms": rooms}
     skeleton = (
         "<div class='topbar'><div class='daynav'>"
         "<button id='dprev' title='önceki gün'>‹</button>"

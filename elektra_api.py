@@ -623,18 +623,27 @@ def fetch_room_notes(res_ids, env=None):
 
 
 def fetch_res_dates(res_ids, env=None):
-    """RESID -> (checkin, checkout) as 'YYYY-MM-DD' — the guest's stay dates, for showing
-    next to a room change."""
+    """RESID -> (checkin_date, checkout_date, checkin_time) — the guest's stay dates plus
+    the ACTUAL arrival time (ARRIVALTIME, e.g. '11:46'). The check-in time separates a
+    room change made at assignment (near/just after check-in — benign) from one made
+    mid-stay (a real problem). ARRIVALTIME is a time-only field on the 1970 epoch date;
+    CHECKINTIME is the planned/default 14:00, not the real arrival — so use ARRIVALTIME."""
     ids = sorted({int(r) for r in res_ids if str(r).strip().isdigit()})
     if not ids:
         return {}
     e, env = connect(env)
     hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
-    rows = e.select(RES_OBJECT, ["RESID", "CHECKIN", "CHECKOUT"],
+    rows = e.select(RES_OBJECT, ["RESID", "CHECKINDATE", "CHECKIN", "CHECKOUT", "ARRIVALTIME"],
                     where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
                            {"Column": "RESID", "Operator": "IN", "Value": ids}], per_page=2000)
-    return {str(r["RESID"]): (str(r.get("CHECKIN") or "")[:10], str(r.get("CHECKOUT") or "")[:10])
-            for r in rows}
+    out = {}
+    for r in rows:
+        cin = str(r.get("CHECKINDATE") or r.get("CHECKIN") or "")[:10]
+        cout = str(r.get("CHECKOUT") or "")[:10]
+        atime = str(r.get("ARRIVALTIME") or "")
+        cintime = atime[11:16] if len(atime) >= 16 else ""   # 'HH:MM'; '00:00' => not arrived
+        out[str(r["RESID"])] = (cin, cout, "" if cintime == "00:00" else cintime)
+    return out
 
 
 # ---------------------------------------------------------------------------
