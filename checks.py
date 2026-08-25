@@ -1832,6 +1832,8 @@ GUNLUK_JS = r"""<script>
   function dow(iso){var p=iso.split('-');return DOW[new Date(Date.UTC(+p[0],+p[1]-1,+p[2])).getUTCDay()];}
   function fdshort(iso){if(!iso)return '—';var p=String(iso).slice(0,10).split('-');return p.length>=3?(p[2]+'.'+p[1]):String(iso);}
   function fdt(w){if(!w)return '—';var s=String(w);var p=s.slice(0,10).split('-');var t=s.slice(11,16);return (p.length>=3?(p[2]+'.'+p[1]):s)+(t?' '+t:'');}
+  var PAYNAME={Cash:'Nakit','Credit Card':'Kredi Kartı',Havale:'Havale','Wire Transfer':'Havale',CityLedger:'Cari (acente)'};
+  function payname(m){return PAYNAME[m]||m;}
   // ---- storage (v1: tarayıcı; sonra buluta taşınır) ----
   function sset(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   function sget(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
@@ -1887,6 +1889,22 @@ GUNLUK_JS = r"""<script>
     });
     return h+"</tbody></table>"+savebar('cari');
   }
+  function pSales(){
+    var rows=(D.days[cur]||{}).sales||[];
+    if(!rows.length) return "<h2>Oda Satış Fiyatları — "+fday(cur)+"</h2><div class='ph'>Bu gün oda satışı (giriş) yok.</div>";
+    var h="<h2>Oda Satış Fiyatları — "+fday(cur)+"</h2>"
+      +"<p class='lead'>O gün <b>giriş yapan</b> odaların ortalama gece fiyatı. <span class='reason-none'>🔴 "+money(D.pricemin||3500)+" ₺ altı</span> = düşük fiyat (incele). <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat var (kontrol et). Müdür açıklamasını sağda gir — otomatik saklanır.</p>"
+      +"<div style='overflow-x:auto'><table><thead><tr><th>Oda</th><th>Misafir</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı</th><th>Ödeme</th><th style='width:26%'>Müdür açıklaması</th></tr></thead><tbody>";
+    rows.forEach(function(r){
+      var price=r.avg>0?(money(r.avg)+" ₺"):"—";
+      if(r.low) price="<span class='reason-none'>"+price+" 🔴</span>";
+      var methods=(r.pay||[]).map(payname).join(', ');
+      var pay=methods?(r.cash?("💵 <b style='color:var(--statbad)'>"+esc(methods)+"</b>"):esc(methods)):"<span class='reason-none'>ödeme yok</span>";
+      h+="<tr"+((r.low||r.cash)?" style='box-shadow:inset 3px 0 var(--statbad)'":"")+"><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td>"
+        +"<td class='r'>"+esc(r.night)+"</td><td class='r mono'>"+price+"</td><td>"+pay+"</td>"+note('sales','r'+r.rez)+"</tr>";
+    });
+    return h+"</tbody></table></div>"+savebar('sales');
+  }
   function roomdl(){return "<datalist id='roomdl'>"+(D.rooms||[]).map(function(rm){return "<option value='"+esc(rm)+"'>";}).join('')+"</datalist>";}
   function pProb(tab,title){
     var a=loadList(tab);
@@ -1926,6 +1944,7 @@ GUNLUK_JS = r"""<script>
     {k:'rc',   t:'Oda Değişimleri', cnt:function(){return ((D.days[cur]||{}).rc||[]).filter(function(x){return !x.reason;}).length;}, f:pRC},
     {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
     {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
+    {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return ((D.days[cur]||{}).sales||[]).filter(function(x){return x.low||x.cash;}).length;}, f:pSales},
     {k:'odap', t:'Oda Problemleri', cnt:function(){return loadList('odap').length;}, f:function(){return pProb('odap','Oda Problemleri');}},
     {k:'temp', t:'Temizlik Problemleri', cnt:function(){return loadList('temp').length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
     {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum}
@@ -1986,6 +2005,9 @@ GUNLUK_JS = r"""<script>
 </script>"""
 
 
+SATIS_MIN_FIYAT = 3500     # ort. gece fiyatı bunun altındaysa "düşük" işaretlenir (istenirse değiştir)
+
+
 def build_gunluk(env):
     today = dt.date.today()
     start = today - dt.timedelta(days=13)          # son 14 gün
@@ -2002,7 +2024,7 @@ def build_gunluk(env):
     days = OrderedDict()
     d = start
     while d <= today:
-        days[d.isoformat()] = {"rc": [], "dep": []}
+        days[d.isoformat()] = {"rc": [], "dep": [], "sales": []}
         d += dt.timedelta(days=1)
     for c in changes:
         day = c["when"][:10]
@@ -2024,6 +2046,39 @@ def build_gunluk(env):
             days[day]["dep"].append({"room": r.get("room") or "",
                                      "guest": (r.get("guest") or "")[:40],
                                      "agency": (r.get("agency") or "")[:20]})
+
+    # --- Oda Satış Fiyatları: o gün GİRİŞ yapan odalar, ort. gece fiyatı (TL) + ödeme türü ---
+    # Fiyat = AVERAGENIGHTPRICE × CURRENCYRATE (rezervasyon parası → TL). Ödeme türü folyodan
+    # (PAYMENTTYPENAME hep boş); folyoda 'Cash' varsa nakit. T-folyo/sanal odalar (numerik değil) elenir.
+    arr = E.fetch_reservations_between("CHECKIN", start.isoformat(), today.isoformat(), env=env)
+    fol = E.fetch_folio(start.isoformat(), today.isoformat(), env=env)
+    pay_map = {}
+    for r in fol:
+        if r.get("DEPTTYPENAME") == "PAYMENT":
+            m = (r.get("DEPNAME") or "").strip()
+            if m:
+                pay_map.setdefault(str(r.get("RESID")), set()).add(m)
+    SKIP_STATES = {"Cancelled", "Deleted", "No Show", "Option"}
+    for a in arr:
+        if str(a.get("RESSTATE")) in SKIP_STATES:
+            continue
+        room = str(a.get("ROOMNO") or "").strip()
+        if not room[:1].isdigit():                 # T-folyo/sanal oda → ele
+            continue
+        day = str(a.get("CHECKIN") or "")[:10]
+        if day not in days:
+            continue
+        kur = num(a.get("CURRENCYRATE")) or 1
+        avg = round(num(a.get("AVERAGENIGHTPRICE")) * kur, 2)
+        methods = sorted(pay_map.get(str(a.get("RESID")), set()))
+        cash = any(("cash" in m.lower() or "nakit" in m.lower()) for m in methods)
+        days[day]["sales"].append({
+            "room": room, "guest": (a.get("GUESTNAMES") or "")[:34],
+            "night": a.get("NIGHT") or "", "avg": avg, "pay": methods, "cash": cash,
+            "low": (0 < avg < SATIS_MIN_FIYAT), "rez": str(a.get("RESID") or "")})
+    for dd in days.values():
+        # işaretliler (düşük fiyat / nakit) üstte, sonra ucuzdan pahalıya
+        dd["sales"].sort(key=lambda s: (not (s["low"] or s["cash"]), s["avg"]))
     ob = [{"rezid": str(r.get("RESID") or ""), "room": r.get("ROOMNO") or "",
            "guest": (r.get("GUESTNAMES") or "")[:34], "agency": (r.get("AGENCY") or "")[:16],
            "left": bool(r.get("_left")), "borc": round(fbal(r), 2)} for r in owed]
@@ -2047,7 +2102,8 @@ def build_gunluk(env):
                 rooms.add(str(rm))
     rooms = sorted(rooms, key=lambda s: int(s))
 
-    data = {"today": today.isoformat(), "days": days, "openbal": ob, "cari": cr, "rooms": rooms}
+    data = {"today": today.isoformat(), "days": days, "openbal": ob, "cari": cr,
+            "rooms": rooms, "pricemin": SATIS_MIN_FIYAT}
     skeleton = (
         "<div class='topbar'><div class='daynav'>"
         "<button id='dprev' title='önceki gün'>‹</button>"
