@@ -646,6 +646,32 @@ def fetch_res_dates(res_ids, env=None):
     return out
 
 
+def fetch_res_times(res_ids, env=None):
+    """RESID -> (checkin_date, checkin_time, checkout_date, checkout_time). ACTUAL times:
+    ARRIVALTIME (gerçek giriş) + DEPARTURETIME (gerçek çıkış). İkisi de 1970 epoch üstünde
+    saat-only; '00:00' = henüz giriş/çıkış yok -> ''."""
+    ids = sorted({int(r) for r in res_ids if str(r).strip().isdigit()})
+    if not ids:
+        return {}
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    rows = e.select(RES_OBJECT, ["RESID", "CHECKINDATE", "CHECKIN", "CHECKOUT",
+                                 "ARRIVALTIME", "DEPARTURETIME"],
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
+                           {"Column": "RESID", "Operator": "IN", "Value": ids}], per_page=2000)
+
+    def hhmm(v):
+        s = str(v or "")
+        t = s[11:16] if len(s) >= 16 else ""
+        return "" if t == "00:00" else t
+    out = {}
+    for r in rows:
+        cin = str(r.get("CHECKINDATE") or r.get("CHECKIN") or "")[:10]
+        cout = str(r.get("CHECKOUT") or "")[:10]
+        out[str(r["RESID"])] = (cin, hhmm(r.get("ARRIVALTIME")), cout, hhmm(r.get("DEPARTURETIME")))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Room calendar — the occupancy source for the room-usage security check.
 # ---------------------------------------------------------------------------

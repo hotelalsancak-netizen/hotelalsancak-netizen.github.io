@@ -1803,6 +1803,8 @@ td textarea{width:100%;min-height:38px;font:inherit;font-size:12.5px;padding:7px
   border:1px solid var(--input-line);border-radius:8px;background:var(--input-bg);color:var(--fg);resize:vertical}
 td textarea:focus{border-color:var(--eyebrow);outline:none}
 td input[type=checkbox]{width:auto;transform:scale(1.35);cursor:pointer;accent-color:var(--eyebrow)}
+td select{font:inherit;font-size:12.5px;padding:6px 8px;border:1px solid var(--input-line);border-radius:8px;background:var(--input-bg);color:var(--fg);cursor:pointer}
+td select:focus{border-color:var(--eyebrow);outline:none}
 .addbar{display:flex;gap:8px;align-items:center;margin:2px 0 10px;flex-wrap:wrap}
 .addbar input{flex:1;min-width:120px}
 .saverow{display:flex;align-items:center;gap:12px;margin:8px 0 6px}
@@ -1934,28 +1936,38 @@ GUNLUK_JS = r"""<script>
       +"<button class='btn ghost' data-addbtn='"+tab+"'>+ Ekle</button></div>"+savebar(tab);
     return h;
   }
+  var YPLAT=['','Google','Tripadvisor','Booking','Expedia','ETS','Diğer'];
+  function psel(key){var v=sget(key);
+    return "<select data-k='"+key+"'>"+YPLAT.map(function(o){
+      return "<option value='"+esc(o)+"'"+(o===v?' selected':'')+">"+(o?esc(o):'(seç)')+"</option>";}).join('')+"</select>";}
   function pYorum(){
     var rows=(D.days[cur]||{}).dep||[];
     if(!rows.length) return "<h2>İstenilen Yorumlar</h2><div class='ph'>Bu gün çıkış yok.</div>";
     var h="<h2>İstenilen Yorumlar — çıkış yapan misafirler ("+fday(cur)+")</h2>"
-      +"<p class='lead'>O günün çıkışları. Yorum karşılığı <b>%10 indirim</b> vereceğin misafiri işaretle, <b>yorumunu</b> yaz.</p>"
-      +"<table><thead><tr><th>Oda</th><th>Misafir</th><th style='text-align:center;width:100px'>%10 indirim</th><th style='width:44%'>Misafir yorumu</th></tr></thead><tbody>";
+      +"<p class='lead'>O günün çıkışları (rez no, kanal, gerçek giriş-çıkış saatiyle). Yorum karşılığı <b>%10 indirim</b> vereceğin misafiri işaretle, yorum yaptığı <b>platformu</b> seç, <b>yorumunu</b> ve <b>açıklamanı</b> yaz. Otomatik saklanır.</p>"
+      +"<div style='overflow-x:auto'><table><thead><tr><th>Oda</th><th>Rez No</th><th>Misafir</th><th>Kanal</th><th>Giriş–Çıkış</th>"
+      +"<th style='text-align:center'>%10<br>indirim</th><th>Platform</th><th style='width:21%'>Misafir yorumu</th><th style='width:19%'>Yorum açıklama</th></tr></thead><tbody>";
     rows.forEach(function(r,i){
-      var ck=sget(K('yind',i+'@'+cur))==='1'?'checked':'';
-      h+="<tr><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td>"
-        +"<td style='text-align:center'><input type='checkbox' data-ck='"+K('yind',i+'@'+cur)+"' "+ck+"></td>"
-        +"<td><textarea data-k='"+K('yyor',i+'@'+cur)+"'>"+esc(sget(K('yyor',i+'@'+cur)))+"</textarea></td></tr>";
+      var kk=r.rez||('i'+i);
+      var ck=sget(K('yind',kk))==='1'?'checked':'';
+      var stay=(fdshort(r.gin)+(r.gintime?" <b>"+esc(r.gintime)+"</b>":""))+"<span class='arw'>→</span>"+(fdshort(r.cout)+(r.couttime?" <b>"+esc(r.couttime)+"</b>":""));
+      h+="<tr><td class='mono'>"+esc(r.room)+"</td><td class='mono'>"+esc(r.rez)+"</td><td>"+esc(r.guest)+"</td>"
+        +"<td>"+esc(r.kanal)+"</td><td class='mono'>"+stay+"</td>"
+        +"<td style='text-align:center'><input type='checkbox' data-ck='"+K('yind',kk)+"' "+ck+"></td>"
+        +"<td>"+psel(K('yplat',kk))+"</td>"
+        +"<td><textarea data-k='"+K('yyor',kk)+"'>"+esc(sget(K('yyor',kk)))+"</textarea></td>"
+        +"<td><textarea data-k='"+K('yaci',kk)+"'>"+esc(sget(K('yaci',kk)))+"</textarea></td></tr>";
     });
-    return h+"</tbody></table>"+savebar('yorum');
+    return h+"</tbody></table></div>"+savebar('yorum');
   }
   var TABS=[
     {k:'rc',   t:'Oda Değişimleri', cnt:function(){return ((D.days[cur]||{}).rc||[]).filter(function(x){return !x.reason;}).length;}, f:pRC},
     {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
     {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
-    {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return ((D.days[cur]||{}).sales||[]).filter(function(x){return x.low||x.cash;}).length;}, f:pSales},
     {k:'odap', t:'Oda Problemleri', cnt:function(){return loadList('odap').length;}, f:function(){return pProb('odap','Oda Problemleri');}},
     {k:'temp', t:'Temizlik Problemleri', cnt:function(){return loadList('temp').length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
-    {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum}
+    {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum},
+    {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return ((D.days[cur]||{}).sales||[]).filter(function(x){return x.low||x.cash;}).length;}, f:pSales}
   ];
   // ---- render ----
   function renderTabs(){
@@ -1992,6 +2004,7 @@ GUNLUK_JS = r"""<script>
   });
   document.getElementById('panels').addEventListener('change',function(e){
     var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')){ sset(t.getAttribute('data-ck'),t.checked?'1':'0'); flash(); }
+    if(t.tagName==='SELECT'&&t.hasAttribute&&t.hasAttribute('data-k')){ sset(t.getAttribute('data-k'),t.value); flash(); }
     if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
     if(t.getAttribute&&t.getAttribute('data-sflag')!=null){ applySalesFilter(); }
   });
@@ -2067,12 +2080,18 @@ def build_gunluk(env):
                                 "from": c["from_room"], "to": c["to_room"],
                                 "user": c["user"], "reason": notes.get(c["rez_id"], ""),
                                 "gin": gin, "cout": cout, "cintime": cintime, "rez": c["rez_id"]})
+    dep_ids = {r.get("rez_id") for r in deps if r.get("rez_id")}
+    deptimes = E.fetch_res_times(dep_ids, env=env) if dep_ids else {}
     for r in deps:
         day = str(r.get("checkout") or "")[:10]
         if day in days:
+            rez = str(r.get("rez_id") or "")
+            gin, gintime, cout, couttime = deptimes.get(rez, ("", "", "", ""))
             days[day]["dep"].append({"room": r.get("room") or "",
                                      "guest": (r.get("guest") or "")[:40],
-                                     "agency": (r.get("agency") or "")[:20]})
+                                     "kanal": (r.get("agency") or "")[:22], "rez": rez,
+                                     "gin": gin, "gintime": gintime,
+                                     "cout": cout, "couttime": couttime})
 
     # --- Oda Satış Fiyatları: o gün GİRİŞ yapan odalar, ort. gece fiyatı (TL) + ödeme türü ---
     # Fiyat = AVERAGENIGHTPRICE × CURRENCYRATE (rezervasyon parası → TL). Ödeme türü folyodan
