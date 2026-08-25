@@ -82,7 +82,7 @@ CSS = """
 body{margin:0;background:var(--ground);color:var(--ink);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1180px;margin:0 auto;padding:40px 24px 72px;
+.wrap{max-width:1600px;margin:0 auto;padding:40px 24px 72px;
   display:flex;flex-direction:column;gap:30px}
 header{display:flex;flex-direction:column;gap:6px}
 .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;

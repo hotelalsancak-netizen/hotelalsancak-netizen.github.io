@@ -115,7 +115,7 @@ PAGE_CSS = """
 }
 body{margin:0;font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   color:var(--fg);background:var(--bg);padding:22px}
-.wrap{max-width:960px;margin:0 auto}
+.wrap{max-width:1600px;margin:0 auto}
 .eyebrow{color:var(--eyebrow);font-weight:700;font-size:12px;letter-spacing:.4px;text-transform:uppercase}
 h1{font-size:22px;margin:4px 0 2px}
 .sub{color:var(--sub);font-size:13px;margin-bottom:18px}
@@ -2156,9 +2156,7 @@ def build_gunluk(env):
         "<div class='topbar'><div class='daynav'>"
         "<button id='dprev' title='önceki gün'>‹</button>"
         "<div class='cur' id='curday'>—</div>"
-        "<button id='dnext' title='sonraki gün'>›</button></div>"
-        "<div><div class='eyebrow'>Riva Hotel Alsancak · Günlük Rapor</div>"
-        "<h1 style='margin:2px 0 0'>Günlük Rapor</h1></div></div>"
+        "<button id='dnext' title='sonraki gün'>›</button></div></div>"
         "<div class='sub'>Seçilen günün olayları + müdürün açıklamaları. Girilenler otomatik saklanır.</div>"
         "<div class='tabs' id='tabs'></div>"
         "<div id='panels'></div>")
