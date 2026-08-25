@@ -2006,12 +2006,18 @@ def build_gunluk(env):
         d += dt.timedelta(days=1)
     for c in changes:
         day = c["when"][:10]
-        if day in days:
-            gin, cout, cintime = resdates.get(c["rez_id"], ("", "", ""))
-            days[day]["rc"].append({"when": c["when"], "guest": c["guest"],
-                                    "from": c["from_room"], "to": c["to_room"],
-                                    "user": c["user"], "reason": notes.get(c["rez_id"], ""),
-                                    "gin": gin, "cout": cout, "cintime": cintime, "rez": c["rez_id"]})
+        if day not in days:
+            continue
+        gin, cout, cintime = resdates.get(c["rez_id"], ("", "", ""))
+        # Check-in'den ÖNCE yapılan oda değişimi = resepsiyonun oda ATAMASI (sorun değil) →
+        # gösterme. Sadece misafir giriş yaptıktan SONRA (konaklamanın ortası) yapılanları
+        # göster — asıl incelenecekler bunlar. cintime yoksa (giriş yapılmamış) = atama → gizle.
+        if not cintime or c["when"] < f"{gin} {cintime}":
+            continue
+        days[day]["rc"].append({"when": c["when"], "guest": c["guest"],
+                                "from": c["from_room"], "to": c["to_room"],
+                                "user": c["user"], "reason": notes.get(c["rez_id"], ""),
+                                "gin": gin, "cout": cout, "cintime": cintime, "rez": c["rez_id"]})
     for r in deps:
         day = str(r.get("checkout") or "")[:10]
         if day in days:

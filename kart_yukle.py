@@ -303,6 +303,23 @@ def build_week(cards, changes, occ, lo, hi, pdf_dir=None):
             f"(bu haftaya ilgili {len(changes_disp)} / toplam {len(changes)} değişim)")
     except Exception as ex:
         log(f"  ! oda notları çekilemedi ({str(ex)[:60]}) — nedensiz devam")
+    # Check-in'den ÖNCE yapılan oda değişimi = resepsiyonun oda ATAMASI (sorun değil) — raporda
+    # gösterme. Sadece giriş yaptıktan SONRA (konaklama ortası) yapılanları tut. (Günlük Rapor
+    # ile aynı kural.) cintime yoksa (giriş yapılmamış) = atama → gizle.
+    # NOT: listeyi filtreleme (analyze/doluluk tüm değişimlere ihtiyaç duyar) — sadece
+    # 'pre_checkin' bayrağı koy; build_report yalnızca GÖRÜNÜMDE (Oda değişimleri tablosu)
+    # bunları gizler, theft analizi tam listeyle çalışır.
+    try:
+        dates = E.fetch_res_dates(sorted({c.get("rez_id") for c in changes_disp if c.get("rez_id")}))
+        hidden = 0
+        for c in changes_disp:
+            gin, cout, cintime = dates.get(str(c.get("rez_id", "")), ("", "", ""))
+            c["gin"], c["cout"], c["cintime"] = gin, cout, cintime
+            c["pre_checkin"] = (not cintime) or (str(c.get("when", ""))[:16] < f"{gin} {cintime}")
+            hidden += 1 if c["pre_checkin"] else 0
+        log(f"  check-in öncesi (atama) {hidden} değişim raporda gizlenecek (analiz etkilenmez)")
+    except Exception as ex:
+        log(f"  ! check-in bilgisi alınamadı ({str(ex)[:50]}) — tüm değişimler gösterilecek")
     html = build_report.build(cards, changes_disp, occ, lo, hi, pdf_dir)
     if not changes_disp:
         banner = ('<div style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;'

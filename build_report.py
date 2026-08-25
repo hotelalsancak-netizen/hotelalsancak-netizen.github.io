@@ -457,24 +457,39 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
     o.append('<section>')
     o.append('<h2 class="sec">Oda değişimleri <span class="c">bu hafta yapılan taşımalar · '
              'kim, neden</span></h2>')
-    if not changes:
-        o.append('<p class="lead">Bu hafta oda değişimi kaydı yok (ya da yüklenmedi).</p>')
+    # Only MID-STAY changes are shown; a change made before the guest checked in is just
+    # room assignment (benign) and is hidden — but analyze() above still saw ALL changes.
+    shown = [c for c in changes if not c.get("pre_checkin")]
+    hidden_n = len(changes) - len(shown)
+
+    def _sd(x):
+        x = str(x or "")
+        return (x[8:10] + "." + x[5:7]) if len(x) >= 10 else x
+
+    if not shown:
+        o.append('<p class="lead">Misafir giriş yaptıktan sonra yapılan oda değişimi yok'
+                 + (f' (check-in öncesi {hidden_n} atama gizlendi).' if hidden_n else ' (ya da yüklenmedi).')
+                 + '</p>')
     else:
-        o.append('<p class="lead">Resepsiyonun yaptığı her oda değişimi burada. Kontrolsüz '
-                 'taşıma bir güvenlik açığıdır; neden, rezervasyondaki <b>Oda Notu</b>\'ndan '
-                 'gelir. <b style="color:#c0392b">Nedeni yazılmamış</b> değişimler ayrıca '
-                 'işaretli — bunları resepsiyona sorun.</p>')
-        o.append('<div class="scroll"><table><thead><tr><th>Rez No</th><th>Tarih</th><th>Misafir</th>'
-                 '<th>Odadan</th><th>Odaya</th><th>Yapan</th>'
+        o.append('<p class="lead">Misafir <b>giriş yaptıktan SONRA</b> (konaklama ortası) yapılan oda '
+                 'değişimleri — check-in öncesi atamalar gizlendi (sorun değil). Neden, rezervasyondaki '
+                 '<b>Oda Notu</b>\'ndan gelir; <b style="color:#c0392b">yazılmamış</b> olanları '
+                 'resepsiyona sorun.</p>')
+        o.append('<div class="scroll"><table><thead><tr><th>Rez No</th><th>Tarih-Saat</th><th>Misafir</th>'
+                 '<th>Konaklama</th><th>Odadan</th><th>Odaya</th><th>Yapan</th>'
                  '<th>Neden (Oda Notu)</th></tr></thead><tbody>')
-        for c in sorted(changes, key=lambda c: c.get("when", "")):
+        for c in sorted(shown, key=lambda c: c.get("when", "")):
             note = (c.get("note") or "").strip()
             note_cell = (html.escape(note) if note
-                         else '<span style="color:#c0392b;font-weight:600">— neden yazılmamış</span>')
+                         else '<span style="color:#c0392b;font-weight:600">— oda değişim notu yazılmamış</span>')
             rez = html.escape(str(c.get("rez_id", "") or "").strip()) or "—"
+            gin, cout, cintime = c.get("gin", ""), c.get("cout", ""), c.get("cintime", "")
+            stay = ((_sd(gin) + (" " + cintime if cintime else "") + " → " + _sd(cout))
+                    if (gin or cout) else "—")
             o.append(f'<tr><td style="font-variant-numeric:tabular-nums;font-weight:600">{rez}</td>'
                      f'<td>{html.escape(str(c.get("when","")))}</td>'
                      f'<td>{html.escape(c.get("guest",""))}</td>'
+                     f'<td>{html.escape(stay)}</td>'
                      f'<td class="room">{html.escape(c.get("from_room",""))}</td>'
                      f'<td class="room">{html.escape(c.get("to_room",""))}</td>'
                      f'<td>{html.escape(c.get("user",""))}</td>'
