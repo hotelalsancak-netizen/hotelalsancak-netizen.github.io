@@ -291,10 +291,11 @@ def build_week(cards, changes, occ, lo, hi, pdf_dir=None):
         return norm_id(c.get("rez_id")) in week_rez
 
     changes_disp = [c for c in changes if relevant(c)]
-    # Attach each change's reason (the reservation's "Oda Notu") so the report can show
-    # WHY it was done — an uncontrolled room change is itself a leak risk.
+    # Attach each change's reason from ONLY the reservation's "Oda Notu" (RES_NOTE type
+    # 1005) — NOT ALLNOTES, which mixed in Channel/Checkin/Fiyat notes and showed the wrong
+    # text. An uncontrolled room change is itself a leak risk, so the real reason matters.
     try:
-        notes = E.fetch_notes(sorted({c.get("rez_id") for c in changes_disp if c.get("rez_id")}))
+        notes = E.fetch_room_notes(sorted({c.get("rez_id") for c in changes_disp if c.get("rez_id")}))
         for c in changes_disp:
             c["note"] = notes.get(str(c.get("rez_id", "")), "")
         n = sum(1 for c in changes_disp if c.get("note"))
