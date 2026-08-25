@@ -93,20 +93,25 @@ class ElektraError(RuntimeError):
 
 
 def load_env(path=".env"):
-    """Read KEY=VALUE lines from `path`. Kept dependency-free (no python-dotenv) so
-    the Windows build needs nothing but `requests`. Lives here rather than in
-    elektra.py so the whole API path stays clear of Playwright."""
-    if not os.path.exists(path):
-        raise ElektraError(f"{path} missing — copy .env.example to .env and fill it in.")
+    """Config from a `.env` file if present, else from OS environment variables. On the
+    office PC the creds live in `.env`; in CI (GitHub Actions) there is NO .env file —
+    the secrets arrive as environment variables. So read `.env` when it exists, then fill
+    any missing ELEKTRA_/DASH_/CARD_/GITHUB_ keys from os.environ. Dependency-free (no
+    python-dotenv) so the Windows build needs nothing but `requests`."""
     env = {}
-    for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip()
+    if os.path.exists(path):
+        for line in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip()
+    # os.environ fallback (CI/secrets) — .env stays authoritative where it set a key.
+    for k, v in os.environ.items():
+        if k.startswith(("ELEKTRA_", "DASH_", "CARD_", "GITHUB_")) and not env.get(k):
+            env[k] = v
     for k in ("ELEKTRA_USER", "ELEKTRA_PASS"):
         if not env.get(k):
-            raise ElektraError(f"{k} not set in {path}")
+            raise ElektraError(f"{k} not set — {path} yok ve ortam değişkeni de tanımsız.")
     return env
 
 
