@@ -593,6 +593,50 @@ def fetch_notes(res_ids, env=None):
             for r in rows if (r.get("ALLNOTES") or "").strip()}
 
 
+ROOMNOTE_TYPEID = 1005     # RES_NOTE_TYPE "Room Note" == the reception's "Oda Notu"
+
+
+def fetch_room_notes(res_ids, env=None):
+    """RESID -> the reservation's **Oda Notu** only (RES_NOTE type 1005 'Room Note'),
+    where reception writes the ROOM-CHANGE reason (e.g. "411'den 401'e RC sigorta atma
+    nedeniyle"). Unlike fetch_notes/ALLNOTES this does NOT mix in Channel/Checkin/Fiyat
+    notes — those made the reason column show wrong text. A reservation can carry several
+    Room Notes (appended over time); they are joined. Missing/empty -> not in the dict."""
+    ids = sorted({int(r) for r in res_ids if str(r).strip().isdigit()})
+    if not ids:
+        return {}
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    rows = e.select("RES_NOTE", ["RESID", "NOTES", "NOTETYPEID", "TAKENTIME"],
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
+                           {"Column": "NOTETYPEID", "Operator": "=", "Value": ROOMNOTE_TYPEID},
+                           {"Column": "RESID", "Operator": "IN", "Value": ids}],
+                    order_by=[{"Column": "TAKENTIME", "Direction": "ASC"}], per_page=2000)
+    out = {}
+    for r in rows:
+        t = (r.get("NOTES") or "").strip()
+        if not t:
+            continue
+        k = str(r.get("RESID"))
+        out[k] = (out[k] + " · " + t) if k in out else t
+    return out
+
+
+def fetch_res_dates(res_ids, env=None):
+    """RESID -> (checkin, checkout) as 'YYYY-MM-DD' — the guest's stay dates, for showing
+    next to a room change."""
+    ids = sorted({int(r) for r in res_ids if str(r).strip().isdigit()})
+    if not ids:
+        return {}
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    rows = e.select(RES_OBJECT, ["RESID", "CHECKIN", "CHECKOUT"],
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid},
+                           {"Column": "RESID", "Operator": "IN", "Value": ids}], per_page=2000)
+    return {str(r["RESID"]): (str(r.get("CHECKIN") or "")[:10], str(r.get("CHECKOUT") or "")[:10])
+            for r in rows}
+
+
 # ---------------------------------------------------------------------------
 # Room calendar — the occupancy source for the room-usage security check.
 # ---------------------------------------------------------------------------

@@ -1827,6 +1827,8 @@ GUNLUK_JS = r"""<script>
   var DOW=['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'];
   function fday(iso){var p=iso.split('-');return (+p[2])+' '+MON[+p[1]]+' '+p[0];}
   function dow(iso){var p=iso.split('-');return DOW[new Date(Date.UTC(+p[0],+p[1]-1,+p[2])).getUTCDay()];}
+  function fdshort(iso){if(!iso)return '—';var p=String(iso).slice(0,10).split('-');return p.length>=3?(p[2]+'.'+p[1]):String(iso);}
+  function fdt(w){if(!w)return '—';var s=String(w);var p=s.slice(0,10).split('-');var t=s.slice(11,16);return (p.length>=3?(p[2]+'.'+p[1]):s)+(t?' '+t:'');}
   // ---- storage (v1: tarayıcı; sonra buluta taşınır) ----
   function sset(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   function sget(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
@@ -1843,15 +1845,17 @@ GUNLUK_JS = r"""<script>
     var rows=(D.days[cur]||{}).rc||[];
     if(!rows.length) return "<h2>Oda Değişimleri — "+fday(cur)+"</h2><div class='ph'>Bu gün oda değişimi yok.</div>";
     var h="<h2>Oda Değişimleri — "+fday(cur)+"</h2>"
-      +"<p class='lead'><b>Neden</b> Elektra Oda Notu'ndan okunur; boşsa <span class='reason-none'>⚠ girilmemiş</span>. En sağda müdür açıklaması — otomatik saklanır.</p>"
-      +"<table><thead><tr><th>Saat</th><th>Misafir</th><th>Oda Değişimi</th><th>Yapan</th><th>Neden (Oda Notu)</th><th style='width:26%'>Müdür açıklaması</th></tr></thead><tbody>";
+      +"<p class='lead'><b>Oda Notu</b> Elektra rezervasyonundaki 'Oda Notu'ndan gelir (oda değişim nedeni). Boşsa <span class='reason-none'>oda değişim notu yazılmamış</span> — bunları resepsiyona sor, <b>müdür açıklamasını</b> sen gir. Otomatik saklanır.</p>"
+      +"<div style='overflow-x:auto'><table><thead><tr><th>Tarih-Saat</th><th>Misafir</th><th>Konaklama</th><th>Oda Değişimi</th><th>Yapan</th><th>Oda Notu (neden)</th><th style='width:22%'>Müdür açıklaması</th></tr></thead><tbody>";
     rows.forEach(function(r,i){
-      var reason=r.reason?"<span>"+esc(r.reason)+"</span>":"<span class='reason-none'>⚠ girilmemiş</span>";
-      h+="<tr><td class='mono'>"+esc(r.saat)+"</td><td>"+esc(r.guest)+"</td>"
+      var reason=r.reason?"<span>"+esc(r.reason)+"</span>":"<span class='reason-none'>oda değişim notu yazılmamış</span>";
+      var stay=(r.gin||r.cout)?(fdshort(r.gin)+"<span class='arw'>→</span>"+fdshort(r.cout)):"—";
+      h+="<tr"+(r.reason?"":" style='box-shadow:inset 3px 0 var(--statbad)'")+"><td class='mono'>"+esc(fdt(r.when))+"</td><td>"+esc(r.guest)+"</td>"
+        +"<td class='mono'>"+stay+"</td>"
         +"<td class='chg'>"+esc(r.from)+"<span class='arw'>→</span>"+esc(r.to)+"</td>"
         +"<td>"+esc(r.user)+"</td><td>"+reason+"</td>"+note('rc','rc'+i)+"</tr>";
     });
-    return h+"</tbody></table>"+savebar('rc');
+    return h+"</tbody></table></div>"+savebar('rc');
   }
   function pBal(){
     var rows=D.openbal||[];
@@ -1971,7 +1975,11 @@ def build_gunluk(env):
     today = dt.date.today()
     start = today - dt.timedelta(days=13)          # son 14 gün
     changes = E.fetch_room_changes(start.isoformat(), today.isoformat(), env=env)
-    notes = E.fetch_notes({c["rez_id"] for c in changes if c["rez_id"]}, env=env) if changes else {}
+    rez_ids = {c["rez_id"] for c in changes if c["rez_id"]}
+    # NEDEN = sadece "Oda Notu" (RES_NOTE tür 1005) — ALLNOTES DEĞİL (o Channel/Checkin
+    # notlarını karıştırıp yanlış gösteriyordu). Boşsa müdür açıklaması beklenir.
+    notes = E.fetch_room_notes(rez_ids, env=env) if rez_ids else {}
+    resdates = E.fetch_res_dates(rez_ids, env=env) if rez_ids else {}
     deps = E.fetch_departed_range(start.isoformat(), today.isoformat(), env=env)
     owed = open_balances(env)
     cari = cari_receivables(env)
@@ -1984,9 +1992,11 @@ def build_gunluk(env):
     for c in changes:
         day = c["when"][:10]
         if day in days:
-            days[day]["rc"].append({"saat": c["when"][11:16], "guest": c["guest"],
+            gin, cout = resdates.get(c["rez_id"], ("", ""))
+            days[day]["rc"].append({"when": c["when"], "guest": c["guest"],
                                     "from": c["from_room"], "to": c["to_room"],
-                                    "user": c["user"], "reason": notes.get(c["rez_id"], "")})
+                                    "user": c["user"], "reason": notes.get(c["rez_id"], ""),
+                                    "gin": gin, "cout": cout, "rez": c["rez_id"]})
     for r in deps:
         day = str(r.get("checkout") or "")[:10]
         if day in days:
