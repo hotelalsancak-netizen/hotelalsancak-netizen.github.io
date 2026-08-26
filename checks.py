@@ -866,6 +866,14 @@ def rez_link(resid):
             f"style='font-variant-numeric:tabular-nums;font-weight:600'>{r}</a>")
 
 
+def is_internal_folio(guest):
+    """BOARD FOLIO / CASH FOLIO / MASTER FOLYO ve benzerleri Elektra'nın İÇ muhasebe
+    kaplarıdır — gerçek misafir değil. Misafir adında FOLIO/FOLYO geçer (Türkçe İ dahil).
+    Tüm listelerden (çıkışlar, açık bakiye, ...) elenmeli."""
+    g = (guest or "").upper().replace("İ", "I")
+    return "FOLIO" in g or "FOLYO" in g
+
+
 def open_balances(env):
     """res-guest-balance-list (QA_HOTEL_RESERVATION_GUESTFOLIOS): folios that GENUINELY
     owe money, i.e. FOLIO_BALANCE > 0. This is the authoritative signal because the view
@@ -873,9 +881,10 @@ def open_balances(env):
     shows 0, the target carries the combined balance — and (b) nets agency prepayments. So
     it catches what per-reservation GENERALBALANCE missed: agency-side debts and routed
     folios. _left=True when the guest checked out (RESSTATEID 4) still owing. Sorted:
-    checked-out-owing first, then by amount. Shared by build_bakiye and build_odeme."""
+    checked-out-owing first, then by amount. Shared by build_bakiye and build_odeme.
+    BOARD/CASH FOLIO iç kayıtları elenir (is_internal_folio)."""
     rows = E.fetch_guest_folios(env)
-    owed = [r for r in rows if fbal(r) > 0.5]
+    owed = [r for r in rows if fbal(r) > 0.5 and not is_internal_folio(r.get("GUESTNAMES"))]
     for r in owed:
         r["_left"] = r.get("RESSTATEID") == 4                # çıkış yaptı, hâlâ borçlu
     owed.sort(key=lambda r: (0 if r.get("_left") else 1, -fbal(r)))
@@ -1844,24 +1853,34 @@ GUNLUK_JS = r"""<script>
   function loadList(tab){try{var s=localStorage.getItem(listKey(tab));return s?JSON.parse(s):[];}catch(e){return [];}}
   function saveList(tab,a){sset(listKey(tab),JSON.stringify(a));}
   function note(tab,row){return "<td><textarea data-k='"+K(tab,row)+"' placeholder='(açıklama gir)'>"+esc(sget(K(tab,row)))+"</textarea></td>";}
+  // ---- kapsam: 'day' (varsayılan bugün) / 'week' (cur dahil son 7 gün) ----
+  // Tüm tarih-bazlı listeler (oda değişimi, yorum, satış) kapsamı takip eder. Depolama
+  // anahtarları HER ZAMAN satırın KENDİ gününe göredir (Kd) — gün modunda cur ile aynı,
+  // yani eski kayıtlarla birebir uyumlu; hafta modunda günler arası çakışmaz.
+  var scope='day';
+  function scopeDays(){ if(scope!=='week') return [cur]; var i=alldays.indexOf(cur); if(i<0) return [cur]; return alldays.slice(Math.max(0,i-6), i+1); }
+  function scopeRows(kind){ var out=[]; scopeDays().forEach(function(dd){ (((D.days[dd]||{})[kind])||[]).forEach(function(r,idx){ out.push({day:dd,idx:idx,r:r}); }); }); return out; }
+  function scopeLabel(){ if(scope!=='week') return fday(cur); var ds=scopeDays(); return ds.length?(fday(ds[0])+' – '+fday(ds[ds.length-1])):fday(cur); }
+  function Kd(day,tab,row){return 'RG:'+day+':'+tab+':'+row;}
+  function noteD(day,tab,row){return "<td><textarea data-k='"+Kd(day,tab,row)+"' placeholder='(açıklama gir)'>"+esc(sget(Kd(day,tab,row)))+"</textarea></td>";}
   function savebar(tab){return "<div class='saverow'><span class='autosave'>✓ Otomatik kaydedilir</span>"
     +"<span class='saved' data-savedmsg>kaydedildi ✓</span></div>";}
   function flash(){var m=document.querySelector('[data-savedmsg]');if(m){m.classList.add('show');clearTimeout(m._t);m._t=setTimeout(function(){m.classList.remove('show');},1200);}}
 
   // ---- panel içerikleri ----
   function pRC(){
-    var rows=(D.days[cur]||{}).rc||[];
-    if(!rows.length) return "<h2>Oda Değişimleri — "+fday(cur)+"</h2><div class='ph'>Bu gün oda değişimi yok.</div>";
-    var h="<h2>Oda Değişimleri — "+fday(cur)+"</h2>"
+    var items=scopeRows('rc'); var wk=(scope==='week');
+    if(!items.length) return "<h2>Oda Değişimleri — "+scopeLabel()+"</h2><div class='ph'>Bu aralıkta oda değişimi yok.</div>";
+    var h="<h2>Oda Değişimleri — "+scopeLabel()+"</h2>"
       +"<p class='lead'><b>Oda Notu</b> Elektra rezervasyonundaki 'Oda Notu'ndan gelir (oda değişim nedeni). Boşsa <span class='reason-none'>oda değişim notu yazılmamış</span> — bunları resepsiyona sor, <b>müdür açıklamasını</b> sen gir. Otomatik saklanır.</p>"
-      +"<div style='overflow-x:auto'><table><thead><tr><th>Tarih-Saat</th><th>Misafir</th><th>Konaklama</th><th>Oda Değişimi</th><th>Yapan</th><th>Oda Notu (neden)</th><th style='width:22%'>Müdür açıklaması</th></tr></thead><tbody>";
-    rows.forEach(function(r,i){
+      +"<div style='overflow-x:auto'><table><thead><tr>"+(wk?"<th>Gün</th>":"")+"<th>Tarih-Saat</th><th>Misafir</th><th>Konaklama</th><th>Oda Değişimi</th><th>Yapan</th><th>Oda Notu (neden)</th><th style='width:22%'>Müdür açıklaması</th></tr></thead><tbody>";
+    items.forEach(function(it){ var r=it.r;
       var reason=r.reason?"<span>"+esc(r.reason)+"</span>":"<span class='reason-none'>oda değişim notu yazılmamış</span>";
       var stay=(r.gin||r.cout)?(fdshort(r.gin)+(r.cintime?" <b title='check-in saati'>"+esc(r.cintime)+"</b>":"")+"<span class='arw'>→</span>"+fdshort(r.cout)):"—";
-      h+="<tr"+(r.reason?"":" style='box-shadow:inset 3px 0 var(--statbad)'")+"><td class='mono'>"+esc(fdt(r.when))+"</td><td>"+esc(r.guest)+"</td>"
+      h+="<tr"+(r.reason?"":" style='box-shadow:inset 3px 0 var(--statbad)'")+">"+(wk?"<td class='mono'>"+fdshort(it.day)+"</td>":"")+"<td class='mono'>"+esc(fdt(r.when))+"</td><td>"+esc(r.guest)+"</td>"
         +"<td class='mono'>"+stay+"</td>"
         +"<td class='chg'>"+esc(r.from)+"<span class='arw'>→</span>"+esc(r.to)+"</td>"
-        +"<td>"+esc(r.user)+"</td><td>"+reason+"</td>"+note('rc','rc'+i)+"</tr>";
+        +"<td>"+esc(r.user)+"</td><td>"+reason+"</td>"+noteD(it.day,'rc','rc'+it.idx)+"</tr>";
     });
     return h+"</tbody></table></div>"+savebar('rc');
   }
@@ -1894,15 +1913,15 @@ GUNLUK_JS = r"""<script>
   function agdl(rows){var s={};rows.forEach(function(r){if(r.agency)s[r.agency]=1;});
     return "<datalist id='agdl'>"+Object.keys(s).map(function(a){return "<option value='"+esc(a)+"'>";}).join('')+"</datalist>";}
   function pSales(){
-    var rows=(D.days[cur]||{}).sales||[];
-    if(!rows.length) return "<h2>Oda Satış Fiyatları — "+fday(cur)+"</h2><div class='ph'>Bu gün oda satışı (giriş) yok.</div>";
-    var h="<h2>Oda Satış Fiyatları — "+fday(cur)+"</h2>"
-      +"<p class='lead'>O gün <b>giriş yapan</b> odalar — fiyatlar <b>TL</b>. <span class='reason-none'>🔴 Walk-in / Telefon</span> satışı "+money(D.pricemin||3500)+" ₺ altındaysa kırmızı (resepsiyon fiyatı, incele) — acente kontrat fiyatları düşük olabilir, normaldir. <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat. Açıklamayı sağa gir — otomatik saklanır.</p>"
-      +agdl(rows)
+    var items=scopeRows('sales'); var wk=(scope==='week');
+    if(!items.length) return "<h2>Oda Satış Fiyatları — "+scopeLabel()+"</h2><div class='ph'>Bu aralıkta oda satışı (giriş) yok.</div>";
+    var h="<h2>Oda Satış Fiyatları — "+scopeLabel()+"</h2>"
+      +"<p class='lead'><b>Giriş yapan</b> odalar — fiyatlar <b>TL</b>. <span class='reason-none'>🔴 Walk-in / Telefon</span> satışı "+money(D.pricemin||3500)+" ₺ altındaysa kırmızı (resepsiyon fiyatı, incele) — acente kontrat fiyatları düşük olabilir, normaldir. <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat. Açıklamayı sağa gir — otomatik saklanır.</p>"
+      +agdl(items.map(function(it){return it.r;}))
       +"<div class='filtbar'>🔎 <input data-sfilt list='agdl' placeholder='Oda / acenta / misafir / rez ara'> "
       +"<label style='display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer'><input type='checkbox' data-sflag> sadece 🔴 işaretli</label></div>"
-      +"<div style='overflow-x:auto'><table><thead><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı (₺)</th><th>Ödeme</th><th style='width:20%'>Müdür açıklaması</th></tr></thead><tbody id='salesbody'>";
-    rows.forEach(function(r){
+      +"<div style='overflow-x:auto'><table><thead><tr>"+(wk?"<th>Gün</th>":"")+"<th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı (₺)</th><th>Ödeme</th><th style='width:20%'>Müdür açıklaması</th></tr></thead><tbody id='salesbody'>";
+    items.forEach(function(it){ var r=it.r;
       var price=r.avg>0?(money(r.avg)+" ₺"):"—";
       if(r.low) price="<span class='reason-none'>"+price+" 🔴</span>";
       var methods=(r.pay||[]).map(payname).join(', ');
@@ -1910,8 +1929,8 @@ GUNLUK_JS = r"""<script>
       var flag=(r.low||r.cash)?'1':'0';
       var txt=esc(((r.room||'')+' '+(r.agency||'')+' '+(r.guest||'')+' '+(r.rez||'')).toLowerCase());
       h+="<tr data-flag='"+flag+"' data-txt=\""+txt+"\""+((r.low||r.cash)?" style='box-shadow:inset 3px 0 var(--statbad)'":"")
-        +"><td class='mono'>"+esc(r.rez)+"</td><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td><td>"+esc(r.agency)+"</td>"
-        +"<td class='r'>"+esc(r.night)+"</td><td class='r mono'>"+price+"</td><td>"+pay+"</td>"+note('sales','r'+r.rez)+"</tr>";
+        +">"+(wk?"<td class='mono'>"+fdshort(it.day)+"</td>":"")+"<td class='mono'>"+esc(r.rez)+"</td><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td><td>"+esc(r.agency)+"</td>"
+        +"<td class='r'>"+esc(r.night)+"</td><td class='r mono'>"+price+"</td><td>"+pay+"</td>"+noteD(it.day,'sales','r'+r.rez)+"</tr>";
     });
     return h+"</tbody></table></div>"+savebar('sales');
   }
@@ -1941,33 +1960,35 @@ GUNLUK_JS = r"""<script>
     return "<select data-k='"+key+"'>"+YPLAT.map(function(o){
       return "<option value='"+esc(o)+"'"+(o===v?' selected':'')+">"+(o?esc(o):'(seç)')+"</option>";}).join('')+"</select>";}
   function pYorum(){
-    var rows=(D.days[cur]||{}).dep||[];
-    if(!rows.length) return "<h2>İstenilen Yorumlar</h2><div class='ph'>Bu gün çıkış yok.</div>";
-    var h="<h2>İstenilen Yorumlar — çıkış yapan misafirler ("+fday(cur)+")</h2>"
-      +"<p class='lead'>O günün çıkışları (rez no, kanal, gerçek giriş-çıkış saatiyle). Yorum karşılığı <b>%10 indirim</b> vereceğin misafiri işaretle, yorum yaptığı <b>platformu</b> seç, <b>yorumunu</b> ve <b>açıklamanı</b> yaz. Otomatik saklanır.</p>"
-      +"<div style='overflow-x:auto'><table><thead><tr><th>Oda</th><th>Rez No</th><th>Misafir</th><th>Kanal</th><th>Giriş–Çıkış</th>"
-      +"<th style='text-align:center'>%10<br>indirim</th><th>Platform</th><th style='width:21%'>Misafir yorumu</th><th style='width:19%'>Yorum açıklama</th></tr></thead><tbody>";
-    rows.forEach(function(r,i){
-      var kk=r.rez||('i'+i);
-      var ck=sget(K('yind',kk))==='1'?'checked':'';
+    var items=scopeRows('dep'); var wk=(scope==='week');
+    if(!items.length) return "<h2>İstenilen Yorumlar</h2><div class='ph'>Bu aralıkta çıkış yok.</div>";
+    var h="<h2>İstenilen Yorumlar — çıkış yapan misafirler ("+scopeLabel()+")</h2>"
+      +"<p class='lead'>Çıkış yapan misafirler (rez no, kanal, gerçek giriş-çıkış saatiyle). <b>Yorum istenildi mi?</b> kutusunu işaretle; yorum karşılığı <b>%10 indirim</b> vereceğin misafiri işaretle, <b>platformu</b> seç, önce <b>açıklamanı</b> sonra misafirin <b>yorumunu</b> yaz. Otomatik saklanır.</p>"
+      +"<div style='overflow-x:auto'><table><thead><tr>"+(wk?"<th>Gün</th>":"")+"<th>Oda</th><th>Rez No</th><th>Misafir</th><th>Kanal</th><th>Giriş–Çıkış</th>"
+      +"<th style='text-align:center'>Yorum<br>istenildi mi?</th><th style='text-align:center'>%10<br>indirim</th><th>Platform</th><th style='width:19%'>Yorum açıklama</th><th style='width:21%'>Misafir yorumu</th></tr></thead><tbody>";
+    items.forEach(function(it){ var r=it.r; var dk=it.day;
+      var kk=r.rez||(dk+'i'+it.idx);
+      var yreq=sget(Kd(dk,'yistendi',kk))==='1'?'checked':'';
+      var ck=sget(Kd(dk,'yind',kk))==='1'?'checked':'';
       var stay=(fdshort(r.gin)+(r.gintime?" <b>"+esc(r.gintime)+"</b>":""))+"<span class='arw'>→</span>"+(fdshort(r.cout)+(r.couttime?" <b>"+esc(r.couttime)+"</b>":""));
-      h+="<tr><td class='mono'>"+esc(r.room)+"</td><td class='mono'>"+esc(r.rez)+"</td><td>"+esc(r.guest)+"</td>"
+      h+="<tr>"+(wk?"<td class='mono'>"+fdshort(dk)+"</td>":"")+"<td class='mono'>"+esc(r.room)+"</td><td class='mono'>"+esc(r.rez)+"</td><td>"+esc(r.guest)+"</td>"
         +"<td>"+esc(r.kanal)+"</td><td class='mono'>"+stay+"</td>"
-        +"<td style='text-align:center'><input type='checkbox' data-ck='"+K('yind',kk)+"' "+ck+"></td>"
-        +"<td>"+psel(K('yplat',kk))+"</td>"
-        +"<td><textarea data-k='"+K('yyor',kk)+"'>"+esc(sget(K('yyor',kk)))+"</textarea></td>"
-        +"<td><textarea data-k='"+K('yaci',kk)+"'>"+esc(sget(K('yaci',kk)))+"</textarea></td></tr>";
+        +"<td style='text-align:center'><input type='checkbox' data-ck='"+Kd(dk,'yistendi',kk)+"' "+yreq+"></td>"
+        +"<td style='text-align:center'><input type='checkbox' data-ck='"+Kd(dk,'yind',kk)+"' "+ck+"></td>"
+        +"<td>"+psel(Kd(dk,'yplat',kk))+"</td>"
+        +"<td><textarea data-k='"+Kd(dk,'yaci',kk)+"'>"+esc(sget(Kd(dk,'yaci',kk)))+"</textarea></td>"
+        +"<td><textarea data-k='"+Kd(dk,'yyor',kk)+"'>"+esc(sget(Kd(dk,'yyor',kk)))+"</textarea></td></tr>";
     });
     return h+"</tbody></table></div>"+savebar('yorum');
   }
   var TABS=[
-    {k:'rc',   t:'Oda Değişimleri', cnt:function(){return ((D.days[cur]||{}).rc||[]).filter(function(x){return !x.reason;}).length;}, f:pRC},
+    {k:'rc',   t:'Oda Değişimleri', cnt:function(){return scopeRows('rc').filter(function(x){return !x.r.reason;}).length;}, f:pRC},
     {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
     {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
     {k:'odap', t:'Oda Problemleri', cnt:function(){return loadList('odap').length;}, f:function(){return pProb('odap','Oda Problemleri');}},
     {k:'temp', t:'Temizlik Problemleri', cnt:function(){return loadList('temp').length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
     {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum},
-    {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return ((D.days[cur]||{}).sales||[]).filter(function(x){return x.low||x.cash;}).length;}, f:pSales}
+    {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return scopeRows('sales').filter(function(x){return x.r.low||x.r.cash;}).length;}, f:pSales}
   ];
   // ---- render ----
   function renderTabs(){
@@ -1982,15 +2003,18 @@ GUNLUK_JS = r"""<script>
   }
   function renderDay(){
     var el=document.getElementById('curday');
-    el.innerHTML=esc(fday(cur))+"<small>"+esc(dow(cur))+"</small>";
+    if(scope==='week'){ el.innerHTML=esc(scopeLabel())+"<small>son 1 hafta</small>"; }
+    else { el.innerHTML=esc(fday(cur))+"<small>"+esc(dow(cur))+"</small>"; }
     var i=alldays.indexOf(cur);
     document.getElementById('dprev').disabled=(i<=0);
     document.getElementById('dnext').disabled=(i>=alldays.length-1);
+    var sel=document.getElementById('scopeSel'); if(sel) sel.value=scope;
   }
   function full(){renderDay();renderTabs();renderPanel();}
   // ---- events ----
   document.getElementById('dprev').onclick=function(){var i=alldays.indexOf(cur);if(i>0){cur=alldays[i-1];full();}};
   document.getElementById('dnext').onclick=function(){var i=alldays.indexOf(cur);if(i<alldays.length-1){cur=alldays[i+1];full();}};
+  var _ss=document.getElementById('scopeSel'); if(_ss) _ss.onchange=function(){scope=this.value; full();};
   document.getElementById('tabs').addEventListener('click',function(e){var b=e.target.closest('[data-tab]');if(b){curTab=b.getAttribute('data-tab');renderTabs();renderPanel();}});
   // otomatik kayıt (textarea[data-k], checkbox[data-ck]) + problem listeleri
   document.getElementById('panels').addEventListener('input',function(e){
@@ -2083,6 +2107,8 @@ def build_gunluk(env):
     dep_ids = {r.get("rez_id") for r in deps if r.get("rez_id")}
     deptimes = E.fetch_res_times(dep_ids, env=env) if dep_ids else {}
     for r in deps:
+        if is_internal_folio(r.get("guest")):          # BOARD/CASH FOLIO iç kayıt — gösterme
+            continue
         day = str(r.get("checkout") or "")[:10]
         if day in days:
             rez = str(r.get("rez_id") or "")
@@ -2156,8 +2182,12 @@ def build_gunluk(env):
         "<div class='topbar'><div class='daynav'>"
         "<button id='dprev' title='önceki gün'>‹</button>"
         "<div class='cur' id='curday'>—</div>"
-        "<button id='dnext' title='sonraki gün'>›</button></div></div>"
-        "<div class='sub'>Seçilen günün olayları + müdürün açıklamaları. Girilenler otomatik saklanır.</div>"
+        "<button id='dnext' title='sonraki gün'>›</button>"
+        "<select id='scopeSel' title='tarih kapsamı' style='margin-left:10px;font:inherit;"
+        "padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:inherit'>"
+        "<option value='day'>Bu gün</option><option value='week'>Son 1 hafta</option></select>"
+        "</div></div>"
+        "<div class='sub'>Seçilen gün(ler)in olayları + müdürün açıklamaları. Girilenler otomatik saklanır.</div>"
         "<div class='tabs' id='tabs'></div>"
         "<div id='panels'></div>")
     body = (GUNLUK_CSS + skeleton + "<script>window.__GUNLUK__="
