@@ -1863,7 +1863,11 @@ GUNLUK_JS = r"""<script>
   // anahtarları HER ZAMAN satırın KENDİ gününe göredir (Kd) — gün modunda cur ile aynı,
   // yani eski kayıtlarla birebir uyumlu; hafta modunda günler arası çakışmaz.
   var scope='day';
-  function scopeDays(){ if(scope!=='week') return [cur]; var i=alldays.indexOf(cur); if(i<0) return [cur]; return alldays.slice(Math.max(0,i-6), i+1); }
+  var SCOPES={day:1, week:7, month:30, year:365};
+  function dmin(iso,k){var p=String(iso).slice(0,10).split('-');var d=new Date(Date.UTC(+p[0],+p[1]-1,+p[2]));d.setUTCDate(d.getUTCDate()-k);return d.toISOString().slice(0,10);}
+  // cur dahil geriye n gün (eski→yeni). Problemler tarayıcıda saklı olduğu için her aralığı
+  // kapsar; otomatik listeler (D.days) yalnızca sunucu penceresi kadar veri içerir.
+  function scopeDays(){ var n=SCOPES[scope]||1; if(n<=1) return [cur]; var out=[]; for(var k=n-1;k>=0;k--){ out.push(dmin(cur,k)); } return out; }
   function scopeRows(kind){ var out=[]; scopeDays().forEach(function(dd){ (((D.days[dd]||{})[kind])||[]).forEach(function(r,idx){ out.push({day:dd,idx:idx,r:r}); }); }); return out; }
   function scopeLabel(){ if(scope!=='week') return fday(cur); var ds=scopeDays(); return ds.length?(fday(ds[0])+' – '+fday(ds[ds.length-1])):fday(cur); }
   function Kd(day,tab,row){return 'RG:'+day+':'+tab+':'+row;}
@@ -2012,7 +2016,7 @@ GUNLUK_JS = r"""<script>
   }
   function renderDay(){
     var el=document.getElementById('curday');
-    if(scope==='week'){ el.innerHTML=esc(scopeLabel())+"<small>son 1 hafta</small>"; }
+    if(scope!=='day'){ var LBL={week:'son 1 hafta',month:'son 1 ay',year:'son 1 yıl'}; el.innerHTML=esc(scopeLabel())+"<small>"+(LBL[scope]||'')+"</small>"; }
     else { el.innerHTML=esc(fday(cur))+"<small>"+esc(dow(cur))+"</small>"; }
     var i=alldays.indexOf(cur);
     document.getElementById('dprev').disabled=(i<=0);
@@ -2084,7 +2088,7 @@ def _is_direct_agency(agency):
 
 def build_gunluk(env):
     today = dt.date.today()
-    start = today - dt.timedelta(days=13)          # son 14 gün
+    start = today - dt.timedelta(days=30)          # son 31 gün (gün/hafta/ay kapsamı için)
     changes = E.fetch_room_changes(start.isoformat(), today.isoformat(), env=env)
     rez_ids = {c["rez_id"] for c in changes if c["rez_id"]}
     # NEDEN = sadece "Oda Notu" (RES_NOTE tür 1005) — ALLNOTES DEĞİL (o Channel/Checkin
@@ -2195,9 +2199,12 @@ def build_gunluk(env):
         "<button id='dnext' title='sonraki gün'>›</button>"
         "<select id='scopeSel' title='tarih kapsamı' style='margin-left:10px;font:inherit;"
         "padding:6px 10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:inherit'>"
-        "<option value='day'>Bu gün</option><option value='week'>Son 1 hafta</option></select>"
+        "<option value='day'>Bu gün</option><option value='week'>Son 1 hafta</option>"
+        "<option value='month'>Son 1 ay</option><option value='year'>Son 1 yıl</option></select>"
         "</div></div>"
-        "<div class='sub'>Seçilen gün(ler)in olayları + müdürün açıklamaları. Girilenler otomatik saklanır.</div>"
+        "<div class='sub'>Seçilen gün(ler)in olayları + müdürün açıklamaları. Girilenler otomatik "
+        "saklanır. <b>Not:</b> Problemler (oda/temizlik) seçilen tüm aralığı kapsar; otomatik "
+        "listeler (oda değişimi/çıkış/satış) yüklü pencere kadar (son ~1 ay) gösterir.</div>"
         "<div class='tabs' id='tabs'></div>"
         "<div id='panels'></div>")
     body = (GUNLUK_CSS + skeleton + "<script>window.__GUNLUK__="
@@ -2206,7 +2213,7 @@ def build_gunluk(env):
     left = sum(1 for r in ob if r["left"])
     return {"label": "Günlük Rapor", "count": n_open, "count_label": "açık bakiye",
             "tone": "bad" if (n_open or left) else "ok",
-            "sub": f"günlük defter · {tr_g(today)} · {len(changes)} oda değişimi (14g)",
+            "sub": f"günlük defter · {tr_g(today)} · {len(changes)} oda değişimi (31g)",
             "updated": now_str(),
             "html": PAGE("Günlük Rapor", "Günlük Rapor",
                          f"gün seçici + oda değişimleri, açık bakiye/cari, problemler, yorumlar", body)}
