@@ -1849,9 +1849,14 @@ GUNLUK_JS = r"""<script>
   function sset(k,v){try{localStorage.setItem(k,v);}catch(e){}}
   function sget(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
   function K(tab,row){return 'RG:'+cur+':'+tab+':'+row;}
-  function listKey(tab){return 'RG:'+cur+':'+tab;}
-  function loadList(tab){try{var s=localStorage.getItem(listKey(tab));return s?JSON.parse(s):[];}catch(e){return [];}}
-  function saveList(tab,a){sset(listKey(tab),JSON.stringify(a));}
+  function listKeyD(day,tab){return 'RG:'+day+':'+tab;}
+  function listKey(tab){return listKeyD(cur,tab);}
+  function loadListD(day,tab){try{var s=localStorage.getItem(listKeyD(day,tab));return s?JSON.parse(s):[];}catch(e){return [];}}
+  function loadList(tab){return loadListD(cur,tab);}
+  function saveListD(day,tab,a){sset(listKeyD(day,tab),JSON.stringify(a));}
+  function saveList(tab,a){saveListD(cur,tab,a);}
+  // problem listeleri kapsam boyunca (gün/hafta) — her satır kendi gününü taşır
+  function scopeProblems(tab){var out=[];scopeDays().forEach(function(dd){loadListD(dd,tab).forEach(function(r,i){out.push({day:dd,i:i,r:r});});});return out;}
   function note(tab,row){return "<td><textarea data-k='"+K(tab,row)+"' placeholder='(açıklama gir)'>"+esc(sget(K(tab,row)))+"</textarea></td>";}
   // ---- kapsam: 'day' (varsayılan bugün) / 'week' (cur dahil son 7 gün) ----
   // Tüm tarih-bazlı listeler (oda değişimi, yorum, satış) kapsamı takip eder. Depolama
@@ -1936,19 +1941,23 @@ GUNLUK_JS = r"""<script>
   }
   function roomdl(){return "<datalist id='roomdl'>"+(D.rooms||[]).map(function(rm){return "<option value='"+esc(rm)+"'>";}).join('')+"</datalist>";}
   function pProb(tab,title){
-    var a=loadList(tab);
-    var h="<h2>"+title+" — "+fday(cur)+"</h2>"
-      +"<p class='lead'>Oda seç (yazınca aranır) + problem yaz, <b>+ Ekle</b>; açıklamayı yaz. <b>Otomatik kaydedilir.</b></p>"
+    var items=scopeProblems(tab); var wk=(scope==='week');
+    var h="<h2>"+title+" — "+scopeLabel()+"</h2>"
+      +"<p class='lead'>Oda seç (yazınca aranır) + problem yaz, <b>+ Ekle</b>; açıklamayı yaz. Bitince <b>Yapıldı</b>'yı işaretle. <b>Otomatik kaydedilir.</b> (Son 1 hafta seçiliyse haftanın tüm problemleri görünür.)</p>"
       +roomdl()
       +"<div class='filtbar'>🔎 <input data-rfilt list='roomdl' placeholder='Odaya göre filtrele (ör. 204)'></div>"
-      +"<table><thead><tr><th style='width:110px'>Oda</th><th>Problem</th><th style='width:32%'>Müdür açıklama</th><th style='width:34px'></th></tr></thead><tbody data-list='"+tab+"' id='probbody'>";
-    a.forEach(function(r,i){
-      h+="<tr><td><input data-f='oda' data-i='"+i+"' list='roomdl' value='"+esc(r.oda)+"' style='max-width:96px'></td>"
-        +"<td><input data-f='problem' data-i='"+i+"' value='"+esc(r.problem)+"'></td>"
-        +"<td><textarea data-f='note' data-i='"+i+"'>"+esc(r.note||'')+"</textarea></td>"
-        +"<td><button class='rowdel' data-del='"+i+"' title='sil'>✕</button></td></tr>";
+      +"<table><thead><tr>"+(wk?"<th style='width:66px'>Tarih</th>":"")+"<th style='width:100px'>Oda</th><th>Problem</th><th style='width:64px;text-align:center'>Yapıldı</th><th style='width:30%'>Müdür açıklama</th><th style='width:34px'></th></tr></thead><tbody data-list='"+tab+"' id='probbody'>";
+    items.forEach(function(it){ var r=it.r, dd=it.day, i=it.i;
+      var dn=r.done?'checked':'';
+      h+="<tr"+(r.done?" style='opacity:.5'":"")+">"
+        +(wk?"<td class='mono'>"+fdshort(dd)+"</td>":"")
+        +"<td><input data-day='"+dd+"' data-f='oda' data-i='"+i+"' list='roomdl' value='"+esc(r.oda)+"' style='max-width:92px'></td>"
+        +"<td><input data-day='"+dd+"' data-f='problem' data-i='"+i+"' value='"+esc(r.problem)+"'></td>"
+        +"<td style='text-align:center'><input type='checkbox' data-done='"+i+"' data-day='"+dd+"' data-tab='"+tab+"' "+dn+"></td>"
+        +"<td><textarea data-day='"+dd+"' data-f='note' data-i='"+i+"'>"+esc(r.note||'')+"</textarea></td>"
+        +"<td><button class='rowdel' data-del='"+i+"' data-day='"+dd+"' data-tab='"+tab+"' title='sil'>✕</button></td></tr>";
     });
-    if(!a.length) h+="<tr><td colspan='4' style='padding:14px;color:var(--sub)'>Henüz kayıt yok — alttan ekle.</td></tr>";
+    if(!items.length) h+="<tr><td colspan='"+(wk?6:5)+"' style='padding:14px;color:var(--sub)'>Henüz kayıt yok — alttan ekle.</td></tr>";
     h+="</tbody></table>"
       +"<div class='addbar'><input data-add='oda' list='roomdl' placeholder='Oda (seç/yaz)' style='max-width:130px'>"
       +"<input data-add='problem' placeholder='Problem'>"
@@ -1985,8 +1994,8 @@ GUNLUK_JS = r"""<script>
     {k:'rc',   t:'Oda Değişimleri', cnt:function(){return scopeRows('rc').filter(function(x){return !x.r.reason;}).length;}, f:pRC},
     {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
     {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
-    {k:'odap', t:'Oda Problemleri', cnt:function(){return loadList('odap').length;}, f:function(){return pProb('odap','Oda Problemleri');}},
-    {k:'temp', t:'Temizlik Problemleri', cnt:function(){return loadList('temp').length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
+    {k:'odap', t:'Oda Problemleri', cnt:function(){return scopeProblems('odap').filter(function(x){return !x.r.done;}).length;}, f:function(){return pProb('odap','Oda Problemleri');}},
+    {k:'temp', t:'Temizlik Problemleri', cnt:function(){return scopeProblems('temp').filter(function(x){return !x.r.done;}).length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
     {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum},
     {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return scopeRows('sales').filter(function(x){return x.r.low||x.r.cash;}).length;}, f:pSales}
   ];
@@ -2021,13 +2030,14 @@ GUNLUK_JS = r"""<script>
     var t=e.target, did=false;
     if(t.hasAttribute&&t.hasAttribute('data-k')){ sset(t.getAttribute('data-k'),t.value); did=true; }
     var f=t.getAttribute&&t.getAttribute('data-f');
-    if(f){ var tbody=t.closest('[data-list]'); if(tbody){var tab=tbody.getAttribute('data-list');var a=loadList(tab);var i=+t.getAttribute('data-i');if(a[i]){a[i][f]=t.value;saveList(tab,a);did=true;}} }
+    if(f){ var tbody=t.closest('[data-list]'); if(tbody){var tab=tbody.getAttribute('data-list');var day=t.getAttribute('data-day')||cur;var a=loadListD(day,tab);var i=+t.getAttribute('data-i');if(a[i]){a[i][f]=t.value;saveListD(day,tab,a);did=true;}} }
     if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
     if(t.getAttribute&&t.getAttribute('data-sfilt')!=null){ applySalesFilter(); }
     if(did) flash();
   });
   document.getElementById('panels').addEventListener('change',function(e){
     var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')){ sset(t.getAttribute('data-ck'),t.checked?'1':'0'); flash(); }
+    if(t.hasAttribute&&t.hasAttribute('data-done')){ var dday=t.getAttribute('data-day')||cur, dtab=t.getAttribute('data-tab'), da=loadListD(dday,dtab), di=+t.getAttribute('data-done'); if(da[di]){da[di].done=t.checked; saveListD(dday,dtab,da);} renderTabs(); renderPanel(); flash(); }
     if(t.tagName==='SELECT'&&t.hasAttribute&&t.hasAttribute('data-k')){ sset(t.getAttribute('data-k'),t.value); flash(); }
     if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
     if(t.getAttribute&&t.getAttribute('data-sflag')!=null){ applySalesFilter(); }
@@ -2038,7 +2048,7 @@ GUNLUK_JS = r"""<script>
       var oda=box.querySelector("[data-add='oda']").value.trim(), prob=box.querySelector("[data-add='problem']").value.trim();
       if(!oda&&!prob)return; var a=loadList(tab);a.push({oda:oda,problem:prob,note:''});saveList(tab,a);renderTabs();renderPanel();flash();return;}
     var del=e.target.closest('[data-del]');
-    if(del){var tbody=del.closest('[data-list]');var tab=tbody.getAttribute('data-list');var a=loadList(tab);a.splice(+del.getAttribute('data-del'),1);saveList(tab,a);renderPanel();renderTabs();flash();return;}
+    if(del){var tab=del.getAttribute('data-tab')||del.closest('[data-list]').getAttribute('data-list');var day=del.getAttribute('data-day')||cur;var a=loadListD(day,tab);a.splice(+del.getAttribute('data-del'),1);saveListD(day,tab,a);renderPanel();renderTabs();flash();return;}
   });
   function applyFilter(inp){
     var q=(inp.value||'').trim(); var tbody=document.querySelector('#probbody');
