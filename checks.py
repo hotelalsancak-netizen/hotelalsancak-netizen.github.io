@@ -839,6 +839,13 @@ def fbal(r):
     return num(r.get("FOLIO_BALANCE"))
 
 
+def owe(r):
+    """Bu rezervasyondan tahsil edilecek/incelenecek tutar. Normalde net folyo bakiyesi;
+    yan hesaplar netleşmediyse (misafir kredi ↔ acente borç, net ~0) o dengesizlik.
+    open_balances _owe (+ _split) alanlarını doldurur."""
+    return num(r.get("_owe")) if r.get("_owe") is not None else fbal(r)
+
+
 # Robust clipboard copy that also works inside the sandboxed dashboard iframe: the old
 # navigator.clipboard API is blocked there without a clipboard-write permission, so fall
 # back to a hidden-textarea + execCommand('copy') which runs on the click gesture.
@@ -882,12 +889,31 @@ def open_balances(env):
     it catches what per-reservation GENERALBALANCE missed: agency-side debts and routed
     folios. _left=True when the guest checked out (RESSTATEID 4) still owing. Sorted:
     checked-out-owing first, then by amount. Shared by build_bakiye and build_odeme.
-    BOARD/CASH FOLIO iç kayıtları elenir (is_internal_folio)."""
+    BOARD/CASH FOLIO iç kayıtları elenir (is_internal_folio).
+
+    AYRICA net ~0 olsa da YAN HESAPLAR netleşmemişse yakalar (_split=True): oda ücreti acente
+    folyosuna route edilmiş (AGENCY_BALANCE > 0) ama misafir folyosu ters-işaretle (GUEST_BALANCE
+    < 0) denkleştirilmiş → FOLIO_BALANCE = 0 gösterir, oysa ACENTE hâlâ o tutarı BORÇLU/tahsil
+    edilmemiştir. Genel Bakiye/FOLIO_BALANCE tek başına bunu kaçırır (canlı örnek: 96678310)."""
     rows = E.fetch_guest_folios(env)
-    owed = [r for r in rows if fbal(r) > 0.5 and not is_internal_folio(r.get("GUESTNAMES"))]
+    owed = []
+    for r in rows:
+        if is_internal_folio(r.get("GUESTNAMES")):
+            continue
+        net = fbal(r)
+        g = num(r.get("GUEST_BALANCE")); a = num(r.get("AGENCY_BALANCE"))
+        if net > 0.5:                                        # net borç
+            r["_owe"] = net; r["_split"] = False
+            owed.append(r)
+        elif abs(net) < 0.5 and (g * a) < 0 and max(abs(g), abs(a)) > 100:
+            # net ~0 ama yan hesaplar ters-işaretli ve ANLAMLI (>100 TL) = netleşmemiş
+            # (oda ücreti acente folyosuna route edilmiş, tahsil yok). <100 TL olanlar
+            # OTA kur/yuvarlama artıklarıdır (kuruş seviyesi) — gösterme.
+            r["_owe"] = max(abs(g), abs(a)); r["_split"] = True
+            owed.append(r)
     for r in owed:
         r["_left"] = r.get("RESSTATEID") == 4                # çıkış yaptı, hâlâ borçlu
-    owed.sort(key=lambda r: (0 if r.get("_left") else 1, -fbal(r)))
+    owed.sort(key=lambda r: (0 if r.get("_left") else 1, -owe(r)))
     return owed
 
 
@@ -924,7 +950,7 @@ def build_bakiye(env):
     owed = open_balances(env)
 
     left = [r for r in owed if r.get("_left")]
-    total = sum(fbal(r) for r in owed)
+    total = sum(owe(r) for r in owed)
     cari = cari_receivables(env)
     cari_total = sum(num(r.get("LOCALBALANCE")) for r in cari)
     stats = (stat(len(owed), "açık misafir kaydı", "bad" if owed else "ok")
@@ -949,6 +975,8 @@ def build_bakiye(env):
         trs = []
         for r in owed:
             durum = ("🔴 ÇIKTI — borçlu" if r.get("_left") else "Konaklıyor")
+            if r.get("_split"):
+                durum += " · 🔀 netleşmemiş (acente borçlu)"
             trs.append(f"<tr class='{'bad' if r.get('_left') else ''}'>"
                        f"<td>{rez_link(r.get('RESID'))}</td>"
                        f"<td>{esc(r.get('ROOMNO') or '—')}</td>"
@@ -956,7 +984,7 @@ def build_bakiye(env):
                        f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
                        f"<td style='white-space:nowrap'>{ci_co(r)}</td>"
                        f"<td>{durum}</td>"
-                       f"<td class='r money'>{tl(fbal(r))} ₺</td>"
+                       f"<td class='r money'>{tl(owe(r))} ₺</td>"
                        f"<td>{esc(age(r))}</td></tr>")
         table = ("<h2>Ödemesi alınmamış misafir kayıtları</h2>"
                  "<p class='lead'>Folyosunda gerçekten açık bakiye (net borç) olan kayıtlar — en acili "
@@ -1028,7 +1056,7 @@ def build_odeme(env):
     # 2) Open balances (the red res-guest-balance-list rows), day-independent.
     owed = open_balances(env)
     left = [r for r in owed if r.get("_left")]
-    owed_total = sum(fbal(r) for r in owed)
+    owed_total = sum(owe(r) for r in owed)
 
     stats = (stat(len(owed), "ödenmemiş rezervasyon", "bad" if owed else "ok")
              + stat(f"{tl(owed_total)} ₺", "tahsil edilecek toplam")
@@ -1052,8 +1080,8 @@ def build_odeme(env):
             f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
             f"<td>{esc(str(r.get('CHECKINDATE') or '')[:10])}</td>"
             f"<td>{esc(str(r.get('CHECKOUTDATE') or '')[:10])}</td>"
-            f"<td>{'🔴 ÇIKTI — borçlu' if r.get('_left') else 'Konaklıyor'}</td>"
-            f"<td class='r money'>{tl(fbal(r))} ₺</td><td>{esc(age(r))}</td></tr>"
+            f"<td>{('🔴 ÇIKTI — borçlu' if r.get('_left') else 'Konaklıyor')}{' · 🔀 netleşmemiş (acente borçlu)' if r.get('_split') else ''}</td>"
+            f"<td class='r money'>{tl(owe(r))} ₺</td><td>{esc(age(r))}</td></tr>"
             for r in owed)
         openpanel = ("<h2>🔴 Ödenmemiş rezervasyonlar (açık bakiye)</h2>"
                      "<p class='lead'>Şu an folyosunda <b>açık bakiye</b> olan tüm rezervasyonlar — "
@@ -1869,7 +1897,14 @@ GUNLUK_JS = r"""<script>
   // kapsar; otomatik listeler (D.days) yalnızca sunucu penceresi kadar veri içerir.
   function scopeDays(){ var n=SCOPES[scope]||1; if(n<=1) return [cur]; var out=[]; for(var k=n-1;k>=0;k--){ out.push(dmin(cur,k)); } return out; }
   function scopeRows(kind){ var out=[]; scopeDays().forEach(function(dd){ (((D.days[dd]||{})[kind])||[]).forEach(function(r,idx){ out.push({day:dd,idx:idx,r:r}); }); }); return out; }
-  function scopeLabel(){ if(scope!=='week') return fday(cur); var ds=scopeDays(); return ds.length?(fday(ds[0])+' – '+fday(ds[ds.length-1])):fday(cur); }
+  function scopeLabel(){ if(scope==='day') return fday(cur); var ds=scopeDays(); return ds.length?(fday(ds[0])+' – '+fday(ds[ds.length-1])):fday(cur); }
+  // Oda Satış Fiyatları için tıklanabilir sütun sıralaması
+  var salesSort={key:'', dir:1};
+  function sortSales(items){ if(!salesSort.key) return items; var k=salesSort.key, d=salesSort.dir;
+    return items.slice().sort(function(x,y){ var a=x.r[k], b=y.r[k];
+      if(k==='avg'||k==='night'){ return ((+a||0)-(+b||0))*d; }
+      return String(a==null?'':a).localeCompare(String(b==null?'':b),'tr')*d; }); }
+  function sarrow(k){ return salesSort.key===k?(salesSort.dir>0?' ▲':' ▼'):''; }
   function Kd(day,tab,row){return 'RG:'+day+':'+tab+':'+row;}
   function noteD(day,tab,row){return "<td><textarea data-k='"+Kd(day,tab,row)+"' placeholder='(açıklama gir)'>"+esc(sget(Kd(day,tab,row)))+"</textarea></td>";}
   function savebar(tab){return "<div class='saverow'><span class='autosave'>✓ Otomatik kaydedilir</span>"
@@ -1901,6 +1936,7 @@ GUNLUK_JS = r"""<script>
       +"<table><thead><tr><th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th>Durum</th><th class='r'>Borç</th><th style='width:24%'>Müdür açıklaması</th></tr></thead><tbody>";
     rows.forEach(function(r){
       var durum=r.left?"<span class='reason-none'>🔴 ÇIKTI — borçlu</span>":"Konaklıyor";
+      if(r.split) durum+=" · <span class='reason-none'>🔀 netleşmemiş (acente borçlu)</span>";
       h+="<tr"+(r.left?" style='box-shadow:inset 3px 0 var(--statbad)'":"")+"><td class='mono'>"+esc(r.rezid)+"</td>"
         +"<td>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td><td>"+esc(r.agency)+"</td><td>"+durum+"</td>"
         +"<td class='r money'>"+money(r.borc)+" ₺</td>"+note('bal',r.rezid)+"</tr>";
@@ -1922,14 +1958,20 @@ GUNLUK_JS = r"""<script>
   function agdl(rows){var s={};rows.forEach(function(r){if(r.agency)s[r.agency]=1;});
     return "<datalist id='agdl'>"+Object.keys(s).map(function(a){return "<option value='"+esc(a)+"'>";}).join('')+"</datalist>";}
   function pSales(){
-    var items=scopeRows('sales'); var wk=(scope==='week');
+    var items=scopeRows('sales'); var wk=(scope==='week'); items=sortSales(items);
     if(!items.length) return "<h2>Oda Satış Fiyatları — "+scopeLabel()+"</h2><div class='ph'>Bu aralıkta oda satışı (giriş) yok.</div>";
     var h="<h2>Oda Satış Fiyatları — "+scopeLabel()+"</h2>"
       +"<p class='lead'><b>Giriş yapan</b> odalar — fiyatlar <b>TL</b>. <span class='reason-none'>🔴 Walk-in / Telefon</span> satışı "+money(D.pricemin||3500)+" ₺ altındaysa kırmızı (resepsiyon fiyatı, incele) — acente kontrat fiyatları düşük olabilir, normaldir. <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat. Açıklamayı sağa gir — otomatik saklanır.</p>"
       +agdl(items.map(function(it){return it.r;}))
       +"<div class='filtbar'>🔎 <input data-sfilt list='agdl' placeholder='Oda / acenta / misafir / rez ara'> "
       +"<label style='display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer'><input type='checkbox' data-sflag> sadece 🔴 işaretli</label></div>"
-      +"<div style='overflow-x:auto'><table><thead><tr>"+(wk?"<th>Gün</th>":"")+"<th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı (₺)</th><th>Ödeme</th><th style='width:20%'>Müdür açıklaması</th></tr></thead><tbody id='salesbody'>";
+      +"<div style='overflow-x:auto'><table><thead><tr>"+(wk?"<th>Gün</th>":"")+"<th>Rez No</th>"
+      +"<th data-sort='room' style='cursor:pointer' title='sırala'>Oda"+sarrow('room')+"</th>"
+      +"<th data-sort='guest' style='cursor:pointer' title='sırala'>Misafir"+sarrow('guest')+"</th>"
+      +"<th data-sort='agency' style='cursor:pointer' title='sırala'>Acenta"+sarrow('agency')+"</th>"
+      +"<th class='r' data-sort='night' style='cursor:pointer' title='sırala'>Gece"+sarrow('night')+"</th>"
+      +"<th class='r' data-sort='avg' style='cursor:pointer' title='fiyata göre sırala'>Ort. Gece Fiyatı (₺)"+sarrow('avg')+"</th>"
+      +"<th>Ödeme</th><th style='width:20%'>Müdür açıklaması</th></tr></thead><tbody id='salesbody'>";
     items.forEach(function(it){ var r=it.r;
       var price=r.avg>0?(money(r.avg)+" ₺"):"—";
       if(r.low) price="<span class='reason-none'>"+price+" 🔴</span>";
@@ -2047,6 +2089,8 @@ GUNLUK_JS = r"""<script>
     if(t.getAttribute&&t.getAttribute('data-sflag')!=null){ applySalesFilter(); }
   });
   document.getElementById('panels').addEventListener('click',function(e){
+    var srt=e.target.closest('[data-sort]');
+    if(srt){var sk=srt.getAttribute('data-sort'); if(salesSort.key===sk){salesSort.dir*=-1;}else{salesSort.key=sk;salesSort.dir=1;} renderPanel(); return;}
     var add=e.target.closest('[data-addbtn]');
     if(add){var tab=add.getAttribute('data-addbtn');var box=add.parentNode;
       var oda=box.querySelector("[data-add='oda']").value.trim(), prob=box.querySelector("[data-add='problem']").value.trim();
@@ -2169,7 +2213,8 @@ def build_gunluk(env):
         dd["sales"].sort(key=lambda s: (not (s["low"] or s["cash"]), s["avg"]))
     ob = [{"rezid": str(r.get("RESID") or ""), "room": r.get("ROOMNO") or "",
            "guest": (r.get("GUESTNAMES") or "")[:34], "agency": (r.get("AGENCY") or "")[:16],
-           "left": bool(r.get("_left")), "borc": round(fbal(r), 2)} for r in owed]
+           "left": bool(r.get("_left")), "borc": round(owe(r), 2),
+           "split": bool(r.get("_split"))} for r in owed]
     cr = [{"kod": r.get("CODE") or "", "name": (r.get("NAME") or "")[:36],
            "alacak": round(num(r.get("LOCALBALANCE")), 2)} for r in cari]
 
