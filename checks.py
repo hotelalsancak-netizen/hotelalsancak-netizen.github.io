@@ -991,6 +991,10 @@ def build_bakiye(env):
             "(QA_HOTEL_RESERVATION_GUESTFOLIOS) FOLIO_BALANCE>0 — routing + acenta/misafir netlenmiş. "
             "Cari alacaklar: <b>QA_ACCOUNTS</b> (Kredili Hesaplar), Alıcılar 120.x borç (D) bakiye, "
             "net TL, otomatik kanallar hariç.</div>")
+    fresh = ("<div style='background:#fef3c7;border:1px solid #fde68a;color:#92400e;"
+             "padding:9px 13px;border-radius:9px;margin:0 0 12px;font-size:12.5px'>"
+             f"⏱ Bu sayfadaki veriler <b>{now_str()}</b> itibarıyladır. Bu saatten sonra "
+             "yapılan giriş/ödeme hareketleri bir sonraki güncellemede görünür.</div>")
     sub = (f"misafir {tl(total)} ₺ · cari {tl(cari_total)} ₺"
            + (f" · {len(left)} çıkıp borçlu 🔴" if left else ""))
     return {"label": "Bakiye Kontrolü", "count": len(owed) + len(cari),
@@ -998,7 +1002,7 @@ def build_bakiye(env):
             "sub": sub, "updated": now_str(),
             "html": PAGE("Tahsilat — Açık Bakiye", "Bakiye Kontrolü",
                          "misafir açık bakiyeleri + cari alacaklar",
-                         f"<div class='stats'>{stats}</div>{table}{cari_panel}{note}{REZ_COPY_JS}")}
+                         f"<div class='stats'>{stats}</div>{fresh}{table}{cari_panel}{note}{REZ_COPY_JS}")}
 
 
 DAY_ABBR = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
@@ -1111,7 +1115,14 @@ def build_odeme(env):
             "veya acenta tarafında olsun yakalanır (hiçbiri kaçmaz). Konaklayan + son 180 gün çıkış. "
             "Güne göre panel: o gün Geliş = tarih olan rezervasyonların ödeme durumu (paycheck).</div>")
 
-    body = f"<div class='stats'>{stats}</div>{openpanel}{selector}{note}{REZ_COPY_JS}"
+    # Veri tazeliği: pano bulutta periyodik üretilir; aradaki yeni giriş/ödeme hareketleri
+    # bir sonraki üretime kadar görünmez. Bunu GİZLEMEK yanlış "hepsi ödedi" izlenimi verir.
+    fresh = ("<div style='background:#fef3c7;border:1px solid #fde68a;color:#92400e;"
+             "padding:9px 13px;border-radius:9px;margin:0 0 12px;font-size:12.5px'>"
+             f"⏱ Bu sayfadaki veriler <b>{now_str()}</b> itibarıyladır. Bu saatten sonra "
+             "yapılan giriş/ödeme hareketleri bir sonraki güncellemede görünür — "
+             "en güncel hâli için Elektra'ya bak.</div>")
+    body = f"<div class='stats'>{stats}</div>{fresh}{openpanel}{selector}{note}{REZ_COPY_JS}"
     sub = (f"{len(owed)} açık bakiye · tahsil {tl(owed_total)} ₺"
            + (f" · {len(left)} çıkıp borçlu 🔴" if left else ""))
     return {"label": "Günlük Ödeme Kontrolü", "count": len(owed),
