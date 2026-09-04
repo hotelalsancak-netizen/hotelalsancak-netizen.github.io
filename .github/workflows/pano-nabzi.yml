@@ -1,0 +1,57 @@
+name: Pano Nabzı (30 dk)
+
+# Panoyu 30 DAKİKADA BİR günceller — hiçbir bilgisayara bağlı DEĞİL.
+#
+# NEDEN: GitHub'ın 'schedule' (cron) olayı best-effort'tur; yoğunlukta saatlerce gecikir.
+# dashboard.yml saatlik ayarlıydı ama gerçekte 2.5–5 saatte bir çalışıyordu; ofis PC'sindeki
+# yerel cron da elektrik kesintisinde duruyordu. Sonuç: sahip 4.5 saat bayat bir panoya bakıp
+# "ödemesi olmayan misafiri yakalamıyor" sandı.
+#
+# NASIL: Bu iş kendini zincirler — ~5.5 saat boyunca her 30 dk'da bir dashboard.yml'i tetikler,
+# sonra kendini yeniden başlatır. Böylece cadence GitHub'ın cron kuyruğuna bağlı kalmaz.
+# Zincir koparsa (hata/iptal) aşağıdaki yedek schedule onu tekrar ayağa kaldırır.
+#
+# PANO_TOKEN secret'i ŞART: dahili GITHUB_TOKEN ile yapılan dispatch YENİ workflow çalıştırmaz
+# (GitHub özyineleme koruması). PANO_TOKEN = otel PAT'i.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '13 */2 * * *'     # YEDEK: zincir ölürse diriltir (GitHub gecikmeli çalıştırır)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pano-nabzi            # tek zincir çalışsın
+  cancel-in-progress: true
+
+jobs:
+  nabiz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345       # ~5.75 saat (GitHub üst sınırı 6 saat)
+    steps:
+      - name: 30 dakikada bir panoyu tetikle (11 tur ≈ 5.5 saat)
+        env:
+          TOKEN: ${{ secrets.PANO_TOKEN }}
+        run: |
+          for i in $(seq 1 11); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/dashboard.yml/dispatches" \
+              -d '{"ref":"main"}')
+            echo "$(date -u +%H:%M) UTC · tur $i/11 · pano tetiklendi (HTTP $code)"
+            if [ "$i" -lt 11 ]; then sleep 1800; fi
+          done
+
+      - name: Zinciri sürdür (kendini yeniden başlat)
+        if: always()
+        env:
+          TOKEN: ${{ secrets.PANO_TOKEN }}
+        run: |
+          curl -sS -o /dev/null -w 'zincir devam ediyor: HTTP %{http_code}\n' -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/pano-nabzi.yml/dispatches" \
+            -d '{"ref":"main"}'
