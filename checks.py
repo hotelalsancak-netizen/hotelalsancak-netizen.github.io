@@ -454,18 +454,48 @@ KASA_RECON_JS = r"""<script>
   function curName(c){ return c==='TL'?'TL (₺)':(c==='EUR'?'EUR (€)':(c==='USD'?'USD ($)':c)); }
 
   function renderCurrency(rec){
-    var s = sym(rec.currency);
-    var out = "<div class='recon'><h3>"+(rec.currency==='TL'?'💳':(rec.currency==='EUR'?'💶':'💵'))
-      + " POS / Kredi Kartı — "+curName(rec.currency);
+    // DİKKAT: reconcile() para birimini 'TL' -> 'TRY' diye döndürür. Eskiden buradaki tüm
+    // rec.currency==='TL' kontrolleri bu yüzden HİÇ tutmuyordu: TL hesabı 💵 + "TRY" diye
+    // görünüyor, eşikler de yanlış (EUR) daldan seçiliyordu. Tek yerde normalize ediyoruz.
+    var C = (rec.currency==='TRY' ? 'TL' : rec.currency);
+    var s = sym(C);
+    var out = "<div class='recon'><h3>"+(C==='TL'?'💳':(C==='EUR'?'💶':'💵'))
+      + " POS / Kredi Kartı — "+curName(C);
     if(rec.hasEl){
-      var diff = rec.elCardSum - rec.posComp, tol = Math.max(rec.elCardSum*0.05, rec.currency==='TL'?5000:150);
-      if(diff <= tol) out += " <span class='pill ok'>✓ Tüm POS geçmiş</span></h3>"
-        + "<p class='lead'>Karşılaştırılabilir günlerde bankaya geçen POS, Elektra'daki kart tahsilatını karşılıyor.</p>";
-      else out += " <span class='pill warn'>⚠ "+f(diff)+" "+s+" eksik olabilir</span></h3>"
-        + "<p class='lead'>Elektra'da <b>"+f(diff)+" "+s+"</b> kart tahsilatı var ama bankaya geçen POS'ta yok — incelenmeli.</p>";
+      // fark = Elektra − Banka.  + : Elektra'da var, bankaya GEÇMEMİŞ.  − : bankaya FAZLA geçmiş.
+      // ESKİ HATA: tolerans %5 (362 bin ₺'de ~18 bin ₺!) ve kontrol TEK YÖNLÜYDÜ (diff<=tol),
+      // yani hem büyük eksikler hem de bankaya fazla geçen para "✓ Tüm POS geçmiş" görünüyordu.
+      // Ayrıca gün bazındaki sapmalar toplamda netleşince tamamen gizleniyordu.
+      var diff = rec.elCardSum - rec.posComp;
+      var tol = Math.max(rec.elCardSum*0.005, C==='TL'?250:25);
+      var dayTol = (C==='TL'?1000:50);
+      var offDays = rec.tbl.filter(function(t){ return !t.unknown && Math.abs(t.diff)>dayTol; });
+      var worst = offDays.slice().sort(function(a,b){ return Math.abs(b.diff)-Math.abs(a.diff); })[0];
+      var badge, lead;
+      if(Math.abs(diff)<=tol && !offDays.length){
+        badge = "<span class='pill ok'>✓ Eşleşiyor</span>";
+        lead = "Hem toplamda hem gün bazında bankaya geçen POS, Elektra'daki kart tahsilatını karşılıyor.";
+      } else if(diff > tol){
+        badge = "<span class='pill warn'>⚠ "+f(diff)+" "+s+" bankaya geçmemiş</span>";
+        lead = "Elektra'da <b>"+f(diff)+" "+s+"</b> kart tahsilatı görünüyor ama bankaya geçen POS'ta yok — <b>incele</b>.";
+      } else if(diff < -tol){
+        badge = "<span class='pill warn'>⚠ "+f(-diff)+" "+s+" fazla geçmiş</span>";
+        lead = "Bankaya, Elektra'daki kart tahsilatından <b>"+f(-diff)+" "+s+" FAZLA</b> para geçmiş — "
+             + "Elektra'ya işlenmemiş tahsilat ya da tarih kayması olabilir; <b>incele</b>.";
+      } else {
+        badge = "<span class='pill warn'>⚠ günler tutmuyor</span>";
+        lead = "Toplam örtüşüyor ama gün bazında sapma var — tarih eşleşmesi (T+1) ya da kayıt zamanlaması kaymış olabilir.";
+      }
+      if(offDays.length){
+        lead += " <b>"+offDays.length+"</b> günde gün-bazında fark var"
+             + (worst ? " (en büyüğü "+trg(worst.bankDay)+": "+(worst.diff>=0?'+':'')+f(worst.diff)+" "+s+")" : "")
+             + " — aşağıdaki tabloda işaretli.";
+      }
+      out += " "+badge+"</h3><p class='lead'>"+lead+"</p>";
       out += "<div class='stats'>"
         + "<div class='stat'><div class='n'>"+f(rec.elCardSum)+" "+s+"</div><div class='l'>Elektra kart (karşılaştırılan)</div></div>"
         + "<div class='stat'><div class='n'>"+f(rec.posComp)+" "+s+"</div><div class='l'>Banka POS (aynı günler, brüt)</div></div>"
+        + "<div class='stat "+(Math.abs(diff)<=tol?'':'bad')+"'><div class='n'>"+(diff>=0?'+':'')+f(diff)+" "+s+"</div><div class='l'>fark (Elektra − Banka)</div></div>"
         + "<div class='stat'><div class='n'>"+f(rec.posKs)+" "+s+"</div><div class='l'>banka komisyonu (toplam)</div></div></div>";
       var rowsH='';
       rec.tbl.forEach(function(t){
@@ -475,7 +505,7 @@ KASA_RECON_JS = r"""<script>
             +"<td class='r muted' title='Bu güne ait Elektra verisi yüklü aralıkta yok'>karşılaştırma dışı</td></tr>";
           return;
         }
-        var cls=Math.abs(t.diff)<1?'ok':(Math.abs(t.diff)>=(rec.currency==='TL'?5000:100)?'amber':'');
+        var cls=Math.abs(t.diff)<1?'ok':(Math.abs(t.diff)>=dayTol?'amber':'');
         rowsH += "<tr><td>"+trg(t.bankDay)+"</td><td class='muted'>"+trg(t.elDay)+"</td>"
           +"<td class='r money'>"+f(t.elCard)+"</td><td class='r money'>"+f(t.bankPos)+"</td>"
           +"<td class='r "+cls+"'>"+(t.diff>=0?'+':'')+f(t.diff)+"</td></tr>"; });
