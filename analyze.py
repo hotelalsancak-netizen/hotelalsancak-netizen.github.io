@@ -101,6 +101,13 @@ def room_segments(res, changes_by_rez):
     """
     ci = datetime.strptime(res["checkin"], "%Y-%m-%d") + timedelta(hours=CHECKIN_H)
     co = datetime.strptime(res["checkout"], "%Y-%m-%d") + timedelta(hours=CHECKOUT_H)
+    # Same-day check-in AND check-out (a 0-night / day-use booking) inverts the window:
+    # ci = day 14:00 but co = day 12:00, so co < ci and NO night ever overlaps — the room
+    # then reads as "vacant" and any door read that day becomes a false accusation. It
+    # happens ~3x a week here, and the two such rooms flagged in the 31 Aug week were both
+    # fully paid. Give the guest the night window of the day they were checked in.
+    if co <= ci:
+        co = night_window(ci.date())[1]
     cs = changes_by_rez.get(norm_id(res["rez_id"]), [])
     if not cs:
         yield (ci, co, str(res["room"]))

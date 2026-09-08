@@ -176,9 +176,12 @@ footer{color:var(--muted);font-size:12.5px;border-top:1px solid var(--line);padd
 """
 
 
-def mini_calendar(room, night, sold):
+def mini_calendar(room, night, sold, lo=None, hi=None):
+    # LO/HI modul sabitleri İLK haftadan (6-12 Tem 2026) kalmadır. Buraya rapor haftası
+    # geçilmezse "Hafta" şeridi her raporda o haftayı gösterir — 31 Ağu raporunda bile
+    # 06..12 yazıyordu ve hiçbir gün 'satılmış'/'işaretli' boyanmıyordu.
     cells = []
-    for d in daterange(LO, HI):
+    for d in daterange(lo or LO, hi or HI):
         occ = sold.get(room, {}).get(d)
         cls = "d flag" if d.isoformat() == night else ("d sold" if occ else "d")
         cells.append(f'<div class="{cls}">{d.strftime("%d")}</div>')
@@ -207,7 +210,7 @@ def room_change_note(room, changes):
             f"<b>hiçbiri bu geceyi kapsamıyor</b>.{reason_html}")
 
 
-def case_card(f, sold, strong, changes, has_pdf=False):
+def case_card(f, sold, strong, changes, has_pdf=False, lo=None, hi=None):
     room, night = f["room"], f["night"]
     nd = datetime.strptime(night, "%Y-%m-%d").date()
     times = []
@@ -228,7 +231,8 @@ def case_card(f, sold, strong, changes, has_pdf=False):
             break
     nights_vacant = 0
     pd = nd
-    while not sold.get(room, {}).get(pd) and pd >= LO - timedelta(days=10):
+    floor = (lo or LO) - timedelta(days=10)      # bkz. mini_calendar: LO bayat sabittir
+    while not sold.get(room, {}).get(pd) and pd >= floor:
         nights_vacant += 1
         pd -= timedelta(days=1)
     o = [f'<div class="case crit">']
@@ -252,7 +256,7 @@ def case_card(f, sold, strong, changes, has_pdf=False):
         o.append(f'<div class="row"><span class="k">Son satılan misafir</span>'
                  f'<span class="v">{html.escape(prev_guest)}</span></div>')
     o.append(f'<div class="row"><span class="k">Hafta</span><span class="v">'
-             f'{mini_calendar(room, night, sold)}</span></div>')
+             f'{mini_calendar(room, night, sold, lo, hi)}</span></div>')
     o.append('</div></div>')
     return "".join(o)
 
@@ -426,7 +430,7 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
              'bunu açıklayan bir oda değişimi yok. Saatler Türkiye yerel saati. Otel gecesi '
              '14:00 → ertesi gün 12:00.</p>')
     for f in strong:
-        o.append(case_card(f, sold, True, changes, f["room"] in room_pdf))
+        o.append(case_card(f, sold, True, changes, f["room"] in room_pdf, lo, hi))
     o.append('</section>')
 
     # ---- WEAK: single reads / check-out-day lingering, listed for completeness ----
@@ -438,7 +442,7 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
                  'ücretli bir misafirin çıkış günü akşamına taşan okuması. Çoğu masum olabilir; '
                  'yine de sessizce atlanmasın diye listelendi.</p>')
         for f in weak:
-            o.append(case_card(f, sold, False, changes, f["room"] in room_pdf))
+            o.append(case_card(f, sold, False, changes, f["room"] in room_pdf, lo, hi))
         o.append('</section>')
 
     o.append('<section>')
