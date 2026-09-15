@@ -470,6 +470,35 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
         x = str(x or "")
         return (x[8:10] + "." + x[5:7]) if len(x) >= 10 else x
 
+    def _gap(c):
+        """Misafir giriş yaptıktan KAÇ SONRA odası değişmiş — hücre HTML'i.
+
+        Otel sahibinin kuralı: girişten hemen sonraki taşıma genelde resepsiyonun
+        yerleştirmeyi düzeltmesidir; 1 SAAT ve sonrasındaki taşıma ise neredeyse her
+        zaman odada bir sorun çıktığı anlamına gelir. O yüzden 1 saat+ KIRMIZI.
+        (shown satırlarında when >= check-in garantidir: kart_yukle pre_checkin'i
+        böyle eliyor. Yine de eksik/bozuk veriye karşı temkinliyiz.)
+        """
+        gin, cintime = str(c.get("gin") or ""), str(c.get("cintime") or "")
+        when = str(c.get("when") or "")
+        if not (len(gin) >= 10 and len(cintime) >= 4 and len(when) >= 16):
+            return '<span style="color:#9aa3ad">—</span>'
+        try:
+            ci = datetime.strptime(f"{gin[:10]} {cintime[:5]}", "%Y-%m-%d %H:%M")
+            ch = datetime.strptime(when[:16], "%Y-%m-%d %H:%M")
+        except ValueError:
+            return '<span style="color:#9aa3ad">—</span>'
+        mins = int((ch - ci).total_seconds() // 60)
+        if mins < 0:
+            return '<span style="color:#9aa3ad">—</span>'
+        gun, kalan = divmod(mins, 1440)
+        saat, dk = divmod(kalan, 60)
+        txt = (f"{gun} gün {saat} sa" if gun else
+               (f"{saat} sa {dk:02d} dk" if saat else f"{dk} dk"))
+        if mins >= 60:
+            return f'<span style="color:#c0392b;font-weight:700">{txt}</span>'
+        return txt
+
     if not shown:
         o.append('<p class="lead">Misafir giriş yaptıktan sonra yapılan oda değişimi yok'
                  + (f' (check-in öncesi {hidden_n} atama gizlendi).' if hidden_n else ' (ya da yüklenmedi).')
@@ -478,9 +507,12 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
         o.append('<p class="lead">Misafir <b>giriş yaptıktan SONRA</b> (konaklama ortası) yapılan oda '
                  'değişimleri — check-in öncesi atamalar gizlendi (sorun değil). Neden, rezervasyondaki '
                  '<b>Oda Notu</b>\'ndan gelir; <b style="color:#c0392b">yazılmamış</b> olanları '
-                 'resepsiyona sorun.</p>')
+                 'resepsiyona sorun. <b>Girişten sonra</b> sütunu, misafirin giriş saatiyle '
+                 'taşıma saati arasındaki süredir: birkaç dakika genelde yerleştirme '
+                 'düzeltmesidir, <b style="color:#c0392b">1 saat ve üzeri</b> (kırmızı) ise '
+                 'çoğunlukla odada bir sorun çıktığını gösterir — nedeni yazılmamışsa sorun.</p>')
         o.append('<div class="scroll"><table><thead><tr><th>Rez No</th><th>Tarih-Saat</th><th>Misafir</th>'
-                 '<th>Konaklama</th><th>Odadan</th><th>Odaya</th><th>Yapan</th>'
+                 '<th>Konaklama</th><th>Girişten sonra</th><th>Odadan</th><th>Odaya</th><th>Yapan</th>'
                  '<th>Neden (Oda Notu)</th></tr></thead><tbody>')
         for c in sorted(shown, key=lambda c: c.get("when", "")):
             note = (c.get("note") or "").strip()
@@ -494,6 +526,7 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
                      f'<td>{html.escape(str(c.get("when","")))}</td>'
                      f'<td>{html.escape(c.get("guest",""))}</td>'
                      f'<td>{html.escape(stay)}</td>'
+                     f'<td style="white-space:nowrap">{_gap(c)}</td>'
                      f'<td class="room">{html.escape(c.get("from_room",""))}</td>'
                      f'<td class="room">{html.escape(c.get("to_room",""))}</td>'
                      f'<td>{html.escape(c.get("user",""))}</td>'
