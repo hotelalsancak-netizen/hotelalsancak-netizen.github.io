@@ -48,6 +48,12 @@ def log(msg):
     print(msg, flush=True)
 
 
+# Otel ~55 odalık; sağlam bir haftalık döküm 50+ oda ve on binli okuma getirir. Bu
+# eşikler yarım/bozuk yüklemeyi ayırmak için bilinçli olarak GENİŞ tutuldu.
+MIN_ROOMS = 20
+MIN_READS = 500
+
+
 def find_pdfs(root: Path):
     return sorted(Path(p) for p in glob.glob(str(root / "**" / "*.pdf"), recursive=True))
 
@@ -110,6 +116,17 @@ def parse_cards_folder(folder: Path) -> dict:
         except Exception as e:
             log(f"  ! {p.name} okunamadı: {e}")
     log(f"  {len(pdfs)} PDF, {len(cards)} oda çözüldü")
+    # 14.09.2026: terminal dökümü repoya İKİ KEZ düştü — önce 115 KB'lık yarım bir dosya
+    # (tek oda), 2 saat sonra tam dosya. Yarım dosya sessizce işlendi, "0 şüpheli" yazdı ve
+    # hafta bloğu oluştuğu için tam dosya bir daha işlenmedi. Bir hırsızlık denetiminde en
+    # tehlikelisi budur: veri yokken "temiz" demek. Artık makul olmayan döküm YAYINLANMAZ,
+    # iş akışı görünür biçimde hata verir; sonraki (tam) yükleme normal şekilde işlenir.
+    reads = sum(len(v or []) for v in cards.values())
+    if len(cards) < MIN_ROOMS or reads < MIN_READS:
+        raise SystemExit(
+            f"Döküm eksik görünüyor: {len(cards)} oda / {reads} okuma "
+            f"(en az {MIN_ROOMS} oda ve {MIN_READS} okuma bekleniyor). "
+            "Muhtemelen yükleme yarım kaldı. Rapor ÜRETİLMEDİ — dökümü yeniden yükleyin.")
     return cards
 
 

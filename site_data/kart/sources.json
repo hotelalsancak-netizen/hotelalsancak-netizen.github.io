@@ -1,0 +1,34 @@
+{
+ "20260727.zip.enc": {
+  "week": "20260720",
+  "sha256": "a5bfd3093e966f5c1a93e3b6f29e07f93f8fd00b2ba64a072fd79102fd91bc0b"
+ },
+ "20260803.zip.enc": {
+  "week": "20260727",
+  "sha256": "a1382ebf982b1b631c6ac13dc5494cde786f695d7699107df19f07fe69be1085"
+ },
+ "20260804.zip.enc": {
+  "week": "20260727",
+  "sha256": "67712832b2314187c4208b543e531709f5afb166441ea56b4e9de4c17ef29835"
+ },
+ "20260810.zip.enc": {
+  "week": "20260803",
+  "sha256": "62ddc2dc6352a3653d7a358bfc86c95b9202e77f347df468421736b588ebd1e0"
+ },
+ "20260818.zip.enc": {
+  "week": "20260810",
+  "sha256": "696d486668511b2a087d1e09740f1500ea6bf04b620fe31127852bf0c1340c36"
+ },
+ "20260824.zip.enc": {
+  "week": "20260817",
+  "sha256": "94e2bb150088b1bbe3d17e6d4516ca97d6f1ea1e7f28f087fc80ce602cdaa66d"
+ },
+ "20260907.zip.enc": {
+  "week": "20260831",
+  "sha256": "42eb141fcc0a8c3d83ad1f4dfa3dfe539518db889a4011d4c0bc9d7c765bf157"
+ },
+ "20260914.zip.enc": {
+  "week": "20260907",
+  "sha256": "42a39f4158660763eddae731d62c70d5978cd44e11efedd45efb2febca9aab24"
+ }
+}

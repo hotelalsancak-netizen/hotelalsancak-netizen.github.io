@@ -44,20 +44,51 @@ jobs:
           CARD_ZIP_PASSWORD: ${{ secrets.CARD_ZIP_PASSWORD }}
         run: |
           python - <<'EOF'
-          import glob, pathlib, subprocess, sys
+          import glob, hashlib, json, pathlib, subprocess, sys
           sys.path.insert(0, '.')
           import kart_yukle
+
+          # 14.09.2026: döküm repoya İKİ KEZ düştü (önce 115 KB'lık yarım dosya, 2 saat sonra
+          # tam dosya). Eski kontrol sadece "hafta bloğu var mı" diye bakıyordu, bu yüzden tam
+          # dosya bir daha işlenmedi ve pano tek odalık boş bir raporu "0 şüpheli" diye
+          # gösterdi. Artık kaynağın sha256'sını da saklıyoruz: dosya değişirse hafta YENİDEN
+          # üretilir. (Yarım dosyanın kendisini kart_yukle.py'deki MIN_ROOMS/MIN_READS eşiği
+          # ayrıca durdurur — o zaman blok hiç oluşmaz ve sonraki yükleme normal işlenir.)
+          # Kayıt DOSYA ADINA göre tutulur, hafta kimliğine göre değil: iki ayrı döküm
+          # (ör. 20260803 ve 20260804) aynı haftaya düşebiliyor; haftaya göre saklasaydık
+          # biri hep eşleşmez ve her çalışmada boşuna yeniden üretilirdi.
+          SRC = pathlib.Path('site_data/kart/sources.json')
+          srcs = json.loads(SRC.read_text(encoding='utf-8')) if SRC.exists() else {}
           todo = []
           for enc in sorted(glob.glob('site_data/cardreads-incoming/*.zip.enc')):
-              lo, hi = kart_yukle.week_of(None, pathlib.Path(enc).name)
+              name = pathlib.Path(enc).name
+              lo, hi = kart_yukle.week_of(None, name)
               wid = lo.strftime('%Y%m%d')
-              if not pathlib.Path(f'site_data/kart/{wid}.enc.json').exists():
-                  todo.append(enc)
+              digest = hashlib.sha256(pathlib.Path(enc).read_bytes()).hexdigest()
+              done = pathlib.Path(f'site_data/kart/{wid}.enc.json').exists()
+              if done and srcs.get(name, {}).get('sha256') == digest:
+                  continue
+              if done and name in srcs:
+                  print(f'==> {name}: kaynak dosya DEĞİŞMİŞ — {wid} haftası yeniden üretilecek.')
+              todo.append((enc, name, wid, digest))
           if not todo:
               print('Yeni (işlenmemiş) kart dosyası yok — çıkılıyor.')
-          for enc in todo:
+          # Bir dosya bozuksa diğer haftalar da işlenemesin istemiyoruz: hata verse bile
+          # devam ediyoruz ve o haftanın kaydını YAZMIYORUZ (sonraki çalışmada tekrar dener).
+          # Başarısız hafta panoda hiç görünmez — bu, yanlış bir "0 şüpheli"den çok daha iyidir.
+          hatali = []
+          for enc, name, wid, digest in todo:
               print('==> İşleniyor:', enc)
-              subprocess.run([sys.executable, 'kart_yukle.py', enc, '--no-publish'], check=True)
+              r = subprocess.run([sys.executable, 'kart_yukle.py', enc, '--no-publish'])
+              if r.returncode != 0:
+                  hatali.append(name)
+                  print(f'!!! {name} İŞLENEMEDİ — {wid} haftası üretilmedi (panoda görünmeyecek).')
+                  continue
+              srcs[name] = {'week': wid, 'sha256': digest}
+              SRC.write_text(json.dumps(srcs, ensure_ascii=False, indent=1), encoding='utf-8')
+          if hatali:
+              print('!!! ÖZET — işlenemeyen döküm(ler):', ', '.join(hatali))
+              print('!!! Büyük ihtimalle yükleme yarım kaldı; dökümü yeniden yükleyin.')
           EOF
       - name: Kart bloğunu commit'le + push (değiştiyse)
         run: |
