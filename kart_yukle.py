@@ -349,12 +349,16 @@ def build_week(cards, changes, occ, lo, hi, pdf_dir=None):
     return html, sus
 
 
-def save_week(section, lo, hi, pw):
+def save_week(section, lo, hi, pw, pw_reception=""):
     KART_DIR.mkdir(parents=True, exist_ok=True)
     wid = lo.strftime("%Y%m%d")
-    # Kart is MANAGER-ONLY: encrypt for the manager password only (multi-recipient
-    # format so the role-aware shell reads it exactly like the cloud-built blobs).
-    blob = dashcrypto.encrypt_multi(json.dumps(section, ensure_ascii=False), [pw])
+    # 15.09.2026: otel sahibi kart raporunu ikinci role de açtı. Kabuk bir bölümü
+    # yalnızca girilen parola BLOĞU ÇÖZEBİLİYORSA gösterir, bu yüzden erişim vermek
+    # = bloğu o parola için de şifrelemek. (dashboard.RECEPTION_SECTIONS yalnızca
+    # encrypt_section'dan geçen bölümleri etkiler; kart haftaları burada, önceden
+    # şifrelenir.) encrypt_multi boş/yinelenen parolaları zaten atar.
+    blob = dashcrypto.encrypt_multi(json.dumps(section, ensure_ascii=False),
+                                    [pw, pw_reception])
     (KART_DIR / f"{wid}.enc.json").write_text(json.dumps(blob), encoding="utf-8")
 
     label = f"{lo.day}–{hi.day} {TR_MON[hi.month]} {hi.year}"
@@ -443,7 +447,7 @@ def main():
         "updated": dt.datetime.now().strftime("%d.%m.%Y %H:%M"),
         "html": html,
     }
-    wid, label = save_week(section, lo, hi, pw)
+    wid, label = save_week(section, lo, hi, pw, os.environ.get("DASH_PW_RECEPTION", "").strip())
     log(f"     {label}: {sus} şüpheli oda-gecesi -> site_data/kart/{wid}.enc.json")
 
     if a.no_publish:

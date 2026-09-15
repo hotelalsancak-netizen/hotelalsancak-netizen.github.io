@@ -192,9 +192,13 @@ async function doLogin(ev){
     let sawBlob = false;
     for(const k of keys){
       if(k === "kart"){
-        // Multi-week section (manager-only). Tile shows the newest week; other
-        // weeks load lazily on selection. decryptBlob() returns null for a role
-        // that isn't allowed to see it, so reception simply won't get a kart tile.
+        // Multi-week section. Tile shows the newest week; other weeks load lazily
+        // on selection. Erisim tamamen SIFREYE baglidir: decryptBlob() bu parola
+        // hicbir variant'i acamazsa null doner ve o rol kart tile'i gormez.
+        // 15.09.2026: haftalar hem yonetim hem resepsiyon parolasiyla sifreleniyor
+        // (kart_yukle.save_week), yani iki rol de goruyor. Geri almak icin haftalari
+        // yalniz yonetim parolasiyla YENIDEN sifrelemek gerekir — bu dosyayi
+        // degistirmek yetmez.
         const idx = await getJSON("data/kart-index.json");
         if(!idx || !idx.weeks || !idx.weeks.length) continue;
         sawBlob = true;
