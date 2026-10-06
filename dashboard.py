@@ -244,6 +244,10 @@ def build_cloud():
     # Login shell + manifest (ordered by SECTION_ORDER, only what we actually built).
     order = [k for k in SECTION_ORDER if k in built]
     shutil.copyfile(SHELL, PUBLIC / "index.html")
+    # Marka dosyaları (Bilsa logosu). Göreli yoldan sunulur: alan adı değişse
+    # (ör. rivaalsancak.bilsa.com.tr) hiçbir şey düzenlenmeden orada da çalışır.
+    if (ROOT / "assets").is_dir():
+        shutil.copytree(ROOT / "assets", PUBLIC / "assets", dirs_exist_ok=True)
     (PUBLIC / "data" / "manifest.json").write_text(
         json.dumps({"built": now_str(), "sections": order}, ensure_ascii=False),
         encoding="utf-8")
