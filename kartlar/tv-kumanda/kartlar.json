@@ -1,0 +1,38 @@
+{
+ "uretim": "2026-10-08",
+ "kartlar": [
+  {
+   "kod": "A",
+   "ad": "Beko · gri",
+   "pdf": "kart-A-beko-gri.pdf",
+   "png": "kart-A-beko-gri.png",
+   "matbaa": "matbaa/kart-A-beko-gri-matbaa.pdf",
+   "onizleme": "onizleme-A.jpg"
+  },
+  {
+   "kod": "B",
+   "ad": "Beko · uzun siyah",
+   "pdf": "kart-B-beko-uzun-siyah.pdf",
+   "png": "kart-B-beko-uzun-siyah.png",
+   "matbaa": "matbaa/kart-B-beko-uzun-siyah-matbaa.pdf",
+   "onizleme": "onizleme-B.jpg"
+  },
+  {
+   "kod": "C",
+   "ad": "Beko · küçük siyah",
+   "pdf": "kart-C-beko-kucuk-siyah.pdf",
+   "png": "kart-C-beko-kucuk-siyah.png",
+   "matbaa": "matbaa/kart-C-beko-kucuk-siyah-matbaa.pdf",
+   "onizleme": "onizleme-C.jpg"
+  },
+  {
+   "kod": "D",
+   "ad": "Awox",
+   "pdf": "kart-D-awox.pdf",
+   "png": "kart-D-awox.png",
+   "matbaa": "matbaa/kart-D-awox-matbaa.pdf",
+   "onizleme": "onizleme-D.jpg"
+  }
+ ],
+ "a4": "hepsi-A4-baski.pdf"
+}

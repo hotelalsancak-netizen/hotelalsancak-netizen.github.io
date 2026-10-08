@@ -45,7 +45,7 @@ SHELL = ROOT / "dashboard_shell.html"
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
 SECTION_ORDER = ["gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "parite",
-                 "kart", "stats", "satis", "vergi"]
+                 "kart", "stats", "satis", "vergi", "tvkart"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -122,7 +122,7 @@ def build_kart() -> dict:
 # YÖNETİME ÖZELDİR — bunlar zaten resepsiyon kaynaklı kaçağı yakalamak için var;
 # resepsiyon bunları görürse neyin yakalandığını da görmüş olur. (Sahibin kararı,
 # 24.08.2026.) Bir listeyi resepsiyona açmak istersen anahtarını buraya ekle.
-RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart"}
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart"}
 
 
 def passwords() -> dict:
@@ -198,7 +198,8 @@ def build_cloud():
             ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
             ("parite", checks.build_parite),
             ("stats", checks.build_stats), ("satis", checks.build_satis),
-            ("vergi", checks.build_vergi), ("gunluk", checks.build_gunluk))
+            ("vergi", checks.build_vergi), ("gunluk", checks.build_gunluk),
+            ("tvkart", checks.build_tvkart))
     for key, fn in live:
         try:
             section = fn(env)
@@ -248,6 +249,12 @@ def build_cloud():
     # (ör. rivaalsancak.bilsa.com.tr) hiçbir şey düzenlenmeden orada da çalışır.
     if (ROOT / "assets").is_dir():
         shutil.copytree(ROOT / "assets", PUBLIC / "assets", dirs_exist_ok=True)
+    # TV kullanım kartları: indirilebilir PDF/PNG (odaya konan misafir kartları, gizli
+    # değil). Üretici betik, ara HTML ve ham görseller yayına çıkmaz.
+    if (ROOT / "kartlar" / "tv-kumanda").is_dir():
+        shutil.copytree(ROOT / "kartlar" / "tv-kumanda", PUBLIC / "kartlar" / "tv-kumanda",
+                        dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("*.py", "*.html", "img", ".tmp-*", "__pycache__"))
     (PUBLIC / "data" / "manifest.json").write_text(
         json.dumps({"built": now_str(), "sections": order}, ensure_ascii=False),
         encoding="utf-8")

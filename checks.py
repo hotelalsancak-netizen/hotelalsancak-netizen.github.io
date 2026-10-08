@@ -2127,6 +2127,94 @@ def _is_direct_agency(agency):
     return (not a) or ("WALK" in a) or ("TELEFON" in a) or ("PHONE" in a)
 
 
+# ---------------------------------------------------------------------------
+# TV Kullanım Kartları — odalara konan "Next uydu alıcısı + TV kumandası" kartları.
+# Elektra'ya ihtiyaç yok: kartlar/tv-kumanda/uret.py'nin yazdığı kartlar.json'ı okur.
+# Kart dosyaları (PDF/PNG) şifresiz statik dosya olarak yayınlanır (dashboard.py
+# kopyalar) — misafir odasına konmak için basılan kartlar, gizli bilgi içermez. Bu
+# sayfa ise her bölüm gibi şifreli; resepsiyon + yönetim ikisi de açar.
+# ---------------------------------------------------------------------------
+import pathlib as _pl
+TVKART_DIR = _pl.Path(__file__).resolve().parent / "kartlar" / "tv-kumanda"
+TVKART_URL = "kartlar/tv-kumanda/"
+
+TVKART_CSS = """
+<style>
+.tvk{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin:14px 0 4px}
+.tvk .card{display:flex;flex-direction:column;gap:11px;padding:14px}
+.tvk .thumb{display:block;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.tvk .thumb img{display:block;width:100%;height:auto}
+.tvk h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}
+.kod{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;flex:none;
+  border-radius:6px;background:var(--eyebrow);color:var(--card);font-size:12px;font-weight:800}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.dl{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9px;
+  border:1px solid var(--border);background:var(--bg);color:var(--fg);text-decoration:none;
+  font-size:12.5px;font-weight:600;line-height:1.2}
+.dl:hover{border-color:var(--eyebrow)}
+.dl:focus-visible{outline:2px solid var(--eyebrow);outline-offset:2px}
+.dl.main{background:var(--eyebrow);border-color:var(--eyebrow);color:var(--card)}
+.dl small{font-weight:500;opacity:.75}
+.howto{margin:8px 0 0;padding-left:18px;color:var(--sub);font-size:12.5px;line-height:1.7}
+.spec{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:6px 0 10px;font-size:13px}
+.spec dt{color:var(--sub)}.spec dd{margin:0;font-weight:600}
+</style>"""
+
+
+def build_tvkart(env=None):
+    m = json.loads((TVKART_DIR / "kartlar.json").read_text(encoding="utf-8"))
+    kartlar = m["kartlar"]
+    u = lambda f: esc(TVKART_URL + f)
+
+    def isim(k, uz):
+        return esc(f"TV-karti-{k['kod']}-{k['ad'].replace(' · ', '-').replace(' ', '-')}{uz}")
+
+    cards = "".join(
+        f"<div class='card'>"
+        f"<a class='thumb' href='{u(k['png'])}' target='_blank' rel='noopener' "
+        f"title='Büyük görmek için tıklayın'><img src='{u(k['onizleme'])}' "
+        f"alt='TV kartı {esc(k['kod'])} — {esc(k['ad'])} kumandası' loading='lazy'></a>"
+        f"<h3><span class='kod'>{esc(k['kod'])}</span>{esc(k['ad'].replace(' · ', ' '))} kumandası</h3>"
+        f"<div class='btns'>"
+        f"<a class='dl main' href='{u(k['pdf'])}' download='{isim(k, '.pdf')}'>⤓ PDF</a>"
+        f"<a class='dl' href='{u(k['png'])}' download='{isim(k, '.png')}'>⤓ PNG <small>WhatsApp</small></a>"
+        f"<a class='dl' href='{u(k['matbaa'])}' download='{isim(k, '-matbaa.pdf')}'>⤓ Matbaa PDF</a>"
+        f"</div></div>" for k in kartlar)
+
+    body = (
+        TVKART_CSS +
+        "<p class='lead'>Odadaki <b>TV kumandasına</b> bakın, aynı kumandanın olduğu kartı seçin. "
+        "Kartın sağ alt köşesindeki küçük harf (A–D) da hangi kumanda için olduğunu gösterir. "
+        "Görsele tıklayınca kart büyük açılır.</p>"
+        f"<div class='tvk'>{cards}</div>"
+        "<div class='grid2' style='margin-top:18px'>"
+        "<div class='card'><h3>Ofis yazıcısında basmak</h3>"
+        f"<div class='btns'><a class='dl main' href='{u(m['a4'])}' download='TV-kartlari-4u-bir-A4.pdf'>"
+        "⤓ 4 kart tek A4 · PDF</a></div>"
+        "<ol class='howto'><li>Yazdırırken ölçeği <b>%100 / Gerçek boyut</b> seçin "
+        "(<i>Sayfaya sığdır</i> kapalı olsun).</li>"
+        "<li>Kesik çizgilerden kesin — bir A4'ten dört kart (A, B, C, D) çıkar.</li>"
+        "<li>Tek bir kumanda için çok kart gerekiyorsa o kartın kendi PDF'ini basın.</li></ol></div>"
+        "<div class='card'><h3>Matbaaya göndermek</h3>"
+        "<p class='lead' style='margin-bottom:4px'>Her kartın <b>Matbaa PDF</b> düğmesindeki dosyayı "
+        "gönderin; her karttan kaç adet istediğinizi yazın.</p>"
+        "<dl class='spec'>"
+        "<dt>Kesim boyu</dt><dd>A6 · 105 × 148 mm</dd>"
+        "<dt>Dosya</dt><dd>her yanda 3 mm taşma payı + kesim işaretli</dd>"
+        "<dt>Baskı</dt><dd>tek yüz, 4 renk</dd>"
+        "<dt>Kâğıt önerisi</dt><dd>300–350 g kuşe + mat selefon</dd>"
+        "<dt>Renk</dt><dd>RGB — matbaa CMYK'ya kendisi çevirir</dd>"
+        "</dl></div></div>"
+        "<div class='note'>Kartlar misafir odasına konmak için hazırlandı; içlerinde gizli bilgi yoktur. "
+        "Yeni bir TV modeli gelirse ya da metin değişirse kartlar yeniden üretilip burada güncellenir.</div>")
+    return {"label": "TV Kullanım Kartları", "count": len(kartlar), "count_label": "kart",
+            "tone": "ok", "sub": "Next + TV kumandası · indir, yazdır, matbaaya gönder",
+            "updated": now_str(),
+            "html": PAGE("Oda hazırlığı", "TV Kullanım Kartları",
+                         "Misafirin uydu yayınını açabilmesi için her TV kumandasına ayrı kart",
+                         body)}
+
+
 def build_gunluk(env):
     today = dt.date.today()
     start = today - dt.timedelta(days=30)          # son 31 gün (gün/hafta/ay kapsamı için)
