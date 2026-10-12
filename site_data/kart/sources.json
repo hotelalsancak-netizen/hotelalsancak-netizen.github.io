@@ -42,5 +42,9 @@
  "20261005.zip.enc": {
   "week": "20260928",
   "sha256": "6cf82a53956cd203891371d8c4a297adb5ef806f3bc3cf3c1afe5b8d29c55f2e"
+ },
+ "20261012.zip.enc": {
+  "week": "20261005",
+  "sha256": "78a4f496c8fee3bc2ce7a4e9cfc38ae1463ba5b62de6539f4a5d96a28ba58705"
  }
 }
