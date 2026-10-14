@@ -2134,8 +2134,10 @@ def _is_direct_agency(agency):
 # kopyalar) — misafir odasına konmak için basılan kartlar, gizli bilgi içermez. Bu
 # sayfa ise her bölüm gibi şifreli; resepsiyon + yönetim ikisi de açar.
 # ---------------------------------------------------------------------------
-import pathlib as _pl
-TVKART_DIR = _pl.Path(__file__).resolve().parent / "kartlar" / "tv-kumanda"
+# DİKKAT: "_pl" adı bu dosyada vergi hesabının gelir-tablosu fonksiyonu; pathlib'i o adla
+# içe aktarmak onu ezdi ve Vergi Sayfası 08–14.10.2026 arası üretilemedi.
+import pathlib as _pathlib
+TVKART_DIR = _pathlib.Path(__file__).resolve().parent / "kartlar" / "tv-kumanda"
 TVKART_URL = "kartlar/tv-kumanda/"
 
 TVKART_CSS = """
