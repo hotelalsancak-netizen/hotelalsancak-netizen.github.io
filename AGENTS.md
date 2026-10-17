@@ -13,8 +13,8 @@ boş oda satılıp cebe mi atıldı?"
 - **11 bölüm (tile):** `gunsonu` (Gün Sonu), `odeme` (Günlük Ödeme Kontrolü — **tarih-seçimli**
   son 7 gün giriş ödemeleri + **açık bakiye paneli** res-guest-balance-list), `kasa` (Kasa & POS
   mutabakatı — **haftalık, çok-dövizli** TL/EUR/USD, banka **xlsx yükleme**, Elektra kart↔banka
-  POS T+1), `iptal` (İptal/Silinen), `indirim`, `bakiye` (Açık bakiye), `parite` (Parite Kontrolü —
-  tarayıcı-içi fiyat girişi), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
+  POS T+1), `iptal` (İptal/Silinen), `indirim`, `bakiye` (Açık bakiye), `fiyat` (Fiyat Kontrol — kanallarda
+  görülen fiyat hedefle aynı mı + kapı fiyatları; iki rol de görür; gözlemler `site_data/fiyat/gozlem.json`), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
   güçlü/zayıf ayrımı), `stats` (Doluluk/ADR/grafikler), `satis` (Aylık satışlar), `vergi` (**Vergi Sayfası** —
   muhasebe mizanından aylık KDV + konaklama vergisi + dönemsel kurumlar/geçici vergi).
 
@@ -27,8 +27,7 @@ boş oda satılıp cebe mi atıldı?"
   Yayınlanan her şey **ciphertext**; tarayıcı doğru parolayla bellekte çözer (`dashboard_shell.html`).
 - **İKİ ROL:** `DASH_PW_MANAGER` (yönetim/sahip — her şeyi görür), `DASH_PW_RECEPTION`
   (resepsiyon — yalnızca `dashboard.py` içindeki `RECEPTION_SECTIONS`, şu an
-  `{"gunsonu", "odeme", "bakiye"}`). Denetim sayfaları (`kart`, `iptal`, `indirim`, `kasa`,
-  `parite`) ve finans sayfaları (`vergi`, `satis`, `stats`) **yönetime özeldir** — bunlar
+  `{"gunsonu", "odeme", "bakiye"}`). Denetim sayfaları (`kart`, `iptal`, `indirim`, `kasa`) ve finans sayfaları (`vergi`, `satis`, `stats`) **yönetime özeldir** — bunlar
   resepsiyon kaynaklı kaçağı yakalamak için var, resepsiyon görürse neyin yakalandığını da
   görür (sahibin kararı, 24.08.2026). Parolalar **Secrets/.env**'de; **repoda ASLA yok.**
 

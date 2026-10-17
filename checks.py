@@ -1720,111 +1720,282 @@ vergisi rakamı anında güncellensin. Girdikleriniz yalnızca bu tarayıcıda s
 """
 
 
-# --------------------------------------------------------------------------- Parite (fiyat) — elle giriş
-# OTA'lar kendi indirimlerini (Booking Genius, promosyon, mobil) OTA tarafında uygular;
-# Elektra bunu görmez. Gerçek EKRAN fiyatını yakalamanın tek güvenilir yolu: kullanıcı
-# gördüğü fiyatı girer. Her kanal "Aç →" ile açılır; kapıdandan ucuz OTA = parite ihlali.
-# DOĞRUDAN otel sayfaları (arama değil) — tek tıkla otelin kendi ilanına gider.
-# {ci}/{co} = bu gece → yarın (YYYY-AA-GG); {ci_d}/{co_d} aynı tarihler GG.AA.YYYY
-# biçiminde (Türk OTA'ları böyle ister). JS bunları çalışma anında doldurur.
-PARITE_CHANNELS = [
-    ("kapidan", "🏠 Kapıdan (rezervasyonal)",
-     "https://rivahotelalsancak.rezervasyonal.com/?Checkin={ci}&Checkout={co}&Adult=2&child=0&ChildAges=&language=tr"),
-    ("booking", "Booking.com",
-     "https://www.booking.com/hotel/tr/apart-alsancak.html?checkin={ci}&checkout={co}&group_adults=2&no_rooms=1&group_children=0"),
-    ("hotels", "Hotels.com / Expedia",
-     "https://tr.hotels.com/ho657763/hotel-apart-alsancak-izmir-turkiye/?chkin={ci}&chkout={co}&rm1=a2"),
-    ("etstur", "Etstur",
-     "https://www.etstur.com/Riva-Hotel-Alsancak?check_in={ci_d}&check_out={co_d}&adult_1=2&child_1=0"),
-    ("tatilsepeti", "Tatilsepeti",
-     "https://www.tatilsepeti.com/riva-hotel-alsancak?ara=oda:2;tarih:{ci_d},{co_d}"),
-    ("enuygun", "Enuygun",
-     "https://www.enuygun.com/otel/detay/riva-hotel-alsancak-428633/?checkInDate={ci_d}&checkOutDate={co_d}&rooms=2"),
-    ("tatilbudur", "Tatilbudur",
-     "https://www.tatilbudur.com/riva-hotel-alsancak"),
-    ("obilet", "Obilet",
-     "https://www.obilet.com/otel-detay/riva-hotel-alsancak-751493/{ci_c}-{co_c}/2ad"),
-    ("tripcom", "Trip.com",
-     "https://tr.trip.com/hotels/detail/?city=1216&hotelid=102583877&checkin={ci}&checkout={co}&adult=2&crn=1&curr=TRY&locale=tr_TR"),
-    ("trivago", "Trivago",
-     "https://www.trivago.com.tr/tr/lm/konaklama-hizmeti-verilen-apart-daire-riva-hotel-alsancak-izmir"),
-]
+# --------------------------------------------------------------------------- Fiyat Kontrol
+# Sahibin 15.10.2026 kararı: aynı oda, aynı gece için misafir HER kanalda aynı fiyatı görür.
+# Tablodaki fiyatlar iptal edilemez, TL, 1–2 kişi, kahvaltı dahil; iade edilebilir %10 fazla.
+# Gün grubu: 0 = Pazar + Pazartesi · 1 = Salı–Cuma · 2 = Cumartesi.
+# Elektra'da baz fiyat EUR'dur (= hedef / 0,91 / kur); kanala giden = baz × kanal çarpanı.
+# Bu tablo değişirse Elektra'daki fiyatlar da elle değişmeli (Fiyat ve Doluluk → Toplu Güncelleme).
+FIYAT_ODALAR = (  # (anahtar, ad, alt yazı, (grup0, grup1, grup2))
+    ("eko", "Ekonomik", "balkonlu · yalnızca site, telefon, kapı", (3300, 3500, 3800)),
+    ("stu", "Stüdyo", "mutfaklı", (3500, 3800, 4000)),
+    ("sup", "Superior", "mutfaklı / mutfaksız", (3700, 4000, 4200)),
+    ("dlx", "Deluxe", "mutfaklı / balkonlu", (3900, 4200, 4500)),
+    ("sui", "1+1 Suit", "mutfaklı", (4500, 5000, 5500)),
+)
+KAPI_INDIRIM = 300      # telefon / VIP pazarlığında en fazla bu kadar indirim
+FIYAT_TOLERANS = 40     # hedeften ±40 TL "hedefte" sayılır (kanallar Euro'yu kendi kuruyla çevirir)
+GRUP_ADI = ("Pazar · Pazartesi", "Salı – Cuma", "Cumartesi")
+GUN_ADI = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
+GUN_KISA = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
+
+# anahtar → (görünen ad, Elektra kanal adı, kanaldaki TEK indirim, etiket, açık fiyat notu).
+# Elektra adı "" = otelin kendi sitesi (çarpan 1); None = Elektra'ya bağlı değil (yalnızca
+# görülen fiyat gösterilir). İndirim, misafirin bulabileceği en düşük fiyata inen toplam
+# orandır; Booking/Expedia/Trip'te yalnızca üye/mobil misafire uygulanır, giriş yapmayan
+# çarpanlı fiyatı görür (açık fiyat).
+FIYAT_KANALLAR = {
+    "site":       ("Kendi siteniz", "", 0.0, "indirim yok", ""),
+    "booking":    ("Booking", "Booking.com", 0.10, "Genius %10", "giriş yapmayan"),
+    "hotels":     ("Hotels.com / Expedia", "Expedia", 0.10, "mobil %10", "bilgisayardan"),
+    "trip":       ("Trip.com", "Ctrip", 0.10, "mobil %10", "bilgisayardan"),
+    "etstur":     ("Etstur", "ETSTUR", 0.20, "%20 Özel fırsat", ""),
+    "tatilbudur": ("TatilBudur", "TatilBudur", 0.20, "%20 Erken rezervasyon", ""),
+    "enuygun":    ("Enuygun", "Enuygun", 0.28, "%28 · Enuygun'un indirimi", ""),
+    "jolly":      ("Jollytur", "JollyTur", 0.20, "%20 · Jolly'nin indirimi", ""),
+    "obilet":     ("obilet", None, None, "bağlı değil · Etstur stoğu", ""),
+    "zenhotels":  ("ZenHotels", None, None, "bağlı değil · toptancıdan", ""),
+    "sembo":      ("sembo", None, None, "bağlı değil · Expedia ortağı", ""),
+}
 
 
-def build_parite(env):
-    """Parite Kontrolü — kullanıcı her kanalda GÖRDÜĞÜ gerçek fiyatı (Genius/indirim dahil)
-    girer. Kapıdandan ucuz satan OTA parite ihlali (kırmızı); en ucuz yeşil. Girilen
-    fiyatlar tarayıcıda gün gün saklanır. OTA'ların kendi indirimlerini Elektra göremediği
-    için gerçek ekran fiyatını yakalamanın tek güvenilir yolu budur."""
-    ch_js = json.dumps([{"key": k, "name": n, "url": u} for k, n, u in PARITE_CHANNELS],
-                       ensure_ascii=False)
-    body = f"""
-    <p class='lead'>Baz: <b>bu gece · 2 kişi · Standart Stüdyo (mutfaklı)</b>. Her kanalın
-    <b>Aç →</b> linkine tıkla, <b>gördüğün gerçek fiyatı</b> (Genius/indirim dahil) yaz.
-    🔴 <b>kapıdandan ucuz</b> satan OTA = parite ihlali · 🟢 en ucuz.</p>
-    <div class='stats' id='psum'></div>
-    <table><tr><th>Kanal</th><th></th><th class='r'>Gördüğün fiyat (₺)</th></tr>
-      <tbody id='prows'></tbody></table>
-    <div class='note'>Girdiğin fiyatlar bu tarayıcıda, gün gün saklanır. OTA'ların Genius/promosyon
-    indirimleri OTA tarafında olur; Elektra göremez — o yüzden gerçek fiyatı sen girersin.</div>
-    <script>
-    (function(){{
-      var CH={ch_js};
-      function pad(n){{return(n<10?'0':'')+n;}}
-      var now=new Date(),tom=new Date(Date.now()+864e5);
-      var ci=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
-      var co=tom.getFullYear()+'-'+pad(tom.getMonth()+1)+'-'+pad(tom.getDate());
-      var ci_d=pad(now.getDate())+'.'+pad(now.getMonth()+1)+'.'+now.getFullYear();
-      var co_d=pad(tom.getDate())+'.'+pad(tom.getMonth()+1)+'.'+tom.getFullYear();
-      var ci_c=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate());
-      var co_c=tom.getFullYear()+pad(tom.getMonth()+1)+pad(tom.getDate());
-      // Uzun jetonları (ci_d/co_d/ci_c/co_c) önce değiştir ki {{ci}} onların içine denk gelmesin.
-      function chUrl(c){{return c.url.replace('{{ci_d}}',ci_d).replace('{{co_d}}',co_d).replace('{{ci_c}}',ci_c).replace('{{co_c}}',co_c).replace('{{ci}}',ci).replace('{{co}}',co);}}
-      // Kanal adı = otelin ilanına giden link (Aç → ile aynı hedef).
-      function nameHtml(c){{return '<a href="'+chUrl(c)+'" target="_blank" rel="noopener" title="'+c.name+' — otelin ilanını aç" style="color:inherit;text-decoration:none;border-bottom:1px solid var(--brand,#0e7490);font-weight:600">'+c.name+'</a>';}}
-      var KEY='parite-'+ci;
-      var saved={{}}; try{{saved=JSON.parse(localStorage.getItem(KEY)||'{{}}');}}catch(e){{}}
-      var rows=document.getElementById('prows');
-      CH.forEach(function(c){{
-        var tr=document.createElement('tr'); tr.id='row-'+c.key;
-        tr.innerHTML='<td class="pn">'+nameHtml(c)+'</td>'+
-          '<td><a href="'+chUrl(c)+'" target="_blank" rel="noopener" style="color:var(--brand,#0e7490);font-weight:600">Aç →</a></td>'+
-          '<td class="r"><input type="number" inputmode="decimal" data-k="'+c.key+'" placeholder="—" '+
-          'style="width:130px;text-align:right;padding:7px 9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"'+
-          (saved[c.key]!=null?' value="'+saved[c.key]+'"':'')+'></td>';
-        rows.appendChild(tr);
-      }});
-      function tl(n){{return(Math.round(n*100)/100).toLocaleString('tr-TR',{{minimumFractionDigits:2}});}}
-      function recalc(){{
-        var vals={{}}, store={{}};
-        document.querySelectorAll('#prows input').forEach(function(i){{
-          var v=parseFloat(i.value); if(!isNaN(v)){{vals[i.dataset.k]=v; store[i.dataset.k]=i.value;}}
-        }});
-        try{{localStorage.setItem(KEY,JSON.stringify(store));}}catch(e){{}}
-        var direct=vals['kapidan'];
-        var nums=Object.values(vals); var cheap=nums.length?Math.min.apply(null,nums):null;
-        var viol=0;
-        CH.forEach(function(c){{
-          var tr=document.getElementById('row-'+c.key); var v=vals[c.key]; tr.className='';
-          var td=tr.querySelector('.pn'); td.innerHTML=nameHtml(c);
-          if(v==null) return;
-          if(cheap!=null && Math.abs(v-cheap)<0.5) td.innerHTML+=' <span style="color:#16a34a;font-weight:700">· en ucuz</span>';
-          if(c.key!=='kapidan' && direct!=null && v<direct-0.5){{ td.innerHTML+=' <span style="color:#dc2626;font-weight:700">· kapıdandan ucuz!</span>'; tr.className='bad'; viol++; }}
-        }});
-        document.getElementById('psum').innerHTML=
-          "<div class='stat'><div class='n'>"+(direct!=null?tl(direct)+' ₺':'—')+"</div><div class='l'>kapıdan</div></div>"+
-          "<div class='stat'><div class='n'>"+(cheap!=null?tl(cheap)+' ₺':'—')+"</div><div class='l'>en ucuz</div></div>"+
-          "<div class='stat "+(viol?'bad':'ok')+"'><div class='n'>"+viol+"</div><div class='l'>parite ihlali</div></div>";
-      }}
-      document.querySelectorAll('#prows input').forEach(function(i){{i.addEventListener('input',recalc);}});
-      recalc();
-    }})();
-    </script>"""
-    return {"label": "Parite Kontrolü", "count": 0, "count_label": "gerçek fiyat gir",
-            "tone": "ok", "sub": "her kanalda gördüğün fiyatı gir · kapıdandan ucuz = ihlal",
+def gun_grubu(d):
+    wd = d.weekday()
+    return 2 if wd == 5 else (0 if wd in (6, 0) else 1)
+
+
+def fiyat_gozlemler():
+    """site_data/fiyat/gozlem.json → {(tarih, kanal, oda): en son gözlem}. Gözlem = herkese
+    açık bir sayfada görülen fiyat (Chrome kontrolü; ileride otomatik toplayıcı)."""
+    import pathlib
+    p = pathlib.Path(__file__).resolve().parent / "site_data" / "fiyat" / "gozlem.json"
+    if not p.exists():
+        return {}
+    son = {}
+    for g in json.loads(p.read_text(encoding="utf-8")).get("gozlemler", []):
+        k = (g["tarih"], g["kanal"], g.get("oda", "stu"))
+        if k not in son or g.get("zaman", "") >= son[k].get("zaman", ""):
+            son[k] = g
+    return son
+
+
+def _tl(n):
+    return f"{n:,.0f}".replace(",", ".")
+
+
+def build_fiyat(env):
+    """Fiyat Kontrol — her kanalda misafirin gördüğü fiyat hedefle aynı mı? Görülen fiyat
+    gözlem dosyasından, beklenen fiyat Elektra'daki canlı kanal çarpanından gelir; Elektra'da
+    biri çarpanı değiştirirse beklenen fiyat hemen sapar. Yanda resepsiyon için kapı fiyatları."""
+    today = dt.date.today()
+    factors, elektra_ok = {}, True
+    try:
+        for c in E.fetch_channel_factors(env):
+            if c["active"]:
+                factors[c["name"]] = float(c["factor"] or 1)
+    except Exception:
+        elektra_ok = False
+    obs = fiyat_gozlemler()
+
+    days = {today, today + dt.timedelta(days=1)}
+    for wd in (2, 5):  # önümüzdeki Çarşamba ve Cumartesi
+        days.add(today + dt.timedelta(days=(wd - today.weekday()) % 7 or 7))
+    for (t, _, _) in obs:
+        d = pdate(t)
+        if d and today <= d <= today + dt.timedelta(days=180):
+            days.add(d)
+    days = sorted(days)[:10]
+
+    rooms = [{"k": k, "ad": ad} for k, ad, _, _ in FIYAT_ODALAR]
+    kanallar, beklenen, gozlem = [], {}, {}
+    for key, (ad, ename, ind, etiket, acik_not) in FIYAT_KANALLAR.items():
+        f = None
+        if ename == "":
+            f = 1.0
+        elif ename:
+            f = factors.get(ename)
+        kanallar.append({"k": key, "ad": ad, "etiket": etiket, "acikNot": acik_not,
+                         "bagli": ename is not None, "kapali": bool(f and f >= 3),
+                         "bilinmiyor": ename is not None and f is None})
+    for d in days:
+        iso, g = d.isoformat(), gun_grubu(d)
+        beklenen[iso] = {}
+        for key, (ad, ename, ind, etiket, acik_not) in FIYAT_KANALLAR.items():
+            f = 1.0 if ename == "" else (factors.get(ename) if ename else None)
+            if f is None or f >= 3:
+                continue
+            beklenen[iso][key] = {}
+            for rk, _, _, fy in FIYAT_ODALAR:
+                if rk == "eko" and key != "site":
+                    continue  # Ekonomik oda kanallarda satılmaz
+                acik = fy[g] * f
+                beklenen[iso][key][rk] = [round(acik * (1 - ind)), round(acik) if ind else None]
+    for (t, k, rk), o in obs.items():
+        gozlem.setdefault(t, {}).setdefault(k, {})[rk] = {
+            "p": o["fiyat"], "acik": o.get("acik"), "et": o.get("etiket", ""),
+            "src": o.get("kaynak", ""), "t": o.get("zaman", "")}
+
+    gun_list = []
+    for d in days:
+        g = gun_grubu(d)
+        lab = ("Bugün · " if d == today else "Yarın · " if d == today + dt.timedelta(days=1) else "") \
+            + f"{d.day} {TR_MONTHS[d.month]} {GUN_KISA[d.weekday()]}"
+        gun_list.append({"iso": d.isoformat(), "lab": lab, "grup": GRUP_ADI[g],
+                         "hedef": {rk: fy[g] for rk, _, _, fy in FIYAT_ODALAR}})
+    data = {"tol": FIYAT_TOLERANS, "rooms": rooms, "days": gun_list, "kanallar": kanallar,
+            "beklenen": beklenen, "gozlem": gozlem, "elektra": elektra_ok}
+
+    # Özet: önümüzdeki günlerde hedeften UCUZ görülen kanal (en son gözleme göre) +
+    # Elektra ayarı yüzünden beklenen fiyatı sapan kanal.
+    ucuz = set()
+    for (t, k, rk), o in obs.items():
+        d = pdate(t)
+        if d and d >= today and o.get("fiyat"):
+            hedef = dict((r[0], r[3][gun_grubu(d)]) for r in FIYAT_ODALAR)[rk]
+            if o["fiyat"] < hedef - FIYAT_TOLERANS:
+                ucuz.add(FIYAT_KANALLAR.get(k, (k,))[0])
+    for key, per in beklenen.get(today.isoformat(), {}).items():
+        v = per.get("stu")
+        hedef = FIYAT_ODALAR[1][3][gun_grubu(today)]
+        if v and abs(v[0] - hedef) > FIYAT_TOLERANS:
+            ucuz.add(FIYAT_KANALLAR[key][0] + " (Elektra ayarı)")
+
+    # Kapı fiyatları (resepsiyon): bugün büyük, hafta tablosu küçük.
+    g = gun_grubu(today)
+    kapi = "".join(
+        f"<div class='fk-drow'><div class='fk-room'>{esc(ad)}<small>{esc(alt)}</small></div>"
+        f"<div class='fk-dp'><span class='fk-big'>{_tl(fy[g])}<i>₺</i></span>"
+        f"<span class='fk-min'>en az {_tl(fy[g] - KAPI_INDIRIM)}</span></div></div>"
+        for _, ad, alt, fy in FIYAT_ODALAR)
+    hafta = "".join(
+        f"<tr><td>{esc(ad)}</td>" + "".join(
+            f"<td class='r{' fk-now' if i == g else ''}'>{_tl(fy[i])}</td>" for i in range(3)) + "</tr>"
+        for _, ad, _, fy in FIYAT_ODALAR)
+
+    body = (FIYAT_HTML
+            .replace("__KAPI__", kapi).replace("__HAFTA__", hafta)
+            .replace("__BUGUN__", esc(f"{today.day} {TR_MONTHS[today.month]} {GUN_ADI[today.weekday()]}"))
+            .replace("__INDIRIM__", _tl(KAPI_INDIRIM)).replace("__TOL__", str(FIYAT_TOLERANS))
+            .replace("__DATA__", json.dumps(data, ensure_ascii=False).replace("</", "<\\/")))
+    n = len(ucuz)
+    return {"label": "Fiyat Kontrol", "count": n,
+            "count_label": "kanal hedeften ucuz" if n else "kanal hedefte",
+            "tone": "bad" if n else "ok",
+            "sub": ("ucuz: " + ", ".join(sorted(ucuz))) if n else "her kanalda aynı fiyat · kapı fiyatları",
             "updated": now_str(),
-            "html": PAGE("Fiyat / Parite", "Parite Kontrolü",
-                         "gördüğün gerçek fiyatları gir (Genius/indirim dahil)", body)}
+            "html": PAGE("Fiyat / Parite", "Fiyat Kontrol",
+                         "her kanalda misafirin gördüğü fiyat · bugünün kapı fiyatları", body)}
+
+
+FIYAT_HTML = """
+<style>
+:root{--fk-warn:#b45309;--fk-warnbg:#fffbeb;--fk-okbg:#ecfdf3;--fk-lowbg:#fef2f2;--fk-chip:#e0f2f6;--fk-chipfg:#0e7490;--fk-soft:#f1f5f9}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--fk-warn:#fbbf24;--fk-warnbg:#2a2010;--fk-okbg:#0f2417;--fk-lowbg:#2a1215;--fk-chip:#12303a;--fk-chipfg:#67d5e6;--fk-soft:#182338}}
+:root[data-theme=dark]{--fk-warn:#fbbf24;--fk-warnbg:#2a2010;--fk-okbg:#0f2417;--fk-lowbg:#2a1215;--fk-chip:#12303a;--fk-chipfg:#67d5e6;--fk-soft:#182338}
+.fk-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,390px);gap:18px;align-items:start}
+@media (max-width:900px){.fk-split{grid-template-columns:minmax(0,1fr)}.fk-door{order:-1}}
+.fk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 12px}
+.fk-chip{font:inherit;font-size:12.5px;cursor:pointer;border:1px solid var(--border);background:var(--card);color:var(--fg);border-radius:999px;padding:5px 12px}
+.fk-chip.on{background:var(--fk-chip);color:var(--fk-chipfg);border-color:transparent;font-weight:700}
+.fk-chip:focus-visible{outline:2px solid var(--eyebrow);outline-offset:2px}
+.fk-hero{display:flex;flex-wrap:wrap;gap:18px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:13px;padding:14px 18px;margin-bottom:12px}
+.fk-hero .big{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+.fk-hero .l{color:var(--sub);font-size:12px}
+.fk-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(215px,100%),1fr));gap:12px}
+.fk-card{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:13px 14px;display:grid;gap:3px;min-width:0}
+.fk-card.bek{border-style:dashed}
+.fk-card .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.fk-card .name{font-weight:700}
+.fk-card .price{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.fk-card.bek .price{color:var(--sub)}
+.fk-card .meta{color:var(--sub);font-size:11.5px}
+.fk-diff{font-size:12px;font-weight:700;border-radius:6px;padding:1px 7px;white-space:nowrap}
+.fk-ok{background:var(--fk-okbg);color:var(--statok)}.fk-low{background:var(--fk-lowbg);color:var(--statbad)}
+.fk-high{background:var(--fk-warnbg);color:var(--fk-warn)}.fk-none{background:var(--fk-soft);color:var(--sub)}
+.fk-door{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;display:grid;gap:12px;min-width:0}
+.fk-door h2{margin:0;font-size:20px}
+.fk-door .when{color:var(--eyebrow);font-weight:700;font-size:13px}
+.fk-rule{background:var(--fk-chip);color:var(--fg);border-radius:10px;padding:9px 12px;font-size:13px}
+.fk-rule b{color:var(--fk-chipfg)}
+.fk-drow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--td-line)}
+.fk-room{font-weight:700;font-size:15px}
+.fk-room small{display:block;color:var(--sub);font-weight:400;font-size:11.5px}
+.fk-dp{text-align:right;font-variant-numeric:tabular-nums}
+.fk-big{display:block;font-size:26px;font-weight:800;letter-spacing:-.3px;line-height:1.1}
+.fk-big i{font-style:normal;font-size:14px;color:var(--sub);margin-left:3px}
+.fk-min{display:block;font-size:12px;font-weight:700;color:var(--fk-warn)}
+.fk-week{font-size:12.5px;margin:0}
+.fk-week td,.fk-week th{padding:6px 8px}
+.fk-week td.fk-now{font-weight:800;background:var(--fk-chip);color:var(--fk-chipfg)}
+.fk-small{color:var(--sub);font-size:11.5px;line-height:1.5}
+</style>
+<div class="fk-split">
+  <div style="min-width:0">
+    <div class="fk-chips" id="fkDays" role="group" aria-label="Tarih"></div>
+    <div class="fk-chips" id="fkRooms" role="group" aria-label="Oda"></div>
+    <div class="fk-hero" id="fkHero"></div>
+    <div class="fk-cards" id="fkCards"></div>
+    <div class="note">Görülen fiyat: herkese açık sitelerde (trivago, kanal siteleri, Booking için yurt dışı bağlantı) okunan fiyat; kartın altında ne zaman ve nerede görüldüğü yazar.
+      Kesik çizgili kart: o tarih için henüz kontrol yok; gösterilen rakam Elektra'daki kanal ayarına göre <b>beklenen</b> fiyattır. Elektra'da bir kanalın ayarı değişirse beklenen fiyat burada hemen sapar.
+      ±__TOL__ TL içi hedefte sayılır; kanallar Euro'yu kendi kuruyla çevirir.</div>
+  </div>
+  <aside class="fk-door">
+    <div><div class="when">__BUGUN__</div><h2>Bugün kapıdan</h2></div>
+    <div class="fk-rule">Telefon ve VIP misafire en fazla <b>__INDIRIM__ TL</b> indirim. Turuncu "en az" fiyatın altına inilmez.</div>
+    <div>__KAPI__</div>
+    <div class="fk-small">İptal edilebilir rezervasyon isteyene %10 fazla. Ekonomik oda yalnızca telefon, kapı ve web sitesinden satılır. Suit'te 3. kişi +%5, 4. kişi +%10.</div>
+    <div>
+      <div class="fk-small" style="font-weight:700;color:var(--fg);margin-bottom:4px">Haftanın kapı fiyatları</div>
+      <table class="fk-week"><thead><tr><th>Oda</th><th class="r">Paz·Pzt</th><th class="r">Sal–Cum</th><th class="r">Cmt</th></tr></thead>
+      <tbody>__HAFTA__</tbody></table>
+    </div>
+  </aside>
+</div>
+<script>
+(function(){
+  var D=__DATA__;
+  var fmt=function(n){return Math.round(n).toLocaleString('tr-TR')};
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+  var selDay=0,selRoom='stu';
+  function kisa(t){var m=/^(\d{4})-(\d\d)-(\d\d)(?: (\d\d:\d\d))?/.exec(t||'');return m?(m[3]+'.'+m[2]+(m[4]?' '+m[4]:'')):(t||'');}
+  try{var r=localStorage.getItem('fk-oda');if(r)selRoom=r;}catch(e){}
+  var best=-1;for(var i=0;i<D.days.length;i++){var g=D.gozlem[D.days[i].iso],n=g?Object.keys(g).length:0;if(n>best){best=n;selDay=i;}}
+  var kmap={};D.kanallar.forEach(function(k){kmap[k.k]=k;});
+  function st(diff){return diff<-D.tol?'low':(diff>D.tol?'high':'ok');}
+  function chips(id,items,on,cb){var el=document.getElementById(id);el.innerHTML='';items.forEach(function(it,i){var b=document.createElement('button');b.type='button';b.className='fk-chip'+(it.v===on?' on':'');b.textContent=it.t;b.addEventListener('click',function(){cb(it.v)});el.appendChild(b);});}
+  function render(){
+    chips('fkDays',D.days.map(function(d,i){return{t:d.lab,v:i}}),selDay,function(v){selDay=v;render();});
+    chips('fkRooms',D.rooms.map(function(r){return{t:r.ad,v:r.k}}),selRoom,function(v){selRoom=v;try{localStorage.setItem('fk-oda',v)}catch(e){}render();});
+    var day=D.days[selDay],T=day.hedef[selRoom],iso=day.iso;
+    var obs=D.gozlem[iso]||{},bek=D.beklenen[iso]||{};
+    var keys=[];D.kanallar.forEach(function(k){keys.push(k.k)});Object.keys(obs).forEach(function(k){if(keys.indexOf(k)<0)keys.push(k)});
+    var cards=[],cnt={ok:0,low:0,high:0,bek:0};
+    keys.forEach(function(k){
+      var meta=kmap[k]||{ad:k,etiket:'bağlı değil',bagli:false},o=(obs[k]||{})[selRoom],b=(bek[k]||{})[selRoom];
+      if(meta.kapali&&!o){cards.push({rank:5,html:'<div class="fk-card bek"><div class="top"><span class="name">'+esc(meta.ad)+'</span><span class="fk-diff fk-none">kapalı</span></div><div class="meta">Satış durduruldu (Elektra’da kapatıldı)</div></div>'});return;}
+      if(!o&&!b)return;
+      var p=o?o.p:b[0],diff=p-T,s=st(diff),gor=!!o;
+      if(selRoom==='eko'&&k!=='site'&&o)s='low';
+      if(gor)cnt[s]++;else cnt.bek++;
+      var acik=o&&o.acik?o.acik:(b&&b[1]?b[1]:null);
+      var lines='<div class="meta">'+esc(o&&o.et?o.et:meta.etiket)+'</div>';
+      if(acik&&meta.acikNot)lines+='<div class="meta">'+esc(meta.acikNot)+': '+fmt(acik)+' ₺</div>';
+      if(selRoom==='eko'&&k!=='site'&&o)lines+='<div class="meta" style="color:var(--statbad);font-weight:700">Ekonomik oda burada satılmamalı</div>';
+      lines+='<div class="meta">'+(gor?('görüldü: '+esc(o.src)+' · '+esc(kisa(o.t))):'beklenen · bu tarih için kontrol yok')+'</div>';
+      var rank=gor?({low:0,high:1,ok:2}[s]):3;
+      cards.push({rank:rank,diff:diff,html:'<div class="fk-card'+(gor?'':' bek')+'"><div class="top"><span class="name">'+esc(meta.ad)+'</span><span class="fk-diff fk-'+s+'">'+(diff>0?'+':'')+fmt(diff)+'</span></div><div class="price">'+fmt(p)+' ₺</div>'+lines+'</div>'});
+    });
+    cards.sort(function(a,b){return a.rank-b.rank||(a.diff||0)-(b.diff||0)});
+    document.getElementById('fkCards').innerHTML=cards.map(function(c){return c.html}).join('')||'<div class="empty">Bu oda ve tarih için veri yok.</div>';
+    var room=D.rooms.filter(function(r){return r.k===selRoom})[0].ad;
+    document.getElementById('fkHero').innerHTML='<div><div class="l">Hedef · '+esc(room)+' · iptal edilemez · '+esc(day.grup)+'</div><div class="big">'+fmt(T)+' ₺</div><div class="l">iptal edilebilir '+fmt(T*1.1)+' ₺</div></div>'+
+      '<div class="l" style="font-size:13px">Görülen fiyatlar: <b style="color:var(--statok)">'+cnt.ok+'</b> hedefte · <b style="color:var(--statbad)">'+cnt.low+'</b> ucuz · <b style="color:var(--fk-warn)">'+cnt.high+'</b> pahalı'+(cnt.bek?' · '+cnt.bek+' kanal kontrol bekliyor':'')+
+      (D.elektra?'':'<br><b style="color:var(--statbad)">Elektra’ya ulaşılamadı; beklenen fiyatlar hesaplanmadı.</b>')+'</div>';
+  }
+  render();
+})();
+</script>
+"""
 
 
 # --------------------------------------------------------------------------- Günlük Rapor (defter)

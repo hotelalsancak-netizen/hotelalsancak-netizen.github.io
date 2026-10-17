@@ -1,0 +1,305 @@
+{
+ "aciklama": "Herkese açık sitelerde görülen fiyatlar (iptal edilemez, 2 yetişkin, TL). Gizli bilgi ve kişisel veri yok. Fiyat Kontrol sayfası her (tarih, kanal, oda) için en son gözlemi gösterir.",
+ "gozlemler": [
+  {
+   "tarih": "2026-10-21",
+   "kanal": "site",
+   "oda": "eko",
+   "fiyat": 3506,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "site",
+   "oda": "stu",
+   "fiyat": 3808,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "site",
+   "oda": "sup",
+   "fiyat": 4009,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "site",
+   "oda": "dlx",
+   "fiyat": 4210,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "site",
+   "oda": "sui",
+   "fiyat": 5008,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-24",
+   "kanal": "site",
+   "oda": "eko",
+   "fiyat": 3808,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-24",
+   "kanal": "site",
+   "oda": "stu",
+   "fiyat": 4009,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-24",
+   "kanal": "site",
+   "oda": "sup",
+   "fiyat": 4210,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-24",
+   "kanal": "site",
+   "oda": "dlx",
+   "fiyat": 4506,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-24",
+   "kanal": "site",
+   "oda": "sui",
+   "fiyat": 5511,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:25"
+  },
+  {
+   "tarih": "2026-10-19",
+   "kanal": "site",
+   "oda": "stu",
+   "fiyat": 3506,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "otel sitesi",
+   "zaman": "2026-10-15 16:05"
+  },
+  {
+   "tarih": "2026-10-19",
+   "kanal": "booking",
+   "oda": "stu",
+   "fiyat": 3513,
+   "acik": 3903,
+   "etiket": "Genius %10",
+   "kaynak": "booking.com (yurt dışı)",
+   "zaman": "2026-10-17"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "booking",
+   "oda": "stu",
+   "fiyat": 3814,
+   "acik": 4238,
+   "etiket": "Genius %10",
+   "kaynak": "booking.com (yurt dışı)",
+   "zaman": "2026-10-17"
+  },
+  {
+   "tarih": "2026-10-24",
+   "kanal": "booking",
+   "oda": "stu",
+   "fiyat": 4016,
+   "acik": 4462,
+   "etiket": "Genius %10",
+   "kaynak": "booking.com (yurt dışı)",
+   "zaman": "2026-10-17"
+  },
+  {
+   "tarih": "2026-11-04",
+   "kanal": "booking",
+   "oda": "stu",
+   "fiyat": 3814,
+   "acik": 4238,
+   "etiket": "Genius %10",
+   "kaynak": "booking.com (yurt dışı)",
+   "zaman": "2026-10-17"
+  },
+  {
+   "tarih": "2026-11-21",
+   "kanal": "booking",
+   "oda": "stu",
+   "fiyat": 4016,
+   "acik": 4462,
+   "etiket": "Genius %10",
+   "kaynak": "booking.com (yurt dışı)",
+   "zaman": "2026-10-17"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "tatilbudur",
+   "oda": "stu",
+   "fiyat": 3815,
+   "acik": null,
+   "etiket": "%20",
+   "kaynak": "kanal sitesi",
+   "zaman": "2026-10-15 18:00"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "etstur",
+   "oda": "stu",
+   "fiyat": 3815,
+   "acik": null,
+   "etiket": "%20 Özel fırsat",
+   "kaynak": "kanal sitesi",
+   "zaman": "2026-10-15 18:00"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "enuygun",
+   "oda": "stu",
+   "fiyat": 3815,
+   "acik": null,
+   "etiket": "%28",
+   "kaynak": "kanal sitesi",
+   "zaman": "2026-10-15 18:00"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "jolly",
+   "oda": "stu",
+   "fiyat": 3815,
+   "acik": null,
+   "etiket": "%20 Yaz fırsatları",
+   "kaynak": "kanal sitesi",
+   "zaman": "2026-10-15 18:00"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "trip",
+   "oda": "stu",
+   "fiyat": 3753,
+   "acik": null,
+   "etiket": "Trip’in kendi %12 indirimi",
+   "kaynak": "kanal sitesi",
+   "zaman": "2026-10-15 18:00"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "hotels",
+   "oda": "stu",
+   "fiyat": 3961,
+   "acik": 4227,
+   "etiket": "%6 üye indirimi",
+   "kaynak": "kanal sitesi",
+   "zaman": "2026-10-15 18:00"
+  },
+  {
+   "tarih": "2027-01-06",
+   "kanal": "etstur",
+   "oda": "stu",
+   "fiyat": 3815,
+   "acik": null,
+   "etiket": "%20 Özel fırsat",
+   "kaynak": "kanal sitesi",
+   "zaman": "2026-10-15 18:00"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "etstur",
+   "oda": "stu",
+   "fiyat": 3829,
+   "acik": 4785,
+   "etiket": "%20",
+   "kaynak": "trivago",
+   "zaman": "2026-10-17 10:39"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "zenhotels",
+   "oda": "stu",
+   "fiyat": 3547,
+   "acik": null,
+   "etiket": "en düşük fiyatımız",
+   "kaynak": "trivago",
+   "zaman": "2026-10-17 10:39"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "hotels",
+   "oda": "stu",
+   "fiyat": 3632,
+   "acik": 4203,
+   "etiket": "",
+   "kaynak": "trivago",
+   "zaman": "2026-10-17 10:39"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "sembo",
+   "oda": "stu",
+   "fiyat": 4216,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "trivago",
+   "zaman": "2026-10-17 10:39"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "jolly",
+   "oda": "stu",
+   "fiyat": 3829,
+   "acik": 4787,
+   "etiket": "%20",
+   "kaynak": "trivago",
+   "zaman": "2026-10-17 10:39"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "obilet",
+   "oda": "stu",
+   "fiyat": 3982,
+   "acik": null,
+   "etiket": "",
+   "kaynak": "trivago",
+   "zaman": "2026-10-17 10:39"
+  },
+  {
+   "tarih": "2026-10-21",
+   "kanal": "tatilbudur",
+   "oda": "stu",
+   "fiyat": 3829,
+   "acik": 4786,
+   "etiket": "%20",
+   "kaynak": "trivago",
+   "zaman": "2026-10-17 10:39"
+  }
+ ]
+}

@@ -44,7 +44,7 @@ SHELL = ROOT / "dashboard_shell.html"
 
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
-SECTION_ORDER = ["gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "parite",
+SECTION_ORDER = ["gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "fiyat",
                  "kart", "stats", "satis", "vergi", "tvkart"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
@@ -118,11 +118,12 @@ def build_kart() -> dict:
 #
 # Resepsiyon YALNIZCA kendi işini gören sayfaları görür: gün sonu, günlük ödeme
 # kontrolü, açık bakiye. Denetim sayfaları (kart güvenliği, iptal/silinen, indirim,
-# kasa & POS, parite) ve finans sayfaları (vergi, aylık satışlar, istatistikler)
+# kasa & POS) ve finans sayfaları (vergi, aylık satışlar, istatistikler)
 # YÖNETİME ÖZELDİR — bunlar zaten resepsiyon kaynaklı kaçağı yakalamak için var;
 # resepsiyon bunları görürse neyin yakalandığını da görmüş olur. (Sahibin kararı,
 # 24.08.2026.) Bir listeyi resepsiyona açmak istersen anahtarını buraya ekle.
-RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart"}
+# Fiyat Kontrol iki role de açık: resepsiyon kapı fiyatlarını oradan görür (17.10.2026).
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat"}
 
 
 def passwords() -> dict:
@@ -196,7 +197,7 @@ def build_cloud():
     live = (("gunsonu", build_gunsonu), ("odeme", checks.build_odeme),
             ("kasa", checks.build_kasa), ("iptal", checks.build_iptal),
             ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
-            ("parite", checks.build_parite),
+            ("fiyat", checks.build_fiyat),
             ("stats", checks.build_stats), ("satis", checks.build_satis),
             ("vergi", checks.build_vergi), ("gunluk", checks.build_gunluk),
             ("tvkart", checks.build_tvkart))
