@@ -1959,7 +1959,8 @@ FIYAT_HTML = """
   var selDay=0,selRoom='stu';
   function kisa(t){var m=/^(\d{4})-(\d\d)-(\d\d)(?: (\d\d:\d\d))?/.exec(t||'');return m?(m[3]+'.'+m[2]+(m[4]?' '+m[4]:'')):(t||'');}
   try{var r=localStorage.getItem('fk-oda');if(r)selRoom=r;}catch(e){}
-  var best=-1;for(var i=0;i<D.days.length;i++){var g=D.gozlem[D.days[i].iso],n=g?Object.keys(g).length:0;if(n>best){best=n;selDay=i;}}
+  // Varsayılan gün: bugün (liste bugünden başlar).
+  selDay=0;
   var kmap={};D.kanallar.forEach(function(k){kmap[k.k]=k;});
   function st(diff){return diff<-D.tol?'low':(diff>D.tol?'high':'ok');}
   function chips(id,items,on,cb){var el=document.getElementById(id);el.innerHTML='';items.forEach(function(it,i){var b=document.createElement('button');b.type='button';b.className='fk-chip'+(it.v===on?' on':'');b.textContent=it.t;b.addEventListener('click',function(){cb(it.v)});el.appendChild(b);});}
