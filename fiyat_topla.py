@@ -127,6 +127,11 @@ def parse_booking(text):
     if not oranlar and m:
         m = None  # 'Hariç' var ama oran yok: vergi biçimi tanınmadı → iz bırak
     vergi = 1 + sum(int(x) for x in oranlar) / 100 if oranlar else 1.0
+    # Not yoksa: yurt dışından (GitHub, ABD) Booking fiyatı VERGİSİZ gösteriyor; not bazı sayfa
+    # düzenlerinde hiç çıkmıyor (19.10.2026). 'vergiler dahil' yazmıyorsa Türkiye vergisi eklenir.
+    varsayilan = False
+    if not oranlar and not re.search(r"vergi(?:ler)?\s*(?:ve\s*ücretler\s*)?dahil", text, re.I):
+        vergi, varsayilan = VARSAYILAN_VERGI, True
     ek_re = re.compile(r"\+\s?(?:TL\s?)?(\d{1,3}(?:\.\d{3})*|\d+)\s?(?:TL\s?)?(?:vergi|ücret)", re.I)
     ek_goruldu = False
     s = {}
@@ -152,12 +157,12 @@ def parse_booking(text):
             f = round(nums[-1] * oran)
             acik = round(nums[0] * oran) if len(nums) >= 2 else None
             en_dusuk(s, "booking", oda_key(ad), f, acik)
-    BOOKING_VERGI_IZ = [] if (m or ek_goruldu) else \
-        [l.strip()[:90] for l in text.splitlines() if re.search(r"vergi|KDV|ücret", l, re.I)][:4]
-    return s, (vergi if m else (1.11 if ek_goruldu else 1.0))
+    BOOKING_VERGI_IZ = []
+    return s, (vergi if not ek_goruldu else 1.11), (varsayilan and not ek_goruldu)
 
 
 BOOKING_VERGI_IZ = []
+VARSAYILAN_VERGI = 1.11  # %10 KDV + %1 konaklama vergisi (Booking notu: 'Hariç: %10 KDV, %1 devlet vergisi')
 
 
 def urls(d):
@@ -441,10 +446,8 @@ async def oku_metin(ctx, kanal, url):
         # Ör. Booking Türkiye'den bakınca ana sayfaya yönlendiriyor; uydurma fiyat yazmayalım.
         raise RuntimeError("otel sayfası açılmadı")
     if kanal == "booking":
-        s, vergi = parse_booking(text)
-        if BOOKING_VERGI_IZ:
-            print("  Booking vergi satırları (biçim tanınmadı):", BOOKING_VERGI_IZ)
-        return s, "Booking · otomatik" + (" (vergi eklendi)" if vergi > 1 else "")
+        s, vergi, varsayilan = parse_booking(text)
+        return s, "Booking · otomatik" + (" (%11 vergi eklendi)" if varsayilan else " (vergi eklendi)" if vergi > 1 else "")
     if kanal == "etstur":
         return parse_etstur(text), "Etstur · otomatik"
     return parse_trip(text), "Trip.com · otomatik"
