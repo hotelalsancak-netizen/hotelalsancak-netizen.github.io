@@ -1,0 +1,49 @@
+name: Fiyat toplayici
+
+# Fiyat Kontrol sayfasi icin kanallarin herkese acik otel sayfalarini GERCEK tarayiciyla
+# okur (fiyat_topla.py). GitHub'in yurt disi sunucusunda calisir; Booking'in Turkiye engeli
+# burada gecerli degil. Sonuc 'fiyat-veri' dalina yazilir (main gecmisi kirlenmesin), sonra
+# pano yeniden uretilir. Hotels.com, TatilBudur, trivago ve Enuygun bot korumasiyla engelliyor.
+
+on:
+  schedule:
+    - cron: '20 */3 * * *'      # her 3 saatte bir
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: fiyat
+  cancel-in-progress: false
+
+jobs:
+  topla:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Tarayiciyi kur
+        run: pip install playwright==1.47.0 && python -m playwright install --with-deps chromium
+      - name: Onceki gozlemleri al
+        run: git fetch -q origin fiyat-veri --depth=1 && git show origin/fiyat-veri:otomatik.json > /tmp/onceki.json || echo '{}' > /tmp/onceki.json
+      - name: Fiyatlari oku
+        run: python fiyat_topla.py /tmp/otomatik.json /tmp/onceki.json
+      - name: fiyat-veri dalina yaz
+        run: |
+          git config user.name "riva-fiyat-bot"
+          git config user.email "fiyat-bot@users.noreply.github.com"
+          git checkout -q --orphan fiyat-veri-yeni
+          git rm -rfq .
+          cp /tmp/otomatik.json otomatik.json
+          git add otomatik.json
+          git commit -qm "Fiyat gozlemleri $(TZ=Europe/Istanbul date '+%Y-%m-%d %H:%M')"
+          git push -fq origin HEAD:fiyat-veri
+      - name: Panoyu yeniden uret
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run dashboard.yml --ref main -R ${{ github.repository }}

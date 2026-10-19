@@ -1765,14 +1765,17 @@ def gun_grubu(d):
 
 
 def fiyat_gozlemler():
-    """site_data/fiyat/gozlem.json → {(tarih, kanal, oda): en son gözlem}. Gözlem = herkese
-    açık bir sayfada görülen fiyat (Chrome kontrolü; ileride otomatik toplayıcı)."""
+    """site_data/fiyat/{gozlem,otomatik}.json → {(tarih, kanal, oda): en son gözlem}. Gözlem =
+    herkese açık bir sayfada görülen fiyat (elle Chrome kontrolü ya da fiyat_topla.py)."""
     import pathlib
-    p = pathlib.Path(__file__).resolve().parent / "site_data" / "fiyat" / "gozlem.json"
-    if not p.exists():
-        return {}
+    d = pathlib.Path(__file__).resolve().parent / "site_data" / "fiyat"
+    # gozlem.json: elle girilen; otomatik.json: fiyat_topla.py (fiyat-veri dalından, bulutta).
+    tum = []
+    for ad in ("gozlem.json", "otomatik.json"):
+        if (d / ad).exists():
+            tum += json.loads((d / ad).read_text(encoding="utf-8")).get("gozlemler", [])
     son = {}
-    for g in json.loads(p.read_text(encoding="utf-8")).get("gozlemler", []):
+    for g in tum:
         k = (g["tarih"], g["kanal"], g.get("oda", "stu"))
         if k not in son or g.get("zaman", "") >= son[k].get("zaman", ""):
             son[k] = g

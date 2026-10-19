@@ -14,7 +14,9 @@ boş oda satılıp cebe mi atıldı?"
   son 7 gün giriş ödemeleri + **açık bakiye paneli** res-guest-balance-list), `kasa` (Kasa & POS
   mutabakatı — **haftalık, çok-dövizli** TL/EUR/USD, banka **xlsx yükleme**, Elektra kart↔banka
   POS T+1), `iptal` (İptal/Silinen), `indirim`, `bakiye` (Açık bakiye), `fiyat` (Fiyat Kontrol — kanallarda
-  görülen fiyat hedefle aynı mı + kapı fiyatları; iki rol de görür; gözlemler `site_data/fiyat/gozlem.json`), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
+  görülen fiyat hedefle aynı mı + kapı fiyatları; iki rol de görür; elle gözlemler `site_data/fiyat/gozlem.json`,
+  otomatik gözlemler `fiyat_topla.py` → `.github/workflows/fiyat.yml` (3 saatte bir, yurt dışı sunucu;
+  Booking/Etstur/Trip) → `fiyat-veri` dalı → pano derlemesi `site_data/fiyat/otomatik.json`), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
   güçlü/zayıf ayrımı), `stats` (Doluluk/ADR/grafikler), `satis` (Aylık satışlar), `vergi` (**Vergi Sayfası** —
   muhasebe mizanından aylık KDV + konaklama vergisi + dönemsel kurumlar/geçici vergi).
 

@@ -32,6 +32,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
+      - name: Otomatik fiyat gozlemlerini al (fiyat-veri dali)
+        run: git fetch -q origin fiyat-veri --depth=1 && git show origin/fiyat-veri:otomatik.json > site_data/fiyat/otomatik.json || echo "fiyat-veri dali yok"
       - name: Dashboard'u üret
         env:
           ELEKTRA_HOTELID: ${{ secrets.ELEKTRA_HOTELID }}
