@@ -1,0 +1,25 @@
+{
+ "aciklama": "Fiyat Kontrol sayfasındaki 'Düzeltilecekler' kutusu. Elle tutulur: bir sorun çözülünce durum 'çözüldü' yapılır. Son 7 günün okuma istatistiği sayfada otomatik hesaplanır.",
+ "sorunlar": [
+  {"kanal": "zenhotels", "tarih": "2026-10-19", "durum": "açık",
+   "sorun": "Her gün 250–400 TL ucuz",
+   "sebep": "Bize doğrudan bağlı değil (Emerging Travel kapalı); fiyatı bir toptancıdan alıyor — Expedia'nın ya da Etstur'un toptan ağı",
+   "yapilacak": "Kaynağı bul (ZenHotels araştırma komutu), oradaki toptan satışı kapat"},
+  {"kanal": "trip", "tarih": "2026-10-19", "durum": "açık",
+   "sorun": "Stüdyo 80–250 TL, Superior 330–370 TL ucuz",
+   "sebep": "Trip'in kendi indirimi ('Özel İndirim %13', 'Fiyatları Eşleştiriyoruz'); Superior'da oda eşleştirme hatası",
+   "yapilacak": "Otelin karşıladığı programları kapat; Superior eşleştirmesini düzelt; gerekirse temsilciye yaz ya da çarpanı yükselt"},
+  {"kanal": "tatilbudur", "tarih": "2026-10-19", "durum": "açık",
+   "sorun": "24 Ekim ve 2 Kasım'da Stüdyo 150–170 TL ucuz",
+   "sebep": "19.10 öğleden sonra ortaya çıktı; birisi Stüdyo'ya yine 'eşitleme' indirimi açmış olabilir (daha önce de %5 'eşitleme ets' açılmıştı)",
+   "yapilacak": "Fazladan kampanyayı kapat; TatilBudur panel şifresini değiştir, kullanıcı listesine bak"},
+  {"kanal": "etstur", "tarih": "2026-10-19", "durum": "açık",
+   "sorun": "Aynı gün için 145 TL ucuz (obilet de aynı fiyattan)",
+   "sebep": "Aynı gün indirimi; obilet Etstur'un stoğunu satıyor",
+   "yapilacak": "Etstur'da otelin katıldığı son dakika indirimi varsa kapat; yoksa temsilciye yaz"},
+  {"kanal": "obilet", "tarih": "2026-10-19", "durum": "açık",
+   "sorun": "2 Kasım'da Ekonomik oda 2.901 TL'ye satılıyor",
+   "sebep": "Ekonomik oda kanallarda olmamalı; büyük ihtimalle Etstur üzerinden çıkıyor",
+   "yapilacak": "Etstur'da (ve Enuygun'da) Ekonomik odayı satışa kapat"}
+ ]
+}

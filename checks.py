@@ -1785,6 +1785,54 @@ def fiyat_gozlemler():
     return son
 
 
+def fiyat_tum_gozlemler():
+    """Bütün gözlemler (yalnız en sonuncusu değil) — 'sürekli ucuz satan' istatistiği için."""
+    import pathlib
+    d = pathlib.Path(__file__).resolve().parent / "site_data" / "fiyat"
+    tum = []
+    for ad in ("gozlem.json", "otomatik.json"):
+        if (d / ad).exists():
+            tum += json.loads((d / ad).read_text(encoding="utf-8")).get("gozlemler", [])
+    return tum
+
+
+def fiyat_sorunlar():
+    import pathlib
+    p = pathlib.Path(__file__).resolve().parent / "site_data" / "fiyat" / "sorunlar.json"
+    return json.loads(p.read_text(encoding="utf-8")).get("sorunlar", []) if p.exists() else []
+
+
+def duzeltilecekler(today):
+    """Kanal başına son 7 günün okumaları: kaçında hedeften ucuz, en fazla ne kadar. Elle tutulan
+    sorunlar (sorunlar.json) + sürekli ucuz satan ama listede olmayan kanallar."""
+    sinir = (today - dt.timedelta(days=7)).isoformat()
+    ist = {}
+    for g in fiyat_tum_gozlemler():
+        d = pdate(g.get("tarih"))
+        if not d or g.get("zaman", "") < sinir or not g.get("fiyat"):
+            continue
+        rk = g.get("oda", "stu")
+        hedef = dict((r[0], r[3][gun_grubu(d)]) for r in FIYAT_ODALAR).get(rk)
+        if not hedef:
+            continue
+        fark = g["fiyat"] - hedef
+        ucuz = fark < -FIYAT_TOLERANS or (rk == "eko" and g["kanal"] != "site")
+        a = ist.setdefault(g["kanal"], {"n": 0, "ucuz": 0, "min": 0})
+        a["n"] += 1
+        if ucuz:
+            a["ucuz"] += 1
+            a["min"] = min(a["min"], fark)
+    rows = [dict(s) for s in fiyat_sorunlar()]
+    bilinen = {r["kanal"] for r in rows}
+    for k, a in ist.items():
+        if k not in bilinen and k != "site" and a["n"] >= 3 and a["ucuz"] * 2 >= a["n"]:
+            rows.append({"kanal": k, "durum": "açık", "sorun": "Son 7 günde çoğu okumada ucuz",
+                         "sebep": "—", "yapilacak": "İncele", "otomatik": True})
+    for r in rows:
+        r["ist"] = ist.get(r["kanal"])
+    return rows
+
+
 def _tl(n):
     return f"{n:,.0f}".replace(",", ".")
 
@@ -1878,7 +1926,34 @@ def build_fiyat(env):
             f"<td class='r{' fk-now' if i == g else ''}'>{_tl(fy[i])}</td>" for i in range(3)) + "</tr>"
         for _, ad, _, fy in FIYAT_ODALAR)
 
-    body = (FIYAT_HTML
+    duz = duzeltilecekler(today)
+    if duz:
+        satir = []
+        for r in duz:
+            ad = FIYAT_KANALLAR.get(r["kanal"], (r["kanal"].capitalize(),))[0]
+            a = r.get("ist")
+            if a and a["n"]:
+                kanit = (f"ucuz: {a['ucuz']}/{a['n']} okuma"
+                         + (f" · en fazla {_tl(a['min'])} TL" if a["ucuz"] else ""))
+                ton = "fk-low" if a["ucuz"] else "fk-ok"
+            else:
+                kanit, ton = "son 7 günde okuma yok", "fk-none"
+            rozet = " <span class='fk-diff fk-ok'>çözüldü</span>" if r.get("durum") == "çözüldü" else ""
+            satir.append(
+                f"<tr><td><b>{esc(ad)}</b>{rozet}"
+                f"<div class='fk-small'>{esc(r.get('sorun',''))}</div></td>"
+                f"<td><span class='fk-diff {ton}'>{esc(kanit)}</span></td>"
+                f"<td class='fk-small'>{esc(r.get('sebep',''))}</td>"
+                f"<td class='fk-small'><b style='color:var(--fg)'>{esc(r.get('yapilacak',''))}</b></td></tr>")
+        duz_html = ("<div class='fk-fix'><div class='fk-fix-h'><b>Düzeltilecekler</b>"
+                    "<span class='fk-small'>sürekli ucuz satan kanallar · istatistik her 3 saatte güncellenir</span></div>"
+                    "<div style='overflow-x:auto'><table class='fk-fixt'><thead><tr><th>Kanal</th><th>Son 7 gün</th>"
+                    "<th>Muhtemel sebep</th><th>Yapılacak</th></tr></thead><tbody>"
+                    + "".join(satir) + "</tbody></table></div></div>")
+    else:
+        duz_html = ""
+
+    body = (FIYAT_HTML.replace("__DUZ__", duz_html)
             .replace("__KAPI__", kapi).replace("__HAFTA__", hafta)
             .replace("__BUGUN__", esc(f"{today.day} {TR_MONTHS[today.month]} {GUN_ADI[today.weekday()]}"))
             .replace("__INDIRIM__", _tl(KAPI_INDIRIM)).replace("__TOL__", str(FIYAT_TOLERANS))
@@ -1934,7 +2009,13 @@ FIYAT_HTML = """
 .fk-week td,.fk-week th{padding:6px 8px}
 .fk-week td.fk-now{font-weight:800;background:var(--fk-chip);color:var(--fk-chipfg)}
 .fk-small{color:var(--sub);font-size:11.5px;line-height:1.5}
+.fk-fix{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;box-shadow:inset 4px 0 var(--statbad)}
+.fk-fix-h{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin-bottom:6px}
+.fk-fixt{margin:0;font-size:12.5px}
+.fk-fixt td{vertical-align:top}
+.fk-fixt td:nth-child(2){white-space:nowrap}
 </style>
+__DUZ__
 <div class="fk-split">
   <div style="min-width:0">
     <div class="fk-chips" id="fkDays" role="group" aria-label="Tarih"></div>
