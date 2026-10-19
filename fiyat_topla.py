@@ -121,8 +121,12 @@ def parse_booking(text):
     misafirin ödediğine çevrilir. Hiçbiri yoksa fiyat vergi dahil kabul edilir ve vergi
     satırları rapora yazılır (BOOKING_VERGI_IZ) ki biçim değişirse görülsün."""
     global BOOKING_VERGI_IZ
-    m = re.search(r"Hariç:\s*([^\n]{0,80})", text)
-    vergi = 1 + sum(int(x) for x in re.findall(r"%\s?(\d{1,2})", m.group(1))) / 100 if m else 1.0
+    # 'Hariç:' ile oranlar aynı satırda ya da sonraki 1-2 satırda olabilir (görünür tarayıcıda ayrı).
+    m = re.search(r"Hariç:?\s*((?:[^\n]*\n?){1,3})", text)
+    oranlar = re.findall(r"%\s?(\d{1,2})\s*(?:KDV|devlet|vergi|konaklama)", m.group(1), re.I) if m else []
+    if not oranlar and m:
+        m = None  # 'Hariç' var ama oran yok: vergi biçimi tanınmadı → iz bırak
+    vergi = 1 + sum(int(x) for x in oranlar) / 100 if oranlar else 1.0
     ek_re = re.compile(r"\+\s?(?:TL\s?)?(\d{1,3}(?:\.\d{3})*|\d+)\s?(?:TL\s?)?(?:vergi|ücret)", re.I)
     ek_goruldu = False
     s = {}
