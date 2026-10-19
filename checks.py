@@ -1982,9 +1982,10 @@ FIYAT_HTML = """
       var lines='<div class="meta">'+esc(o&&o.et?o.et:meta.etiket)+'</div>';
       if(acik&&meta.acikNot)lines+='<div class="meta">'+esc(meta.acikNot)+': '+fmt(acik)+' ₺</div>';
       if(selRoom==='eko'&&k!=='site'&&o)lines+='<div class="meta" style="color:var(--statbad);font-weight:700">Ekonomik oda burada satılmamalı</div>';
-      lines+='<div class="meta">'+(gor?('görüldü: '+esc(o.src)+' · '+esc(kisa(o.t))):'beklenen · bu tarih için kontrol yok')+'</div>';
+      lines+='<div class="meta">'+(gor?('görüldü: '+esc(o.src)+' · '+esc(kisa(o.t))):'<b>hesaplanan</b> · gerçek fiyat henüz okunmadı')+'</div>';
       var rank=gor?({low:0,high:1,ok:2}[s]):3;
-      cards.push({rank:rank,diff:diff,html:'<div class="fk-card'+(gor?'':' bek')+'"><div class="top"><span class="name">'+esc(meta.ad)+'</span><span class="fk-diff fk-'+s+'">'+(diff>0?'+':'')+fmt(diff)+'</span></div><div class="price">'+fmt(p)+' ₺</div>'+lines+'</div>'});
+      var chip=gor?'<span class="fk-diff fk-'+s+'">'+(diff>0?'+':'')+fmt(diff)+'</span>':'<span class="fk-diff fk-none">hesap</span>';
+      cards.push({rank:rank,diff:diff,html:'<div class="fk-card'+(gor?'':' bek')+'"><div class="top"><span class="name">'+esc(meta.ad)+'</span>'+chip+'</div><div class="price">'+(gor?'':'≈ ')+fmt(p)+' ₺</div>'+lines+'</div>'});
     });
     cards.sort(function(a,b){return a.rank-b.rank||(a.diff||0)-(b.diff||0)});
     document.getElementById('fkCards').innerHTML=cards.map(function(c){return c.html}).join('')||'<div class="empty">Bu oda ve tarih için veri yok.</div>';

@@ -300,6 +300,16 @@
    "etiket": "%20",
    "kaynak": "trivago",
    "zaman": "2026-10-17 10:39"
+  },
+  {
+   "tarih": "2026-10-19",
+   "kanal": "hotels",
+   "oda": "stu",
+   "fiyat": 3641,
+   "acik": 3924,
+   "etiket": "%7 Hotels.com üye indirimi (giriş yapmış, bilgisayar)",
+   "kaynak": "hotels.com",
+   "zaman": "2026-10-19 11:53"
   }
  ]
 }
