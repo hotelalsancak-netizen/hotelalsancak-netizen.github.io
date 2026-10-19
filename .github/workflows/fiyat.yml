@@ -1,9 +1,11 @@
 name: Fiyat toplayici
 
 # Fiyat Kontrol sayfasi icin kanallarin herkese acik otel sayfalarini GERCEK tarayiciyla
-# okur (fiyat_topla.py). GitHub'in yurt disi sunucusunda calisir; Booking'in Turkiye engeli
-# burada gecerli degil. Sonuc 'fiyat-veri' dalina yazilir (main gecmisi kirlenmesin), sonra
-# pano yeniden uretilir. Hotels.com, TatilBudur, trivago ve Enuygun bot korumasiyla engelliyor.
+# okur (fiyat_topla.py): Booking, Etstur, Trip.com, trivago (Hotels.com, ZenHotels, obilet...
+# dahil), TatilBudur, Enuygun. GitHub'in yurt disi sunucusunda calisir; Booking'in Turkiye
+# engeli burada gecerli degil. Gorunmez (headless) tarayiciyi engelleyen siteler yuzunden
+# tarayici GORUNUR modda, sanal ekranda (xvfb-run) acilir. Sonuc 'fiyat-veri' dalina yazilir
+# (main gecmisi kirlenmesin), sonra pano yeniden uretilir.
 
 on:
   schedule:
@@ -28,11 +30,11 @@ jobs:
         with:
           python-version: '3.11'
       - name: Tarayiciyi kur
-        run: pip install playwright==1.47.0 && python -m playwright install --with-deps chromium
+        run: pip install playwright==1.47.0 && python -m playwright install --with-deps chromium && sudo apt-get install -y -q xvfb >/dev/null
       - name: Onceki gozlemleri al
         run: git fetch -q origin fiyat-veri --depth=1 && git show origin/fiyat-veri:otomatik.json > /tmp/onceki.json || echo '{}' > /tmp/onceki.json
       - name: Fiyatlari oku
-        run: python fiyat_topla.py /tmp/otomatik.json /tmp/onceki.json
+        run: xvfb-run -a python fiyat_topla.py /tmp/otomatik.json /tmp/onceki.json
       - name: fiyat-veri dalina yaz
         run: |
           git config user.name "riva-fiyat-bot"

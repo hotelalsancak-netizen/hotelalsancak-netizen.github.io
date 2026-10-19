@@ -1756,6 +1756,9 @@ FIYAT_KANALLAR = {
     "obilet":     ("obilet", None, None, "bağlı değil · Etstur stoğu", ""),
     "zenhotels":  ("ZenHotels", None, None, "bağlı değil · toptancıdan", ""),
     "sembo":      ("sembo", None, None, "bağlı değil · Expedia ortağı", ""),
+    # trivago'dan okunan diğer satıcılar (fiyat_topla.py → oku_trivago)
+    "expedia":    ("Expedia", None, None, "Expedia grubu · trivago'dan", ""),
+    "agoda":      ("Agoda", None, None, "bağlı değil", ""),
 }
 
 
@@ -1975,7 +1978,7 @@ FIYAT_HTML = """
     var keys=[];D.kanallar.forEach(function(k){keys.push(k.k)});Object.keys(obs).forEach(function(k){if(keys.indexOf(k)<0)keys.push(k)});
     var cards=[],cnt={ok:0,low:0,high:0,bek:0};
     keys.forEach(function(k){
-      var meta=kmap[k]||{ad:k,etiket:'bağlı değil',bagli:false},o=(obs[k]||{})[selRoom],b=(bek[k]||{})[selRoom];
+      var meta=kmap[k]||{ad:k.charAt(0).toUpperCase()+k.slice(1),etiket:'bağlı değil · trivago’dan',bagli:false},o=(obs[k]||{})[selRoom],b=(bek[k]||{})[selRoom];
       if(meta.kapali&&!o){cards.push({rank:5,html:'<div class="fk-card bek"><div class="top"><span class="name">'+esc(meta.ad)+'</span><span class="fk-diff fk-none">kapalı</span></div><div class="meta">Satış durduruldu (Elektra’da kapatıldı)</div></div>'});return;}
       if(!o&&!b)return;
       var p=o?o.p:b[0],diff=p-T,s=st(diff),gor=!!o;
