@@ -17,6 +17,7 @@ import asyncio
 import datetime as dt
 import html as htmllib
 import json
+import os
 import re
 import sys
 from urllib.parse import parse_qsl, urlencode
@@ -115,21 +116,44 @@ def parse_trip(text):
 
 def parse_booking(text):
     """Satır: 'TL 4.225 TL 3.802' (üstü çizili, son). Yurt dışından bakınca fiyat VERGİSİZ
-    gösterilir ('Hariç: %10 KDV, %1 devlet vergisi'); vergi eklenerek misafirin ödediğine çevrilir."""
+    gösterilebilir. İki biçim görüldü: sayfada bir kez 'Hariç: %10 KDV, %1 devlet vergisi'
+    (oran) ya da fiyatın altında '+TL 381 vergiler ve ücretler' (tutar). Vergi eklenerek
+    misafirin ödediğine çevrilir. Hiçbiri yoksa fiyat vergi dahil kabul edilir ve vergi
+    satırları rapora yazılır (BOOKING_VERGI_IZ) ki biçim değişirse görülsün."""
+    global BOOKING_VERGI_IZ
     m = re.search(r"Hariç:\s*([^\n]{0,80})", text)
     vergi = 1 + sum(int(x) for x in re.findall(r"%\s?(\d{1,2})", m.group(1))) / 100 if m else 1.0
+    ek_re = re.compile(r"\+\s?(?:TL\s?)?(\d{1,3}(?:\.\d{3})*|\d+)\s?(?:TL\s?)?(?:vergi|ücret)", re.I)
+    ek_goruldu = False
     s = {}
     for ad, lines in bloklar(text):
-        for l in lines[:120]:
-            if "TL" not in l:
+        lines = lines[:120]
+        for i, l in enumerate(lines):
+            if "TL" not in l or len(l) > 40 or ek_re.search(l):
                 continue
             nums = [tl(x) for x in TL_SAYI.findall(l)]
-            if not nums or len(l) > 40:
+            if not nums:
                 continue
-            f = round(nums[-1] * vergi)
-            acik = round(nums[0] * vergi) if len(nums) >= 2 else None
+            ek = 0
+            for j in range(i + 1, min(i + 4, len(lines))):
+                me = ek_re.search(lines[j])
+                if me:
+                    ek = tl(me.group(1)) if "." in me.group(1) else int(me.group(1))
+                    break
+            if ek:
+                ek_goruldu = True
+                oran = 1 + ek / nums[-1]
+            else:
+                oran = vergi
+            f = round(nums[-1] * oran)
+            acik = round(nums[0] * oran) if len(nums) >= 2 else None
             en_dusuk(s, "booking", oda_key(ad), f, acik)
-    return s, vergi
+    BOOKING_VERGI_IZ = [] if (m or ek_goruldu) else \
+        [l.strip()[:90] for l in text.splitlines() if re.search(r"vergi|KDV|ücret", l, re.I)][:4]
+    return s, (vergi if m else (1.11 if ek_goruldu else 1.0))
+
+
+BOOKING_VERGI_IZ = []
 
 
 def urls(d):
@@ -414,6 +438,8 @@ async def oku_metin(ctx, kanal, url):
         raise RuntimeError("otel sayfası açılmadı")
     if kanal == "booking":
         s, vergi = parse_booking(text)
+        if BOOKING_VERGI_IZ:
+            print("  Booking vergi satırları (biçim tanınmadı):", BOOKING_VERGI_IZ)
         return s, "Booking · otomatik" + (" (vergi eklendi)" if vergi > 1 else "")
     if kanal == "etstur":
         return parse_etstur(text), "Etstur · otomatik"
@@ -456,7 +482,12 @@ async def topla():
             for kanal, url in urls(d).items():
                 await kaydet(d, kanal, oku_metin(ctx, kanal, url))
             await kaydet(d, "tatilbudur", ile(oku_tatilbudur(ctx, d), "TatilBudur · otomatik"))
-            await kaydet(d, "enuygun", ile(oku_enuygun(ctx, d), "Enuygun · otomatik"))
+            if os.environ.get("GITHUB_ACTIONS"):
+                # Enuygun'un kendi sayfası GitHub sunucusundan engelleniyor (19.10.2026);
+                # Enuygun fiyatı trivago'dan geliyor. Yerelde (Türkiye) doğrudan okunur.
+                pass
+            else:
+                await kaydet(d, "enuygun", ile(oku_enuygun(ctx, d), "Enuygun · otomatik"))
         await br.close()
     return gozlem, rapor
 
