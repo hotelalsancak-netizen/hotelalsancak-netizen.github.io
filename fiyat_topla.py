@@ -479,12 +479,17 @@ async def topla():
         br = await p.chromium.launch(headless=False, args=["--disable-blink-features=AutomationControlled"])
         ctx = await br.new_context(locale="tr-TR", timezone_id="Europe/Istanbul", user_agent=UA,
                                    viewport={"width": 1366, "height": 900})
+        # Booking görünmez tarayıcıyı engellemiyor ve yalnız o modda vergi notunu ('Hariç: %10 KDV,
+        # %1 devlet vergisi') metne koyuyor; görünür modda not yok, fiyat vergisiz kalıyor.
+        brh = await p.chromium.launch(headless=True, args=["--disable-blink-features=AutomationControlled"])
+        ctxh = await brh.new_context(locale="tr-TR", timezone_id="Europe/Istanbul", user_agent=UA,
+                                     viewport={"width": 1366, "height": 900})
         for d in tarihler(simdi.date()):
             # trivago önce: aynı zaman damgasında sonraki gözlem kazanır (checks.fiyat_gozlemler),
             # böylece kanalın kendi sayfasından okunan fiyat trivago'daki kopyasının önüne geçer.
             await kaydet(d, "trivago", ile(oku_trivago(ctx, d), "trivago · otomatik"))
             for kanal, url in urls(d).items():
-                await kaydet(d, kanal, oku_metin(ctx, kanal, url))
+                await kaydet(d, kanal, oku_metin(ctxh if kanal == "booking" else ctx, kanal, url))
             await kaydet(d, "tatilbudur", ile(oku_tatilbudur(ctx, d), "TatilBudur · otomatik"))
             if os.environ.get("GITHUB_ACTIONS"):
                 # Enuygun'un kendi sayfası GitHub sunucusundan engelleniyor (19.10.2026);
@@ -492,6 +497,7 @@ async def topla():
                 pass
             else:
                 await kaydet(d, "enuygun", ile(oku_enuygun(ctx, d), "Enuygun · otomatik"))
+        await brh.close()
         await br.close()
     return gozlem, rapor
 
