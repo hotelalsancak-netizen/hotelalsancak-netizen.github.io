@@ -390,7 +390,11 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
     # ---- Missing-lock warning: rooms Elektra shows active this week but with NO
     # card PDF in the dump were NOT checked at all (a blind spot — if one is used
     # off-book, this report can't see it). Never let a missing room pass silently.
-    occ_rooms = {str(r["room"]) for r in occ.get("reservations", []) + occ.get("blocks", [])}
+    # Only PHYSICAL (numeric) rooms: a no-show is parked in a virtual 'NSNSNS…' room that
+    # the calendar returns as ROOMNO=None, which used to print "EKSİK KİLİT OKUMASI: None"
+    # nearly every week — a false alarm that teaches the owner to ignore the banner.
+    occ_rooms = {str(r["room"]) for r in occ.get("reservations", []) + occ.get("blocks", [])
+                 if str(r["room"]).isdigit()}
     missing_cards = sorted(occ_rooms - set(rooms), key=lambda x: (len(x), x))
     if missing_cards:
         o.append('<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;'
