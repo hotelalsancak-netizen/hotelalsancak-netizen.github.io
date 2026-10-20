@@ -6,8 +6,8 @@
    "tarih": "2026-10-19",
    "durum": "açık",
    "sorun": "Her gün 250–400 TL ucuz",
-   "sebep": "Bize doğrudan bağlı değil (Emerging Travel kapalı); fiyatı bir toptancıdan alıyor — Expedia'nın ya da Etstur'un toptan ağı",
-   "yapilacak": "Kaynağı bul (ZenHotels araştırma komutu), oradaki toptan satışı kapat"
+   "sebep": "KAYNAK BULUNDU (20.10): ZenHotels fiyatı her tarih ve odada Etstur fiyatının tam %92,6'sı (Etstur bugün düşünce o da düştü) — Etstur'un B2B/ETSCORE stoğunu Etstur'dan az kârla satıyor",
+   "yapilacak": "Etstur'da yalnız B2B planlarını (B2B BB NR / Esnek) %9 artır → ZenHotels ≈ hedef; Etstur'un kendi fiyatı değişmez"
   },
   {
    "kanal": "trip",
@@ -38,8 +38,8 @@
    "tarih": "2026-10-19",
    "durum": "açık",
    "sorun": "2 Kasım'da Ekonomik oda 2.901 TL'ye satılıyor",
-   "sebep": "Ekonomik oda kanallarda olmamalı; büyük ihtimalle Etstur üzerinden çıkıyor",
-   "yapilacak": "Etstur'da (ve Enuygun'da) Ekonomik odayı satışa kapat"
+   "sebep": "obilet'teki 'Ekonomik' 2.901 TL günden güne hiç değişmiyor (13.10'da Google'da da aynıydı) — eski, güncellenmeyen bir ilan; Elektra'daki obilet bağlantısı kapalı",
+   "yapilacak": "obilet'e yazıp eski ilanı kapattır (ya da obilet'i Elektra'dan düzgün bağla)"
   }
  ]
 }
