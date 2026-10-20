@@ -54,6 +54,7 @@ CURRENCYCODE, RESSTATE, RESID.
 GENERALBALANCE is the "Genel Bakiye" the whole check turns on.
 """
 import argparse, datetime as dt, json, os, pathlib, re, sys
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -672,6 +673,67 @@ def fetch_res_times(res_ids, env=None):
     return out
 
 
+# One row PER GUEST per reservation (verified live 20.10.2026). Carries each guest's own
+# GUESTPHONE (= the guest profile's PHONE) next to the reservation's CONTACTPHONE. Heavy
+# view: a 4-month CHECKOUT window timed out (>60 s), 14 days took 0.6 s — keep windows short.
+RESGUEST_OBJECT = "QA_HOTEL_RESERVATION_GUEST"
+RESGUEST_COLUMNS = ["RESID", "ROOMNO", "GUESTNO", "GUESTNAME", "GUESTSURNAME", "GUESTNAMES",
+                    "GUESTPHONE", "CONTACTPHONE", "AGENCY", "ADULT", "CHECKIN", "CHECKOUT",
+                    "RESSTATE", "RESSTATEID", "CREATORUSER"]
+
+
+def fetch_res_guests(where, env=None):
+    """Raw per-guest rows for a WHERE (HOTELID is prepended), e.g. RESSTATE=InHouse."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    return e.select(RESGUEST_OBJECT, RESGUEST_COLUMNS,
+                    where=[{"Column": "HOTELID", "Operator": "=", "Value": hid}] + list(where),
+                    per_page=500)
+
+
+def fetch_checkin_users(res_ids, env=None):
+    """RESID -> (usercode, 'DD.MM HH:MM' local) of whoever performed the Check-In, read
+    from each reservation's log ("Check-In (SP_EASYPMS_CHECKIN)" entry; USERID there is
+    the staff usercode). LOGTIMEUTC is UTC; Turkey is UTC+3 all year. One GetLog
+    call per reservation (~0.7 s), so pass only the ids you need; they run on a few
+    parallel connections sharing ONE login (59 ids: 44 s serial). A reservation with no
+    check-in entry is left out."""
+    ids = sorted({int(r) for r in res_ids if str(r).strip().isdigit()})
+    if not ids:
+        return {}
+    e, env = connect(env)
+
+    def last_checkin(logs):
+        best = None
+        for lg in logs:
+            if "CHECKIN" not in str(lg.get("ACTION") or "").upper().replace("-", ""):
+                continue
+            when = str(lg.get("LOGTIMEUTC") or "")[:19]
+            if best is None or when > best[0]:
+                best = (when, str(lg.get("USERID") or "").strip())
+        return best
+
+    def run(chunk):
+        c = Elektra(e.tenant)
+        c.base, c.token = e.base, e.token        # aynı oturum, iş parçacığı başına ayrı bağlantı
+        return [(rid, last_checkin(_reservation_log(c, rid))) for rid in chunk]
+
+    workers = min(6, len(ids))
+    with ThreadPoolExecutor(workers) as ex:
+        found = [x for part in ex.map(run, [ids[i::workers] for i in range(workers)]) for x in part]
+    out = {}
+    for rid, best in found:
+        if not best:
+            continue
+        try:
+            t = dt.datetime.strptime(best[0], "%Y-%m-%d %H:%M:%S") + dt.timedelta(hours=3)
+            local = t.strftime("%d.%m %H:%M")
+        except ValueError:
+            local = ""
+        out[str(rid)] = (best[1], local)
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Room calendar — the occupancy source for the room-usage security check.
 # ---------------------------------------------------------------------------
@@ -748,10 +810,13 @@ _ROOMID_IN_LOG = re.compile(r'"ROOMID"\s*:\s*"?(\d+)"?')
 
 def _reservation_log(e, res_id):
     """Log records for one reservation using an ALREADY-connected client `e` (no
-    re-login per call). Returns [] on a bad id or unexpected/empty response."""
+    re-login per call). Returns [] on a bad id or unexpected/empty response.
+    Tenant is REQUIRED since ~10.2026: without it Elektra answers HTTP 400 "Tenant
+    parameter cannot be null", which this function swallowed into [] — silently
+    disabling the T-folyo recovery until it was added (fixed 20.10.2026)."""
     try:
         d = e._post("GetLog/HOTEL_RES",
-                    {"Object": "HOTEL_RES", "PrimaryKey": int(res_id)},
+                    {"Object": "HOTEL_RES", "PrimaryKey": int(res_id), "Tenant": e.tenant},
                     action_name="GetLog")
     except (ValueError, TypeError, ElektraError):
         return []

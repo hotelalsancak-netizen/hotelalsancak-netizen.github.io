@@ -44,8 +44,8 @@ SHELL = ROOT / "dashboard_shell.html"
 
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
-SECTION_ORDER = ["gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "fiyat",
-                 "kart", "stats", "satis", "vergi", "tvkart"]
+SECTION_ORDER = ["gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "eksik",
+                 "fiyat", "kart", "stats", "satis", "vergi", "tvkart"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -123,7 +123,9 @@ def build_kart() -> dict:
 # resepsiyon bunları görürse neyin yakalandığını da görmüş olur. (Sahibin kararı,
 # 24.08.2026.) Bir listeyi resepsiyona açmak istersen anahtarını buraya ekle.
 # Fiyat Kontrol iki role de açık: resepsiyon kapı fiyatlarını oradan görür (17.10.2026).
-RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat"}
+# Eksik Bilgiler iki role de açık: otel müdürü kontrol eder, resepsiyon da kendi
+# eksiğini görüp tamamlar (20.10.2026).
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat", "eksik"}
 
 
 def passwords() -> dict:
@@ -197,6 +199,7 @@ def build_cloud():
     live = (("gunsonu", build_gunsonu), ("odeme", checks.build_odeme),
             ("kasa", checks.build_kasa), ("iptal", checks.build_iptal),
             ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
+            ("eksik", checks.build_eksik),
             ("fiyat", checks.build_fiyat),
             ("stats", checks.build_stats), ("satis", checks.build_satis),
             ("vergi", checks.build_vergi), ("gunluk", checks.build_gunluk),

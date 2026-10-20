@@ -15,7 +15,7 @@ Data comes from the Elektra views probed live (see elektra_api.py):
 import datetime as dt
 import html as _html
 import json
-from collections import defaultdict, OrderedDict
+from collections import Counter, defaultdict, OrderedDict
 
 import elektra_api as E
 
@@ -2608,3 +2608,153 @@ def build_gunluk(env):
             "updated": now_str(),
             "html": PAGE("Günlük Rapor", "Günlük Rapor",
                          f"gün seçici + oda değişimleri, açık bakiye/cari, problemler, yorumlar", body)}
+
+
+# --------------------------------------------------------------------------- Eksik Bilgiler
+EKSIK_CIKIS_GUN = 3     # "telefonsuz çıkanlar" listesi: son kaç gün (hafta sonu da kapsansın)
+
+
+def phone_ok(p):
+    """Gerçek bir telefon numarası mı? Kanalların yer tutucuları SAYILMAZ: Expedia
+    '111111111111', Tatil Budur '0', Jolly Tur '+' gönderiyor (20.10.2026 verisi).
+    Kural: en az 7 rakam ve hepsi aynı rakam değil."""
+    d = "".join(ch for ch in str(p or "") if ch.isdigit())
+    return len(d) >= 7 and len(set(d)) > 1
+
+
+def phoneless_reservations(rows):
+    """Misafir-başı satırları (E.fetch_res_guests) rezervasyona toplar ve HİÇ geçerli
+    telefonu olmayanları döndürür. Odada kaç kişi kalırsa kalsın TEK numara yeter:
+    rezervasyon sahibinin (CONTACTPHONE) ya da odadaki herhangi bir misafirin (GUESTPHONE)
+    — sahibin kuralı (20.10.2026). Sanal folyo (T…), no-show (NSNSNS…) ve BOARD/CASH
+    FOLIO iç kayıtları elenir. Dönüş: (eksik_listesi, toplam_rezervasyon_sayısı)."""
+    groups = OrderedDict()
+    for r in rows:
+        if not str(r.get("ROOMNO") or "").isdigit() or is_internal_folio(r.get("GUESTNAMES")):
+            continue
+        groups.setdefault(str(r.get("RESID")), []).append(r)
+    out = []
+    for rid, gs in groups.items():
+        if any(phone_ok(g.get("CONTACTPHONE")) or phone_ok(g.get("GUESTPHONE")) for g in gs):
+            continue
+        fake = sorted({str(v).strip() for g in gs for v in (g.get("CONTACTPHONE"), g.get("GUESTPHONE"))
+                       if str(v or "").strip()})
+        first = min(gs, key=lambda g: g.get("GUESTNO") or 99)
+        names = (first.get("GUESTNAMES")
+                 or " / ".join(f"{g.get('GUESTNAME') or ''} {g.get('GUESTSURNAME') or ''}".strip()
+                               for g in gs))
+        out.append({"rez": rid, "room": str(first.get("ROOMNO")), "guest": names,
+                    "adult": first.get("ADULT"), "agency": (first.get("AGENCY") or "").strip(),
+                    "ci": pdate(first.get("CHECKIN")), "co": pdate(first.get("CHECKOUT")),
+                    "fake": fake})
+    return out, len(groups)
+
+
+def build_eksik(env):
+    """Eksik Bilgiler — resepsiyonun Elektra'ya girmeyi unuttuğu bilgiler; otel müdürü
+    kontrol eder. Şimdilik TELEFON: konaklayan her odada en az bir geçerli numara olmalı
+    (phoneless_reservations). Üstte konaklayanlar (misafir hâlâ otelde → hemen sorulabilir),
+    altta son EKSIK_CIKIS_GUN günde telefonsuz çıkanlar. Her kayıtta girişi yapan personel
+    (rezervasyon log'undaki Check-In) gösterilir."""
+    today = dt.date.today()
+    inhouse, n_in = phoneless_reservations(E.fetch_res_guests(
+        [{"Column": "RESSTATE", "Operator": "=", "Value": "InHouse"}], env=env))
+    frm = today - dt.timedelta(days=EKSIK_CIKIS_GUN)
+    left, _ = phoneless_reservations(E.fetch_res_guests(
+        [{"Column": "CHECKOUT", "Operator": ">=", "Value": f"{frm} 00:00:00"},
+         {"Column": "CHECKOUT", "Operator": "<=", "Value": f"{today} 23:59:59.999"},
+         {"Column": "RESSTATE", "Operator": "=", "Value": "CheckOut"}], env=env))
+    who = E.fetch_checkin_users([x["rez"] for x in inhouse + left], env=env)
+    inhouse.sort(key=lambda x: (x["ci"] or today, int(x["room"])))
+    left.sort(key=lambda x: (-(x["co"] or today).toordinal(), int(x["room"])))   # en yeni çıkış üstte
+
+    def stay(x):
+        return f"{tr_g(x['ci'])} → {tr_g(x['co'])}"
+
+    def who_cell(x):
+        u, t = who.get(x["rez"], ("", ""))
+        if not u:
+            return "<td>—</td>"
+        return (f"<td style='white-space:nowrap'><span class='who'>{esc(u)}</span> "
+                f"<span style='color:var(--sub);font-size:11.5px'>{esc(t)}</span></td>")
+
+    def note_cell(x):
+        if not x["fake"]:
+            return "<td></td>"
+        return (f"<td style='color:var(--sub);font-size:12px'>gerçek numara değil: "
+                f"{esc(', '.join(x['fake'])[:30])}</td>")
+
+    def since(x):
+        d = (today - x["ci"]).days if x["ci"] else 0
+        if d <= 0:
+            return "<td>bugün geldi</td>"
+        return f"<td class='{'miss' if d >= 2 else ''}'>{d} gündür</td>"
+
+    stats = (stat(len(inhouse), "konaklayan odada telefon yok", "bad" if inhouse else "ok")
+             + stat(n_in, "konaklayan oda")
+             + stat(len(left), f"son {EKSIK_CIKIS_GUN} günde telefonsuz çıkış",
+                    "bad" if left else "ok"))
+    fresh = ("<div style='background:#fef3c7;border:1px solid #fde68a;color:#92400e;"
+             "padding:9px 13px;border-radius:9px;margin:0 0 12px;font-size:12.5px'>"
+             f"⏱ Bu sayfadaki veriler <b>{now_str()}</b> itibarıyladır. Bu saatten sonra "
+             "girilen telefonlar bir sonraki güncellemede listeden düşer.</div>")
+
+    if inhouse:
+        trs = "".join(
+            f"<tr><td><b>{esc(x['room'])}</b></td><td>{esc(x['guest'][:40])}</td>"
+            f"<td class='r'>{esc(x['adult'] or '—')}</td><td>{esc(x['agency'][:16])}</td>"
+            f"<td style='white-space:nowrap'>{stay(x)}</td>{since(x)}{who_cell(x)}{note_cell(x)}"
+            f"<td>{rez_link(x['rez'])}</td></tr>" for x in inhouse)
+        table = ("<h2>📞 Telefonu girilmemiş konaklayan misafirler</h2>"
+                 "<p class='lead'>Bu odalarda kalanların <b>hiçbirinin</b> telefonu Elektra'da yok. "
+                 "Odada 2–3 kişi kalıyorsa <b>tek numara yeterli</b>: rezervasyonu yapan kişinin ya da "
+                 "odadaki misafirlerden birinin. Misafir hâlâ otelde — numarasını alıp Elektra'da "
+                 "misafir kartına girin. Rez No'ya tıkla → Elektra açılır (numara kopyalanır, Rez Id "
+                 "kutusuna yapıştır, satıra çift tıkla).</p>"
+                 "<div style='overflow-x:auto'><table><tr><th>Oda</th><th>Misafir</th><th class='r'>Kişi</th><th>Kanal</th>"
+                 "<th>Giriş → Çıkış</th><th>Eksik</th><th>Girişi yapan</th><th>Not</th>"
+                 "<th>Rez No</th></tr>" + trs + "</table></div>")
+    else:
+        table = empty_ok("Konaklayan her odada en az bir telefon numarası kayıtlı.")
+
+    tally = Counter(who.get(x["rez"], ("", ""))[0] or "bilinmiyor" for x in inhouse + left)
+    if tally:
+        chips = " ".join(f"<span class='who' style='margin:0 6px 6px 0'>{esc(u)}: {n}</span>"
+                         for u, n in tally.most_common())
+        tally_html = ("<h2>Girişinde telefon alınmayan kayıtlar — personele göre</h2>"
+                      f"<p class='lead'>Konaklayanlar + son {EKSIK_CIKIS_GUN} günde çıkanlar; "
+                      "girişi (check-in) kim yaptıysa ona yazılır.</p>"
+                      f"<div style='display:flex;flex-wrap:wrap'>{chips}</div>")
+    else:
+        tally_html = ""
+
+    if left:
+        ltrs = "".join(
+            f"<tr><td><b>{esc(x['room'])}</b></td><td>{esc(x['guest'][:40])}</td>"
+            f"<td>{esc(x['agency'][:16])}</td><td style='white-space:nowrap'>{stay(x)}</td>"
+            f"{who_cell(x)}{note_cell(x)}<td>{rez_link(x['rez'])}</td></tr>" for x in left)
+        left_html = ("<details style='margin-top:22px'><summary style='cursor:pointer;font-weight:700'>"
+                     f"Son {EKSIK_CIKIS_GUN} günde telefonu girilmeden çıkış yapanlar ({len(left)})"
+                     "</summary><p class='lead' style='margin-top:8px'>Misafir gitti; kanal ya da "
+                     "rezervasyon belgesinden numara bulunursa yine de girilebilir. Asıl amaç hangi "
+                     "girişlerde telefonun alınmadığını görmek.</p>"
+                     "<div style='overflow-x:auto'><table><tr><th>Oda</th><th>Misafir</th><th>Kanal</th><th>Giriş → Çıkış</th>"
+                     "<th>Girişi yapan</th><th>Not</th><th>Rez No</th></tr>" + ltrs
+                     + "</table></div></details>")
+    else:
+        left_html = ""
+
+    note = ("<div class='note'>Kaynak: Elektra <b>QA_HOTEL_RESERVATION_GUEST</b> (her misafir ayrı "
+            "satır) — misafirin kendi telefonu + rezervasyonun iletişim telefonu. Kanalların gönderdiği "
+            "sahte numaralar (Expedia <i>111111111111</i>, Tatil Budur <i>0</i>) eksik sayılır. "
+            "Girişi yapan = rezervasyon geçmişindeki Check-In işlemini yapan kullanıcı. No-show ve "
+            "sanal folyolar hariç. Şimdilik yalnızca telefon kontrol ediliyor; kimlik, e-posta gibi "
+            "başka eksikler de ileride bu sayfaya eklenebilir.</div>")
+    sub = (f"{len(inhouse)}/{n_in} konaklayan odada telefon yok"
+           + (f" · son {EKSIK_CIKIS_GUN} günde {len(left)} telefonsuz çıkış" if left else ""))
+    return {"label": "Eksik Bilgiler", "count": len(inhouse), "count_label": "telefon eksik",
+            "tone": "bad" if inhouse else "ok", "sub": sub, "updated": now_str(),
+            "html": PAGE("Resepsiyon — Veri Kontrolü", "Eksik Bilgiler",
+                         "Elektra'ya girilmemiş misafir bilgileri · şimdilik telefon",
+                         f"<div class='stats'>{stats}</div>{fresh}{table}{tally_html}"
+                         f"{left_html}{note}{REZ_COPY_JS}")}

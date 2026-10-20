@@ -18,7 +18,12 @@ boş oda satılıp cebe mi atıldı?"
   otomatik gözlemler `fiyat_topla.py` → `.github/workflows/fiyat.yml` (3 saatte bir, yurt dışı sunucu;
   Booking/Etstur/Trip) → `fiyat-veri` dalı → pano derlemesi `site_data/fiyat/otomatik.json`), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
   güçlü/zayıf ayrımı), `stats` (Doluluk/ADR/grafikler), `satis` (Aylık satışlar), `vergi` (**Vergi Sayfası** —
-  muhasebe mizanından aylık KDV + konaklama vergisi + dönemsel kurumlar/geçici vergi).
+  muhasebe mizanından aylık KDV + konaklama vergisi + dönemsel kurumlar/geçici vergi), `eksik` (**Eksik
+  Bilgiler** — iki rol de görür; otel müdürü kontrol eder. Şimdilik telefon: konaklayan odada **tek geçerli
+  numara yeter** (rezervasyon sahibi `CONTACTPHONE` ya da herhangi bir misafir `GUESTPHONE`, kaynak
+  `QA_HOTEL_RESERVATION_GUEST` — ağır görünüm, kısa pencere kullan). Kanal yer tutucuları eksik sayılır
+  (Expedia `111111111111`, Tatil Budur `0`). Girişi yapan = rezervasyon log'undaki Check-In kullanıcısı;
+  **`GetLog` artık `Tenant` ister**, yoksa HTTP 400 → sessizce boş liste).
 
 ## Mimari
 - **Tek yayıncı = bulut GitHub Actions** (`.github/workflows/dashboard.yml`). Her `main` push'unda
