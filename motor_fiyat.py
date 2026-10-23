@@ -68,24 +68,31 @@ async def main(cikti, gun):
     ilk = bugun.isoformat(); ertesi = (bugun + dt.timedelta(days=1)).isoformat()
     async with async_playwright() as p:
         yol = os.environ.get("CHROME_YOLU")
-        b = await p.chromium.launch(headless=False, **({"executable_path": yol} if yol else {}))
-        ctx = await b.new_context(locale="tr-TR", viewport={"width": 1280, "height": 900})
-        page = await ctx.new_page()
-        ilk_cevap = asyncio.get_event_loop().create_future()
-        async def cevap(r):
-            if "/price/" in r.url and not ilk_cevap.done():
-                try: ilk_cevap.set_result(await r.json())
-                except Exception: pass
-        page.on("response", cevap)
+        # Kendi otelimizin motoru: otomasyon işaretini (navigator.webdriver) taşıyan tarayıcıda
+        # Friendly Captcha zorlaşıp takılabiliyor; işaret kaldırılır.
+        b = await p.chromium.launch(headless=False, args=["--disable-blink-features=AutomationControlled"],
+                                    **({"executable_path": yol} if yol else {}))
         adres = f"{MOTOR}?checkin={ilk}&checkout={ertesi}&adult=2&child=0"
-        for deneme in (1, 2):              # captcha takılırsa sayfayı bir kez yenile
+        page = None
+        for deneme in (1, 2, 3):           # takılırsa TEMİZ bir oturumla yeniden (çerez/depolama sıfır)
+            ctx = await b.new_context(locale="tr-TR", timezone_id="Europe/Istanbul",
+                                      viewport={"width": 1366, "height": 900})
+            await ctx.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+            page = await ctx.new_page()
+            ilk_cevap = asyncio.get_event_loop().create_future()
+            async def cevap(r, f=ilk_cevap):
+                if "/price/" in r.url and not f.done():
+                    try: f.set_result(await r.json())
+                    except Exception: pass
+            page.on("response", cevap)
             await page.goto(adres, wait_until="load", timeout=60000)
             try:
-                await asyncio.wait_for(asyncio.shield(ilk_cevap), timeout=150)   # captcha çözülüp sayfa arayana kadar
+                await asyncio.wait_for(asyncio.shield(ilk_cevap), timeout=120)   # captcha çözülüp sayfa arayana kadar
                 break
             except asyncio.TimeoutError:
                 print(f"  deneme {deneme}: captcha çözülmedi")
-        if not ilk_cevap.done():
+                await ctx.close(); page = None
+        if page is None:
             sys.exit("motor fiyat sorgusu yapmadı (captcha çözülmedi) — eski veri korunur")
         jwt = await page.evaluate("() => (typeof jwt !== 'undefined' ? jwt : null)")
         if not jwt:
