@@ -24,6 +24,7 @@ boş oda satılıp cebe mi atıldı?"
   `QA_HOTEL_RESERVATION_GUEST` — ağır görünüm, kısa pencere kullan). Kanal yer tutucuları eksik sayılır
   (Expedia `111111111111`, Tatil Budur `0`). Girişi yapan = rezervasyon log'undaki Check-In kullanıcısı;
   **`GetLog` artık `Tenant` ister**, yoksa HTTP 400 → sessizce boş liste).
+- **Canlı fiyat (site için):** `motor_fiyat.py` → `.github/workflows/canli-fiyat.yml` (saatte bir) → `canli-fiyat` dalı → rivaalsancak.com/oda-fiyatlari.html okur. Otelin kendi rezervasyon motoru, 30 gece; captcha'yı sayfa kendisi çözer, başarısız saatlerde dala yazılmaz.
 
 ## Mimari
 - **Tek yayıncı = bulut GitHub Actions** (`.github/workflows/dashboard.yml`). Her `main` push'unda

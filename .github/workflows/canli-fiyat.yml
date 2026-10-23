@@ -1,0 +1,44 @@
+name: Canli fiyat (rezervasyon motoru)
+
+# Sitedeki "Oda Fiyatlari" sayfasi (rivaalsancak.com/oda-fiyatlari.html) icin otelin KENDI
+# rezervasyon motorundan onumuzdeki 30 gecenin oda fiyatlarini okur (motor_fiyat.py). Misafirin
+# gordugu fiyat: doluluga gore artan fiyatlar ve kampanyalar dahil. Motor Friendly Captcha
+# kullaniyor; sayfa captcha'yi kendisi cozer, tarayici GORUNUR modda sanal ekranda acilir.
+# Sonuc 'canli-fiyat' dalina yazilir (main gecmisi kirlenmesin). Toplama basarisiz olursa dala
+# hic yazilmaz; site son iyi veriyi gosterir. Pano yeniden uretilmez (bu veri panoda kullanilmiyor).
+
+on:
+  schedule:
+    - cron: '7 * * * *'        # her saat basi +7 dk
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: canli-fiyat
+  cancel-in-progress: false
+
+jobs:
+  topla:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Tarayiciyi kur
+        run: pip install playwright==1.47.0 && python -m playwright install --with-deps chromium && sudo apt-get install -y -q xvfb >/dev/null
+      - name: Fiyatlari oku
+        run: xvfb-run -a python motor_fiyat.py /tmp/canli-fiyat.json 30
+      - name: canli-fiyat dalina yaz
+        run: |
+          git config user.name "riva-fiyat-bot"
+          git config user.email "fiyat-bot@users.noreply.github.com"
+          git checkout -q --orphan canli-fiyat-yeni
+          git rm -rfq .
+          cp /tmp/canli-fiyat.json canli-fiyat.json
+          git add canli-fiyat.json
+          git commit -qm "Canli fiyat $(TZ=Europe/Istanbul date '+%Y-%m-%d %H:%M')"
+          git push -fq origin HEAD:canli-fiyat
