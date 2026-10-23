@@ -9,7 +9,7 @@ Misafirin gördüğü fiyat budur: doluluk kuralları ("30 odadan sonra artar") 
 Motor çok sık sorguda IP'yi engelliyor (429) → sorgular sırayla ve aralıklı; saatte bir çalıştırın.
 Çıktı (site oda-fiyatlari.html bunu okur):
   {"guncellendi": ISO, "para": "TRY", "gunler": {"YYYY-AA-GG": {"eko": {"f": 3336, "k": 4, "iade": true}, ...}}}
-  Bir oda tipi o gece satışta değilse (dolu / stop-sell) anahtarı hiç yazılmaz.
+  Bir oda tipi o gece satışta değilse (dolu, stop-sell ya da kalan oda 0) anahtarı hiç yazılmaz.
 Kullanım:  xvfb-run -a python motor_fiyat.py <çıktı.json> [gün sayısı]
 Bulut: .github/workflows/canli-fiyat.yml (saatte bir) → 'canli-fiyat' dalı → site oda-fiyatlari.html okur:
   https://raw.githubusercontent.com/hotelalsancak-netizen/hotelalsancak-netizen.github.io/canli-fiyat/canli-fiyat.json
@@ -52,6 +52,8 @@ def ozet(teklifler):
             continue
         f = int(round(f))
         kalan = int(t.get("room-to-sell") or 0)
+        if kalan <= 0:                 # fiyatı görünse de satılacak oda yok → o gece dolu sayılır
+            continue
         iade = bool((t.get("cancellation-penalty") or {}).get("is-refundable"))
         o = out.get(k)
         if o is None or f < o["f"]:
