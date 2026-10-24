@@ -11,10 +11,10 @@ Kullanım:
   python fiyat_bandi.py --tablo 2026-10-24 2027-03-31   # aralığın bütün gecelerini tabloya yazar
   ... --kuru                                     # yazmadan ne yapacağını göster
 
-Otomatik mod hiçbir geceyi DÜŞÜRMEZ, elle yükseltilmiş gece (bayram, etkinlik) korunur:
-  - gece 30+ oda ve Elektra fiyatı normal planın altında → normal plana çıkar
-  - gece 30'un altında ama Elektra fiyatı başlangıç fiyatının da altında (hatalı giriş) → başlangıca
-İptallerle gece 30'un altına inerse fiyat kendiliğinden inmez (elle ya da --tablo ile).
+Otomatik mod YALNIZ 30 oda kuralını uygular: gece 30+ oda ve Elektra fiyatı normal planın altında →
+normal plana çıkar. Hiçbir geceyi DÜŞÜRMEZ; 30'un altındaki gecelere hiç dokunmaz, çünkü sahibi
+Elektra'da elle fiyat girebiliyor (24.10.2026: Stüdyo/Ekonomik 25.10–22.11 elle girildi) ve program
+onunla çekişmemeli. İptallerle gece 30'un altına inerse fiyat kendiliğinden inmez.
 Elektra'da fiyatı hiç girilmemiş (0) geceye dokunmaz: o tarih satışa kapalıdır (24.10.2026'da
 31.03.2027 sonrası böyle).
 
@@ -136,13 +136,12 @@ def otomatik(e, env, hid, bugun, kuru):
     simdi = elektra_fiyatlar(e, hid, bugun, son)
     bekle = {}
     for (d, rt), eur in sorted(simdi.items()):
-        if rt not in ODA or eur <= 0:
-            continue    # fiyatı girilmemiş gece satışa kapalıdır (ör. sezonu açılmamış tarih); açma
+        if rt not in ODA or eur <= 0 or dol.get(d, 0) < checks.ESIK_ODA:
+            continue    # fiyatı girilmemiş gece satışa kapalıdır (açma); 30 altı gece sahibinin
         oda, ad = ODA[rt]
-        hedef = euro(checks.gece_hedef(oda, d, dol.get(d, 0)))
+        hedef = euro(checks.gece_hedef(oda, d, dol[d]))
         if eur < hedef - PAY:
-            neden = "30+ oda · normal plan" if dol.get(d, 0) >= checks.ESIK_ODA else "başlangıç fiyatının altındaydı"
-            print(f"{d} {ad}: {eur:.1f} → {hedef:.1f} € ({neden})")
+            print(f"{d} {ad}: {eur:.1f} → {hedef:.1f} € (30+ oda · normal plan)")
             yaz(e, hid, rt, d, d, hedef, None, kuru)
             bekle[(d, rt)] = hedef
     if not bekle:

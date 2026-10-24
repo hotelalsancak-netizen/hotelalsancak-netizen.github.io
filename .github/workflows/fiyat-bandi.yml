@@ -1,8 +1,8 @@
 name: Fiyat bandi
 
 # 30 oda kurali (fiyat_bandi.py): bir gece 30 oda ve ustu satilinca o gecenin Elektra temel
-# fiyatini fiyat listesindeki normal plana cikarir; baslangic fiyatinin altina inmis geceyi
-# duzeltir. Hicbir geceyi DUSURMEZ, fiyati girilmemis (satisa kapali) geceye dokunmaz.
+# fiyatini fiyat listesindeki normal plana cikarir. Baska hicbir geceye dokunmaz (elle girilen
+# fiyatlar korunur), hicbir geceyi DUSURMEZ, fiyati girilmemis (satisa kapali) geceyi acmaz.
 # Elektra yeni fiyati kanallara kendisi gonderir. Satisin cogu ayni gun 16-21 arasi geldigi
 # icin yarim saatte bir calisir.
 
