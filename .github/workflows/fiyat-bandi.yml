@@ -1,0 +1,36 @@
+name: Fiyat bandi
+
+# 30 oda kurali (fiyat_bandi.py): bir gece 30 oda ve ustu satilinca o gecenin Elektra temel
+# fiyatini fiyat listesindeki normal plana cikarir; baslangic fiyatinin altina inmis geceyi
+# duzeltir. Hicbir geceyi DUSURMEZ, fiyati girilmemis (satisa kapali) geceye dokunmaz.
+# Elektra yeni fiyati kanallara kendisi gonderir. Satisin cogu ayni gun 16-21 arasi geldigi
+# icin yarim saatte bir calisir.
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fiyat-bandi
+  cancel-in-progress: false
+
+jobs:
+  bant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: 30 oda kurali
+        env:
+          ELEKTRA_HOTELID: ${{ secrets.ELEKTRA_HOTELID }}
+          ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
+          ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
+        run: python fiyat_bandi.py

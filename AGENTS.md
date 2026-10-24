@@ -24,6 +24,7 @@ boş oda satılıp cebe mi atıldı?"
   `QA_HOTEL_RESERVATION_GUEST` — ağır görünüm, kısa pencere kullan). Kanal yer tutucuları eksik sayılır
   (Expedia `111111111111`, Tatil Budur `0`). Girişi yapan = rezervasyon log'undaki Check-In kullanıcısı;
   **`GetLog` artık `Tenant` ister**, yoksa HTTP 400 → sessizce boş liste).
+- **Fiyat bandı (Elektra'ya YAZAR):** `fiyat_bandi.py` → `.github/workflows/fiyat-bandi.yml` (yarım saatte bir). Tablo `checks.FIYAT_ODALAR` (normal plan + başlangıç fiyatı), eşik `checks.ESIK_ODA` = 30 oda, € = TL ÷ `KUR`. Bir gece 30 oda olunca o gecenin temel fiyatını normal plana çıkarır; asla düşürmez, fiyatı 0 olan (satışa kapalı) geceye dokunmaz. Tablo ya da kur değişince bir kez `python fiyat_bandi.py --tablo BAŞ SON` (önce `--kuru`). Çağrı `Execute/SP_AVAILABILITY_UPDATE` (Toplu Güncelleme formu); ROOMTYPEID boşsa BÜTÜN oda tiplerine uygulanır.
 - **Canlı fiyat (site için):** `motor_fiyat.py` → `.github/workflows/canli-fiyat.yml` (saatte bir) → `canli-fiyat` dalı → rivaalsancak.com/oda-fiyatlari.html okur. Otelin kendi rezervasyon motoru, 30 gece; captcha'yı sayfa kendisi çözer, başarısız saatlerde dala yazılmaz.
 
 ## Mimari
