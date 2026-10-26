@@ -3,7 +3,7 @@
 
 Kural (sahibin onayı 24.10.2026, tablo checks.FIYAT_ODALAR): o gece ESIK_ODA'dan (30) az oda
 satılmışsa BAŞLANGIÇ fiyatı, 30 ve üstünde NORMAL plan. Elektra'ya giden temel fiyat EUR'dur:
-€ = TL ÷ KUR (bir ondalık). Kanallara Elektra kendisi gönderir (temel fiyat × kanal çarpanı);
+€ = TL ÷ KUR (iki ondalık, yukarı). Kanallara Elektra kendisi gönderir (temel fiyat × kanal çarpanı);
 fiyat değişince ayrıca "Kanalları Manuel Olarak Tekrar Güncelle" gerekmez.
 
 Kullanım:
@@ -26,13 +26,15 @@ Form bir çağrıda en fazla 90 günlük aralık kabul ediyor, burada da parçal
 """
 import argparse
 import datetime as dt
+import math
 import sys
 from zoneinfo import ZoneInfo
 
 import checks
 import elektra_api as E
 
-KUR = 55.8   # 1 € kaç TL (24.10.2026). Kur belirgin değişince güncellenir, sonra --tablo çalıştırılır.
+KUR = 55.5   # 1 € kaç TL — Elektra'nın kendi "Online Kur"u (rezervasyon motoru 26.10.2026: 3.180,13 / 57,3).
+             # Kur değişince güncellenir, sonra --tablo çalıştırılır. Motor tam tablodaki TL'yi göstersin diye.
 ODA_TIPLERI = {  # FIYAT_ODALAR anahtarı → Elektra HOTEL_ROOMTYPE (ID, ad)
     "eko": ((442638, "Ekonomik Oda - Balkonlu"),),
     "stu": ((442639, "Studio Oda - Mutfaklı"),),
@@ -41,7 +43,7 @@ ODA_TIPLERI = {  # FIYAT_ODALAR anahtarı → Elektra HOTEL_ROOMTYPE (ID, ad)
     "sui": ((442636, "1+1 Suit Oda - Mutfaklı"),),
 }
 UFUK = 180         # otomatik mod bugünden bu kadar gece ileriye bakar
-PAY = 0.05         # € — Elektra fiyatı float saklıyor (57.3 → 57.29999)
+PAY = 0.005        # € — Elektra fiyatı float saklıyor (57.66 → 57.65999); iki ondalık için yeterince dar
 GUNLER = ("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY")
 BAS_GUNLER = ((6, 0, 1, 2, 3), (4, 5))   # başlangıç fiyatı grupları (Python weekday)
 ODA = {rt: (oda, ad) for oda in checks.FIYAT_ODALAR for rt, ad in ODA_TIPLERI[oda[0]]}
@@ -49,7 +51,9 @@ GUN = dt.timedelta(days=1)
 
 
 def euro(tl):
-    return round(tl / KUR, 1)
+    """TL → Elektra temel fiyatı (€, iki ondalık, YUKARI yuvarlanır ki motor TL'nin altına düşmesin:
+    3.200 TL → 57,66 € → 3.200,13 TL). Sahibi 26.10: "3.180 değil 3.200 olsun"."""
+    return math.ceil(tl / KUR * 100 - 1e-9) / 100
 
 
 def elektra_fiyatlar(e, hid, frm, to):
