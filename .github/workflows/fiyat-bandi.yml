@@ -4,7 +4,8 @@ name: Fiyat bandi
 # fiyatini fiyat listesindeki normal plana cikarir. Baska hicbir geceye dokunmaz (elle girilen
 # fiyatlar korunur), hicbir geceyi DUSURMEZ, fiyati girilmemis (satisa kapali) geceyi acmaz.
 # Elektra yeni fiyati kanallara kendisi gonderir. Satisin cogu ayni gun 16-21 arasi geldigi
-# icin yarim saatte bir calisir.
+# icin yarim saatte bir calismasi gerekir; GitHub schedule bunu 2-4 saate uzattigi icin asil
+# tetikleyici pano-nabzi.yml (30 dk zincir). Asagidaki schedule yalnizca yedek.
 
 on:
   schedule:
