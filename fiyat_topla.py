@@ -447,6 +447,12 @@ async def oku_metin(ctx, kanal, url):
         raise RuntimeError("otel sayfası açılmadı")
     if kanal == "booking":
         s, vergi, varsayilan = parse_booking(text)
+        if not s:
+            # 26.10.2026'dan beri sayfa açılıyor ama fiyat çıkmıyor: biçim değişti mi, iz bırak.
+            fiyatli = [l.strip() for l in text.splitlines() if re.search(r"\d", l) and
+                       re.search(r"TL|₺|€|US\$|\$|EUR|USD", l)][:8]
+            basliklar = [ad for ad, _ in bloklar(text)][:6]
+            print(f"BOOKING İZ {url[-40:]}: oda başlıkları={basliklar} · fiyatlı satırlar={fiyatli}", flush=True)
         return s, "Booking · otomatik" + (" (%11 vergi eklendi)" if varsayilan else " (vergi eklendi)" if vergi > 1 else "")
     if kanal == "etstur":
         return parse_etstur(text), "Etstur · otomatik"
