@@ -114,6 +114,41 @@ def parse_trip(text):
     return s
 
 
+def usd_try():
+    """Dolar kuru (TCMB döviz alış/satış ortası; olmazsa açık kaynak). Booking, yurt dışı sunucuya bazen
+    selected_currency=TRY'ye rağmen US$ gösteriyor (27.10.2026): o zaman TL'ye çevirmek için."""
+    import urllib.request
+    try:
+        xml = urllib.request.urlopen("https://www.tcmb.gov.tr/kurlar/today.xml", timeout=20).read().decode("utf-8", "ignore")
+        m = re.search(r'CurrencyCode="USD".*?<ForexBuying>([\d.]+)</ForexBuying>\s*<ForexSelling>([\d.]+)', xml, re.S)
+        if m:
+            return (float(m.group(1)) + float(m.group(2))) / 2
+    except Exception:
+        pass
+    try:
+        d = json.loads(urllib.request.urlopen("https://open.er-api.com/v6/latest/USD", timeout=20).read())
+        return float(d["rates"]["TRY"])
+    except Exception:
+        return None
+
+
+BOOKING_USD = None   # son Booking okumasında US$ → TL çevrildiyse kullanılan kur
+
+
+def booking_tl(text):
+    """US$ fiyatları TL'ye çevirir ('US$64 US$58' → 'TL 3.204 TL 2.904'); vergi sonra eklenir."""
+    global BOOKING_USD
+    BOOKING_USD = None
+    if "US$" not in text or re.search(r"(?:TL|₺)\s?\d", text):
+        return text
+    kur = usd_try()
+    if not kur:
+        return text
+    BOOKING_USD = kur
+    return re.sub(r"US\$\s?(\d{1,3}(?:,\d{3})*|\d+)",
+                  lambda m: "TL " + f"{round(int(m.group(1).replace(',', '')) * kur):,}".replace(",", "."), text)
+
+
 def parse_booking(text):
     """Satır: 'TL 4.225 TL 3.802' (üstü çizili, son). Yurt dışından bakınca fiyat VERGİSİZ
     gösterilebilir. İki biçim görüldü: sayfada bir kez 'Hariç: %10 KDV, %1 devlet vergisi'
@@ -446,6 +481,7 @@ async def oku_metin(ctx, kanal, url):
         # Ör. Booking Türkiye'den bakınca ana sayfaya yönlendiriyor; uydurma fiyat yazmayalım.
         raise RuntimeError("otel sayfası açılmadı")
     if kanal == "booking":
+        text = booking_tl(text)
         s, vergi, varsayilan = parse_booking(text)
         if not s:
             # 26.10.2026'dan beri sayfa açılıyor ama fiyat çıkmıyor: biçim değişti mi, iz bırak.
@@ -453,7 +489,8 @@ async def oku_metin(ctx, kanal, url):
                        re.search(r"TL|₺|€|US\$|\$|EUR|USD", l)][:8]
             basliklar = [ad for ad, _ in bloklar(text)][:6]
             print(f"BOOKING İZ {url[-40:]}: oda başlıkları={basliklar} · fiyatlı satırlar={fiyatli}", flush=True)
-        return s, "Booking · otomatik" + (" (%11 vergi eklendi)" if varsayilan else " (vergi eklendi)" if vergi > 1 else "")
+        usd = f" (US$ → TL {BOOKING_USD:.2f})" if BOOKING_USD else ""
+        return s, "Booking · otomatik" + usd + (" (%11 vergi eklendi)" if varsayilan else " (vergi eklendi)" if vergi > 1 else "")
     if kanal == "etstur":
         return parse_etstur(text), "Etstur · otomatik"
     return parse_trip(text), "Trip.com · otomatik"
