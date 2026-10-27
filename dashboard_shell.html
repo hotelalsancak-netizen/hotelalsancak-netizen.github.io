@@ -12,19 +12,22 @@
     --bg:#f4f6f9; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
     --brand:#0e7490; --brand-ink:#ffffff; --bad:#dc2626; --bad-bg:#fef2f2;
     --ok:#16a34a; --ok-bg:#f0fdf4; --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+    --active:#e3f2f6; --hover:#f1f5f9;
   }
   /* Gece: OS karanlık VE kullanıcı 'aydınlık'a zorlamadıysa */
   @media (prefers-color-scheme: dark){
     :root:not([data-theme=light]){ --bg:#0b1120; --card:#111a2e; --ink:#e8eef7; --muted:#94a3b8; --line:#243049;
       --brand:#22b8cf; --brand-ink:#04121a; --bad:#f87171; --bad-bg:#2a1416;
-      --ok:#4ade80; --ok-bg:#0f2417; --shadow:0 1px 3px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);}
+      --ok:#4ade80; --ok-bg:#0f2417; --shadow:0 1px 3px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+      --active:#123441; --hover:#182338;}
   }
   /* Düğmeyle 'gece' seçildiyse (OS gündüz olsa bile) */
   :root[data-theme=dark]{ --bg:#0b1120; --card:#111a2e; --ink:#e8eef7; --muted:#94a3b8; --line:#243049;
     --brand:#22b8cf; --brand-ink:#04121a; --bad:#f87171; --bad-bg:#2a1416;
-    --ok:#4ade80; --ok-bg:#0f2417; --shadow:0 1px 3px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);}
-  .iconbtn{background:none;border:1px solid var(--line);color:var(--muted);border-radius:9px;
-    width:36px;height:34px;font-size:16px;line-height:1;cursor:pointer;padding:0}
+    --ok:#4ade80; --ok-bg:#0f2417; --shadow:0 1px 3px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
+    --active:#123441; --hover:#182338;}
+  .iconbtn{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;
+    width:42px;height:42px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
   .iconbtn:hover{border-color:var(--brand)}
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -58,49 +61,101 @@
   .err{color:var(--bad);font-size:13px;min-height:18px;margin-top:12px}
   .kvkk{color:var(--muted);font-size:11.5px;margin-top:18px;line-height:1.5}
 
-  /* ---- dashboard ---- */
-  header.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 86%, transparent);
-    backdrop-filter:saturate(1.4) blur(8px);border-bottom:1px solid var(--line);}
-  .top-in{max-width:1600px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:12px}
-  .brand-logo{display:flex;align-items:center;background:#fff;border-radius:8px;padding:5px 9px;
+  /* ---- panel: sol menü + içerik (27.10.2026; eskiden kutucuk ızgarası + tam ekran "Geri") ---- */
+  #app{display:grid;grid-template-columns:264px minmax(0,1fr);height:100dvh}
+  .side{background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;
+    gap:14px;padding:16px 12px 14px;overflow-y:auto;min-height:0}
+  .brandbox{display:flex;flex-direction:column;gap:9px;padding:0 6px}
+  .brandrow{display:flex;align-items:center;gap:8px}
+  .brand-logo{display:flex;align-items:center;background:#fff;border-radius:9px;padding:6px 10px;
     flex:0 0 auto;box-shadow:inset 0 0 0 1px rgba(15,23,42,.07)}
-  .brand-logo img{display:block;height:20px;width:auto}
-  .top h1 .sub{color:var(--muted);font-weight:500}
-  @media (max-width:560px){ .top h1 .sub{display:none} }
-  .top h1{font-size:16px;margin:0;font-weight:700;flex:1}
-  .top .built{color:var(--muted);font-size:12px;margin-right:6px}
-  .logout{background:none;border:1px solid var(--line);color:var(--muted);border-radius:9px;
-    padding:7px 12px;font-size:13px;cursor:pointer}
-  main{max-width:1600px;margin:0 auto;padding:22px 20px 60px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+  .brand-logo img{display:block;height:24px;width:auto}
+  .closeside{margin-left:auto;display:none}
+  .sys{font-size:14.5px;font-weight:700;line-height:1.3}
+  .hotel{font-size:12.5px;color:var(--muted)}
+  .meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+  .chip{padding:2px 9px;border-radius:999px;font-weight:700;background:var(--active);color:var(--brand)}
+  #nav{display:flex;flex-direction:column;gap:12px}
+  .nav-group{display:flex;flex-direction:column;gap:2px}
+  .nav-h{padding:0 10px 4px;font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+  .nav-i{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;padding:8px 10px;border:0;
+    border-radius:10px;background:transparent;color:var(--ink);font:inherit;font-size:14px;text-align:left;cursor:pointer}
+  .nav-i:hover{background:var(--hover)}
+  .nav-i[aria-current=page]{background:var(--active);color:var(--brand);font-weight:700}
+  .nav-i svg{flex:0 0 auto}
+  .nav-i .lbl{flex:1;min-width:0}
+  .pill{min-width:22px;text-align:center;padding:1px 7px;border-radius:999px;font-size:12px;font-weight:700;
+    background:var(--bad-bg);color:var(--bad);white-space:nowrap}
+  .val{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap}
+  .val.bad{color:var(--bad);font-weight:700}
+  .okmark{color:var(--ok)}
+  .side-foot{margin-top:auto;display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--line)}
+  .side-foot button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;min-height:42px;
+    border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--ink);font:inherit;
+    font-size:13.5px;cursor:pointer}
+  .side-foot button:hover{border-color:var(--brand)}
+  .scrim{display:none}
+
+  .mainc{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .bar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 18px;padding:16px 24px 14px;
+    border-bottom:1px solid var(--line);background:var(--card)}
+  .burger{display:none}
+  .ttl{flex:1 1 300px;min-width:0}
+  .crumb{font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--brand)}
+  .bar h1{margin:2px 0 0;font-size:21px;line-height:1.25;font-weight:700}
+  .bsub{font-size:13px;color:var(--muted)}
+  .upd{font-size:12.5px;color:var(--muted)}
+  .weekWrap{display:flex;align-items:center;gap:2px;color:var(--muted);font-size:12.5px;font-weight:600;white-space:nowrap}
+  .weekSel{padding:8px 12px;border:1px solid var(--brand);border-radius:9px;
+    background:var(--card);color:var(--ink);font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
+  .content{flex:1;min-height:0;position:relative}
+  #overview{height:100%;overflow-y:auto;padding:22px 24px 40px}
+  #frame{width:100%;height:100%;border:0;display:block;background:var(--bg)}
+
+  /* ---- Özet ---- */
+  .ovh{font-size:15px;margin:0 0 12px}
+  .ovh + .grid, .ovh + .calm{margin-bottom:26px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
   .tile{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:16px;
-    padding:20px;box-shadow:var(--shadow);cursor:pointer;transition:transform .12s ease,border-color .12s;
-    display:flex;flex-direction:column;gap:14px;min-height:150px;color:inherit;font:inherit}
+    padding:18px;box-shadow:var(--shadow);cursor:pointer;transition:transform .12s ease,border-color .12s;
+    display:flex;flex-direction:column;gap:12px;min-height:150px;color:inherit;font:inherit}
   .tile:hover{transform:translateY(-2px);border-color:var(--brand)}
-  .tile .label{font-size:15.5px;font-weight:700}
+  .tile .label{font-size:15px;font-weight:700}
   .tile .sub{color:var(--muted);font-size:12.5px;margin-top:2px}
   .tile .spacer{flex:1}
-  .badge{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;padding:8px 14px;
+  .badge{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;padding:7px 13px;
     border-radius:11px;font-weight:700;font-size:14px}
-  .badge .n{font-size:22px;line-height:1}
+  .badge .n{font-size:21px;line-height:1}
   .badge.bad{background:var(--bad-bg);color:var(--bad)}
   .badge.ok{background:var(--ok-bg);color:var(--ok)}
   .tile .updated{color:var(--muted);font-size:11.5px}
-  .arrow{color:var(--muted);font-size:13px;display:flex;align-items:center;gap:6px}
-
-  /* ---- detail ---- */
-  #detail{position:fixed;inset:0;z-index:20;background:var(--bg);display:flex;flex-direction:column}
-  .detail-bar{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);
-    background:var(--card)}
-  .back{background:none;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:8px 14px;
-    font-size:14px;cursor:pointer;font-weight:600}
-  .detail-bar .t{font-weight:700;font-size:15px}
-  .weekWrap{margin-left:auto;display:flex;align-items:center;gap:2px;color:var(--muted);
-    font-size:12.5px;font-weight:600;white-space:nowrap}
-  .weekSel{padding:8px 12px;border:1px solid var(--brand);border-radius:9px;
-    background:var(--card);color:var(--ink);font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
-  #detail iframe{flex:1;border:0;width:100%;background:#fff}
+  .arrow{color:var(--muted);font-size:13px}
+  .calm{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+  .calm-i{display:flex;align-items:center;gap:12px;min-height:54px;padding:10px 14px;text-align:left;
+    font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:12px;cursor:pointer}
+  .calm-i:hover{border-color:var(--brand)}
+  .calm-i .lbl{flex:1;font-size:14px;font-weight:600}
+  .calm-i .v{font-size:13px;font-weight:700;white-space:nowrap}
+  .calm-i .v.ok{color:var(--ok)}
+  .calm-i .v span{font-weight:500;color:var(--muted)}
+  .allok{background:var(--ok-bg);color:var(--ok);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px;font-weight:700;margin-bottom:26px}
   .foot{max-width:1600px;margin:30px auto 0;color:var(--muted);font-size:11.5px;text-align:center;line-height:1.6}
+
+  /* ---- telefon: menü soldan açılan çekmece ---- */
+  @media (max-width:860px){
+    #app{grid-template-columns:minmax(0,1fr)}
+    .side{position:fixed;top:0;bottom:0;left:0;width:300px;max-width:86vw;z-index:30;
+      transform:translateX(-105%);transition:transform .2s ease;box-shadow:8px 0 30px rgba(15,23,42,.25)}
+    #app.menu-open .side{transform:none}
+    #app.menu-open .scrim{display:block;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:25}
+    .closeside,.burger{display:flex}
+    .bar{align-items:center;padding:8px 12px;gap:8px 12px}
+    .ttl{flex:1 1 160px}
+    .bar h1{font-size:17px}
+    .bsub,.upd{display:none}
+    #overview{padding:14px}
+  }
 </style>
 </head>
 <body>
@@ -125,33 +180,40 @@
   </div>
 </section>
 
-<!-- DASHBOARD -->
+<!-- PANEL -->
 <div id="app" class="hidden">
-  <header class="top">
-    <div class="top-in">
-      <a class="brand-logo" href="https://bilsa.com.tr/" target="_blank" rel="noopener" title="Bilsa · bilsa.com.tr"><img src="assets/bilsa-logo.png" alt="Bilsa" width="53" height="20"></a>
-      <h1>Bilsa Otel Yönetim Sistemi <span class="sub">· Riva Hotel Alsancak</span></h1>
-      <span class="built" id="built"></span>
-      <button class="iconbtn" id="themeBtn" title="Gündüz / gece görünümü" aria-label="Gündüz / gece görünümü">🌙</button>
-      <button class="logout" id="logout">Çıkış</button>
+  <aside class="side" id="side" aria-label="Ana menü">
+    <div class="brandbox">
+      <div class="brandrow">
+        <a class="brand-logo" href="https://bilsa.com.tr/" target="_blank" rel="noopener" title="Bilsa · bilsa.com.tr"><img src="assets/bilsa-logo.png" alt="Bilsa" width="64" height="24"></a>
+        <button class="iconbtn closeside" id="closeSide" aria-label="Menüyü kapat"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div><div class="sys">Otel Yönetim Sistemi</div><div class="hotel">Riva Hotel Alsancak</div></div>
+      <div class="meta"><span class="chip" id="roleChip"></span><span id="built"></span></div>
     </div>
-  </header>
-  <main>
-    <div class="grid" id="grid"></div>
-    <div class="foot">Otomatik güncellenir · içerik uçtan uca şifrelidir (AES-256-GCM).<br>
-      KVKK: veriyi yetkisiz kişilerle paylaşmayın.<br>
-      Bilsa Otel Yönetim Sistemi · <a href="https://bilsa.com.tr/" target="_blank" rel="noopener">bilsa.com.tr</a></div>
-  </main>
-</div>
-
-<!-- DETAIL -->
-<div id="detail" class="hidden">
-  <div class="detail-bar">
-    <button class="back" id="back">‹ Geri</button>
-    <span class="t" id="detailTitle"></span>
-    <label id="weekWrap" class="weekWrap hidden">Hafta:&nbsp;<select id="weekSel" class="weekSel"></select></label>
+    <nav id="nav"></nav>
+    <div class="side-foot">
+      <button id="themeBtn" title="Gündüz / gece görünümü" aria-label="Gündüz / gece görünümü"></button>
+      <button id="logout"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg><span>Çıkış</span></button>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <div class="mainc">
+    <header class="bar">
+      <button class="iconbtn burger" id="burger" aria-label="Menüyü aç"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <div class="ttl">
+        <div class="crumb" id="crumb"></div>
+        <h1 id="pageTitle"></h1>
+        <div class="bsub" id="pageSub"></div>
+      </div>
+      <label id="weekWrap" class="weekWrap hidden">Hafta:&nbsp;<select id="weekSel" class="weekSel"></select></label>
+      <span class="upd" id="pageUpd"></span>
+    </header>
+    <div class="content">
+      <div id="overview"></div>
+      <iframe id="frame" class="hidden" title="Bölüm içeriği" sandbox="allow-scripts allow-same-origin allow-popups allow-modals allow-downloads" allow="clipboard-write"></iframe>
+    </div>
   </div>
-  <iframe id="frame" sandbox="allow-scripts allow-same-origin allow-popups allow-modals allow-downloads" allow="clipboard-write"></iframe>
 </div>
 
 <script>
@@ -189,9 +251,41 @@ async function getJSON(url){
   return r.json();
 }
 
+// ---- Menü düzeni. Yeni bir bölüm eklenince anahtarını buraya, uygun gruba ekle;
+// eklenmezse menünün sonunda "Diğer" altında görünür (yine çalışır). ----
+const GROUPS = [
+  ["Günlük işler",   ["gunsonu","gunluk","odeme","bakiye","eksik"]],
+  ["Denetim",        ["kasa","iptal","indirim","kart"]],
+  ["Satış ve fiyat", ["fiyat","satis","stats"]],
+  ["Muhasebe",       ["vergi"]],
+  ["Araçlar",        ["tvkart"]],
+];
+const ICONS = {
+  ozet:"M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
+  gunsonu:"M9 3h6v3H9zM9 4.5H6a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1h-3M9 14l2 2 4-4",
+  gunluk:"M5 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17H7a2 2 0 0 1-2-2zM5 19a2 2 0 0 1 2-2h12M9 7h6M9 11h6",
+  odeme:"M3 6h18v12H3zM3 10h18M7 15h4",
+  bakiye:"M3 7h18v12H3zM3 7l3-3h12l3 3M16 13h2",
+  eksik:"M3 5h18v14H3zM11 10a2 2 0 1 1-4 0a2 2 0 1 1 4 0M6 16c.6-1.5 1.7-2.3 3-2.3s2.4.8 3 2.3M14 10h4M14 14h3",
+  kasa:"M5 3h14v18H5zM8 7h8v3H8zM8.5 14h.01M12 14h.01M15.5 14h.01M8.5 17h.01M12 17h.01M15.5 17h.01",
+  iptal:"M21 12a9 9 0 1 1-18 0a9 9 0 1 1 18 0M15 9l-6 6M9 9l6 6",
+  indirim:"M19 5L5 19M9 6.5a2.5 2.5 0 1 1-5 0a2.5 2.5 0 1 1 5 0M20 17.5a2.5 2.5 0 1 1-5 0a2.5 2.5 0 1 1 5 0",
+  kart:"M11 15a4 4 0 1 1-8 0a4 4 0 1 1 8 0M10 12l10-9M16.5 6.2l2.5 2.5M18.8 4.2l1.8 1.8",
+  fiyat:"M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01",
+  stats:"M5 20V10M11 20V4M17 20v-7M3 20h18",
+  satis:"M3 17l6-6 4 4 8-8M15 7h6v6",
+  vergi:"M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2zM9 8h6M9 12h6",
+  tvkart:"M3 7h18v12H3zM8 3l4 4 4-4",
+  diger:"M4 6h16M4 12h16M4 18h10",
+};
+const SUN = "M12 8a4 4 0 1 1 0 8a4 4 0 1 1 0-8M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4";
+const MOON = "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z";
+const svg = (d, size) => '<svg width="'+(size||18)+'" height="'+(size||18)+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+d+'"/></svg>';
+
 let SECTIONS = [];
 let PW = "";          // kept in memory during the session for lazy week loading
-let CUR = 0;          // section index currently open in the detail view
+let ROLE = "";
+let PAGE = "ozet";    // açık bölümün anahtarı ("ozet" = Özet sayfası)
 
 async function doLogin(ev){
   ev.preventDefault();
@@ -201,46 +295,47 @@ async function doLogin(ev){
   try{
     const man = await getJSON("data/manifest.json");
     const keys = (man && man.sections) ? man.sections : FALLBACK;
-    if(man && man.built) $("built").textContent = "güncellenme: " + man.built;
+    if(man && man.built) $("built").textContent = "güncellendi " + man.built;
     const out = [];
-    let sawBlob = false;
+    let blobs = 0;
     for(const k of keys){
       if(k === "kart"){
         // Multi-week section. Tile shows the newest week; other weeks load lazily
         // on selection. Erisim tamamen SIFREYE baglidir: decryptBlob() bu parola
-        // hicbir variant'i acamazsa null doner ve o rol kart tile'i gormez.
+        // hicbir variant'i acamazsa null doner ve o rol kart bolumunu gormez.
         // 15.09.2026: haftalar hem yonetim hem resepsiyon parolasiyla sifreleniyor
         // (kart_yukle.save_week), yani iki rol de goruyor. Geri almak icin haftalari
         // yalniz yonetim parolasiyla YENIDEN sifrelemek gerekir — bu dosyayi
         // degistirmek yetmez.
         const idx = await getJSON("data/kart-index.json");
         if(!idx || !idx.weeks || !idx.weeks.length) continue;
-        sawBlob = true;
         const latest = idx.weeks[0];
         const blob = await getJSON("data/" + latest.file);
         if(!blob) continue;
+        blobs++;
         const s = await decryptBlob(blob, pw);
         if(!s) continue;
         s.key = "kart"; s.weeks = idx.weeks; s.cache = {}; s.curWeek = latest.id;
-        s.cache[latest.id] = s.html;
+        s.cache[latest.id] = {html: s.html, sub: s.sub, updated: s.updated};
         out.push(s);
         continue;
       }
       const blob = await getJSON("data/" + k + ".enc.json");
       if(!blob) continue;
-      sawBlob = true;
+      blobs++;
       const s = await decryptBlob(blob, pw);   // null if this role can't see it
       if(!s) continue;
       s.key = k;
       out.push(s);
     }
-    if(!sawBlob){ $("err").textContent = "Henüz veri yüklenmemiş."; return; }
+    if(!blobs){ $("err").textContent = "Henüz veri yüklenmemiş."; return; }
     // Blobs exist but none opened with this password => wrong password. If at least
     // one opened, the login is valid and we show exactly the allowed sections
     // (reception sees only its own; the manager sees everything).
     if(out.length === 0){ $("err").textContent = "Şifre hatalı."; return; }
     PW = pw;
     SECTIONS = out;
+    ROLE = out.length < blobs ? "Resepsiyon" : "Yönetim";
     renderDashboard();
   }catch(e){
     $("err").textContent = "Bir hata oluştu, tekrar deneyin.";
@@ -249,47 +344,121 @@ async function doLogin(ev){
   }
 }
 
+const byKey = k => SECTIONS.find(s => s.key === k);
+function groupOf(k){ for(const [n, keys] of GROUPS) if(keys.includes(k)) return n; return "Diğer"; }
+function grouped(){
+  const used = new Set(), out = [];
+  for(const [name, keys] of GROUPS){
+    const items = keys.map(byKey).filter(Boolean);
+    items.forEach(s => used.add(s.key));
+    if(items.length) out.push([name, items]);
+  }
+  const rest = SECTIONS.filter(s => !used.has(s.key));
+  if(rest.length) out.push(["Diğer", rest]);
+  return out;
+}
+// Sayı + birim: count_label "₺ kart (7g)" → "650.206 ₺", "% bugün doluluk" → "%24".
+function shortVal(s){
+  const n = typeof s.count === "number" ? s.count.toLocaleString("tr-TR") : esc(s.count);
+  const l = String(s.count_label || "");
+  if(l.startsWith("%")) return "%" + n;
+  if(l.startsWith("bin ₺")) return n + " bin ₺";
+  if(l.startsWith("₺")) return n + " ₺";
+  return n;
+}
+function navBadge(s){
+  if(s.tone === "bad") return '<span class="pill">'+shortVal(s)+'</span>';
+  if(!Number(s.count)) return '<svg class="okmark" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="sorun yok"><path d="M5 12l5 5L20 7"/></svg>';
+  return '<span class="val">'+shortVal(s)+'</span>';
+}
+function navBtn(key, label, badge, title){
+  return '<button class="nav-i" data-k="'+esc(key)+'"'+(key === PAGE ? ' aria-current="page"' : '')+
+    (title ? ' title="'+esc(title)+'"' : '')+'>'+svg(ICONS[key] || ICONS.diger)+
+    '<span class="lbl">'+esc(label)+'</span>'+badge+'</button>';
+}
+function renderNav(){
+  const nBad = SECTIONS.filter(s => s.tone === "bad").length;
+  let h = navBtn("ozet", "Özet", nBad ? '<span class="val bad">'+nBad+' dikkat</span>' : '');
+  for(const [name, items] of grouped())
+    h += '<div class="nav-group"><div class="nav-h">'+esc(name)+'</div>'+
+      items.map(s => navBtn(s.key, s.label, navBadge(s), s.sub)).join("")+'</div>';
+  $("nav").innerHTML = h;
+}
+function renderOverview(){
+  const all = grouped().flatMap(g => g[1]);
+  const bad = all.filter(s => s.tone === "bad"), calm = all.filter(s => s.tone !== "bad");
+  let h = "";
+  if(bad.length){
+    h += '<h2 class="ovh">Dikkat isteyenler</h2><div class="grid">' + bad.map(s =>
+      '<button class="tile" data-k="'+esc(s.key)+'">'+
+      '<div><div class="label">'+esc(s.label)+'</div>'+(s.sub ? '<div class="sub">'+esc(s.sub)+'</div>' : '')+'</div>'+
+      '<span class="badge bad"><span class="n">'+shortVal(s)+'</span>'+esc(String(s.count_label||"").replace(/^(bin ₺|₺|%)\s*·?\s*/, ""))+'</span>'+
+      '<div class="spacer"></div>'+
+      '<div class="updated">'+(s.updated ? 'son güncelleme: '+esc(s.updated) : '')+'</div>'+
+      '<div class="arrow">Aç →</div></button>').join("") + '</div>';
+  } else {
+    h += '<div class="allok">✓ Bugün dikkat isteyen bölüm yok.</div>';
+  }
+  if(calm.length){
+    h += '<h2 class="ovh">Yolunda olanlar ve özet rakamlar</h2><div class="calm">' + calm.map(s =>
+      '<button class="calm-i" data-k="'+esc(s.key)+'"><span class="lbl">'+esc(s.label)+'</span>'+
+      '<span class="v'+(Number(s.count) ? '' : ' ok')+'">'+shortVal(s)+' <span>'+
+      esc(String(s.count_label||"").replace(/^(bin ₺|₺|%)\s*·?\s*/, ""))+'</span></span></button>').join("") + '</div>';
+  }
+  h += '<div class="foot">Otomatik güncellenir · içerik uçtan uca şifrelidir (AES-256-GCM).<br>'+
+    'KVKK: veriyi yetkisiz kişilerle paylaşmayın.<br>'+
+    'Bilsa Otel Yönetim Sistemi · <a href="https://bilsa.com.tr/" target="_blank" rel="noopener">bilsa.com.tr</a></div>';
+  $("overview").innerHTML = h;
+}
+
 function renderDashboard(){
   $("login").classList.add("hidden");
   $("app").classList.remove("hidden");
-  const grid = $("grid");
-  grid.innerHTML = "";
-  SECTIONS.forEach((s, i) => {
-    const tone = s.tone === "bad" ? "bad" : "ok";
-    const t = document.createElement("button");
-    t.className = "tile";
-    t.innerHTML =
-      '<div><div class="label">'+esc(s.label)+'</div>'+
-      (s.sub ? '<div class="sub">'+esc(s.sub)+'</div>' : '')+'</div>'+
-      '<span class="badge '+tone+'"><span class="n">'+s.count+'</span>'+esc(s.count_label||'')+'</span>'+
-      '<div class="spacer"></div>'+
-      '<div class="updated">'+(s.updated ? 'son güncelleme: '+esc(s.updated) : '')+'</div>'+
-      '<div class="arrow">Aç →</div>';
-    t.addEventListener("click", () => openDetail(i));
-    grid.appendChild(t);
-  });
+  $("roleChip").textContent = ROLE;
+  const want = decodeURIComponent((location.hash || "").slice(1));
+  show(byKey(want) ? want : "ozet");
 }
 
-function openDetail(i){
-  const s = SECTIONS[i];
-  CUR = i;
-  $("detailTitle").textContent = s.label;
+function show(key){
+  const s = byKey(key);
+  if(!s) key = "ozet";
+  PAGE = key;
+  try{ history.replaceState(null, "", "#" + key); }catch(e){}
+  renderNav();
+  $("app").classList.remove("menu-open");
+  if(!s){
+    $("crumb").textContent = "Bilsa Otel Yönetim Sistemi";
+    $("pageTitle").textContent = "Özet";
+    $("pageSub").textContent = "Dikkat isteyen bölümler üstte; bir karta ya da soldaki menüye tıkla.";
+    $("pageUpd").textContent = "";
+    $("weekWrap").classList.add("hidden");
+    $("frame").classList.add("hidden");
+    $("frame").srcdoc = "";
+    renderOverview();
+    $("overview").classList.remove("hidden");
+    return;
+  }
+  $("crumb").textContent = groupOf(key);
+  $("pageTitle").textContent = s.label;
+  $("pageSub").textContent = s.sub || "";
+  $("pageUpd").textContent = s.updated ? "son güncelleme: " + s.updated : "";
+  $("overview").classList.add("hidden");
+  $("frame").classList.remove("hidden");
   const sel = $("weekSel");
   if(s.weeks && s.weeks.length){
     sel.innerHTML = s.weeks.map(w => '<option value="'+esc(w.id)+'">'+esc(w.label)+'</option>').join("");
     sel.value = s.curWeek || s.weeks[0].id;
     $("weekWrap").classList.remove("hidden");
-    loadWeek(i, sel.value);
+    loadWeek(key, sel.value);
   } else {
     $("weekWrap").classList.add("hidden");
     $("frame").srcdoc = s.html;
   }
-  $("detail").classList.remove("hidden");
 }
 
-async function loadWeek(i, id){
-  const s = SECTIONS[i];
-  const wk = (s.weeks || []).find(w => w.id === id);
+async function loadWeek(key, id){
+  const s = byKey(key);
+  const wk = s && (s.weeks || []).find(w => w.id === id);
   if(!wk) return;
   s.curWeek = id;
   if(!s.cache[id]){
@@ -297,11 +466,14 @@ async function loadWeek(i, id){
     const blob = await getJSON("data/" + wk.file);
     const sec = blob ? await decryptBlob(blob, PW) : null;
     if(!sec){ $("frame").srcdoc = "<p style='font:14px sans-serif;padding:24px;color:#dc2626'>Bu hafta açılamadı.</p>"; return; }
-    s.cache[id] = sec.html;
+    s.cache[id] = {html: sec.html, sub: sec.sub, updated: sec.updated};
   }
-  $("frame").srcdoc = s.cache[id];
+  if(PAGE !== key || s.curWeek !== id) return;      // bu arada başka yere geçildi
+  const c = s.cache[id];
+  $("pageSub").textContent = c.sub || "";
+  $("pageUpd").textContent = c.updated ? "son güncelleme: " + c.updated : "";
+  $("frame").srcdoc = c.html;
 }
-function closeDetail(){ $("detail").classList.add("hidden"); $("frame").srcdoc = ""; }
 
 function esc(x){ return String(x==null?"":x).replace(/[&<>"]/g, c => (
   {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
@@ -317,8 +489,9 @@ function applyTheme(){
   var t = localStorage.getItem("theme");       // "light" | "dark" | null(=otomatik)
   var root = document.documentElement;
   if(t) root.setAttribute("data-theme", t); else root.removeAttribute("data-theme");
-  var b = $("themeBtn"); if(b) b.textContent = effectiveDark() ? "☀️" : "🌙";
-  // Açık olan sürüm iframe'ine de uygula (izin verilen sandbox: same-origin)
+  var dark = effectiveDark();
+  $("themeBtn").innerHTML = svg(dark ? SUN : MOON, 17) + "<span>" + (dark ? "Gündüz" : "Gece") + "</span>";
+  // Açık olan bölüm iframe'ine de uygula (izin verilen sandbox: same-origin)
   try{
     var d = $("frame").contentDocument;
     if(d && d.documentElement){
@@ -330,13 +503,17 @@ function applyTheme(){
 function toggleTheme(){ localStorage.setItem("theme", effectiveDark() ? "light" : "dark"); applyTheme(); }
 applyTheme();
 $("themeBtn").addEventListener("click", toggleTheme);
-$("frame").addEventListener("load", applyTheme);   // her sürüm yüklendiğinde temayı geçir
+$("frame").addEventListener("load", applyTheme);   // her bölüm yüklendiğinde temayı geçir
 
 $("loginForm").addEventListener("submit", doLogin);
-$("logout").addEventListener("click", () => location.reload());
-$("back").addEventListener("click", closeDetail);
-$("weekSel").addEventListener("change", e => loadWeek(CUR, e.target.value));
-document.addEventListener("keydown", e => { if(e.key==="Escape") closeDetail(); });
+$("logout").addEventListener("click", () => location.replace(location.pathname + location.search));
+$("nav").addEventListener("click", e => { const b = e.target.closest("[data-k]"); if(b) show(b.dataset.k); });
+$("overview").addEventListener("click", e => { const b = e.target.closest("[data-k]"); if(b) show(b.dataset.k); });
+$("weekSel").addEventListener("change", e => loadWeek(PAGE, e.target.value));
+$("burger").addEventListener("click", () => $("app").classList.add("menu-open"));
+$("closeSide").addEventListener("click", () => $("app").classList.remove("menu-open"));
+$("scrim").addEventListener("click", () => $("app").classList.remove("menu-open"));
+document.addEventListener("keydown", e => { if(e.key==="Escape") $("app").classList.remove("menu-open"); });
 </script>
 </body>
 </html>

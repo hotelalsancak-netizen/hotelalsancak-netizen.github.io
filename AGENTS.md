@@ -77,7 +77,9 @@ boş oda satılıp cebe mi atıldı?"
 - **Yeni liste ekle:** `checks.py`'de `build_<ad>(env)` yaz (bölüm dict döndürür:
   `{label,count,count_label,tone,sub,updated,html}`), sonra `dashboard.py`'de `live` tuple'ına +
   `SECTION_ORDER`'a `<ad>` ekle. Resepsiyonun da görmesini istersen `RECEPTION_SECTIONS`'a ekle.
-  Grafik gerekiyorsa `checks.py`'deki `svg_bars/svg_line/svg_donut/svg_hbars` (harici kütüphane yok).
+  Panel **sol menülüdür** (27.10.2026): `dashboard_shell.html`'deki `GROUPS`'a anahtarı uygun gruba,
+  `ICONS`'a bir simge ekle — eklenmezse menünün sonunda "Diğer" altında çıkar. Menü rozeti `tone`'dan
+  gelir: `bad` = kırmızı sayı, `ok` + 0 = yeşil tik, `ok` + sayı = gri değer. Grafik gerekiyorsa `checks.py`'deki `svg_bars/svg_line/svg_donut/svg_hbars` (harici kütüphane yok).
 
 ## Git — DİKKAT (paralel oturumlar)
 Bu repoya **başka Claude oturumları da push edebiliyor** (kullanıcı birden çok makine/oturum kullanıyor).
