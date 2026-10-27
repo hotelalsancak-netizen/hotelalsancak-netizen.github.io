@@ -19,11 +19,13 @@ boş oda satılıp cebe mi atıldı?"
   Booking/Etstur/Trip) → `fiyat-veri` dalı → pano derlemesi `site_data/fiyat/otomatik.json`), `kart` (Haftalık Kart Güvenliği — çok-haftalı, hafta seçicili;
   güçlü/zayıf ayrımı), `stats` (Doluluk/ADR/grafikler), `satis` (Aylık satışlar), `vergi` (**Vergi Sayfası** —
   muhasebe mizanından aylık KDV + konaklama vergisi + dönemsel kurumlar/geçici vergi), `eksik` (**Eksik
-  Bilgiler** — iki rol de görür; otel müdürü kontrol eder. Şimdilik telefon: konaklayan odada **tek geçerli
-  numara yeter** (rezervasyon sahibi `CONTACTPHONE` ya da herhangi bir misafir `GUESTPHONE`, kaynak
-  `QA_HOTEL_RESERVATION_GUEST` — ağır görünüm, kısa pencere kullan). Kanal yer tutucuları eksik sayılır
-  (Expedia `111111111111`, Tatil Budur `0`). Girişi yapan = rezervasyon log'undaki Check-In kullanıcısı;
-  **`GetLog` artık `Tenant` ister**, yoksa HTTP 400 → sessizce boş liste).
+  Bilgiler** — iki rol de görür; otel müdürü kontrol eder. Yalnız **telefon + kimlik** (e-posta istenmedi).
+  Kaynak `QA_HOTEL_RESERVATION_GUEST` (misafir başına satır; ağır görünüm, kısa pencere kullan).
+  Telefon: odada **tek numara yeter** (`CONTACTPHONE` ya da herhangi bir `GUESTPHONE`). **Elektra Ekim 2026
+  sonundan beri telefon/e-postayı `***0X***` diye maskeliyor** → maskeli = "girilmiş"; yer tutucu gönderen
+  kanallarda (Expedia `111111111111`, Tatil Budur `0`) "elle kontrol" listesi. Kimlik: **her kişi** için geçerli
+  TC (kontrol haneli) ya da pasaport, ve kayıt sayısı ≥ yetişkin+çocuk(`TCHD`)+`BABY`. Girişi yapan =
+  rezervasyon log'undaki Check-In kullanıcısı; **`GetLog` artık `Tenant` ister**, yoksa HTTP 400 → sessizce boş liste).
 - **Fiyat bandı (Elektra'ya YAZAR):** `fiyat_bandi.py` → `.github/workflows/fiyat-bandi.yml` (yarım saatte bir). Tablo `checks.FIYAT_ODALAR` (normal plan + başlangıç fiyatı), eşik `checks.ESIK_ODA` = 30 oda, € = TL ÷ `KUR`. Bir gece 30 oda olunca o gecenin temel fiyatını normal plana çıkarır; 30 altı gecelere dokunmaz (sahibi elle fiyat giriyor), asla düşürmez, fiyatı 0 olan (satışa kapalı) geceye dokunmaz. Tablo ya da kur değişince bir kez `python fiyat_bandi.py --tablo BAŞ SON` (önce `--kuru`). Çağrı `Execute/SP_AVAILABILITY_UPDATE` (Toplu Güncelleme formu); ROOMTYPEID boşsa BÜTÜN oda tiplerine uygulanır.
 - **Canlı fiyat (site için):** `motor_fiyat.py` → `.github/workflows/canli-fiyat.yml` (saatte bir) → `canli-fiyat` dalı → rivaalsancak.com/oda-fiyatlari.html okur. Otelin kendi rezervasyon motoru, 30 gece; captcha'yı sayfa kendisi çözer, başarısız saatlerde dala yazılmaz.
 

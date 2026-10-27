@@ -674,11 +674,14 @@ def fetch_res_times(res_ids, env=None):
 
 
 # One row PER GUEST per reservation (verified live 20.10.2026). Carries each guest's own
-# GUESTPHONE (= the guest profile's PHONE) next to the reservation's CONTACTPHONE. Heavy
+# GUESTPHONE (= the guest profile's PHONE) next to the reservation's CONTACTPHONE, and the
+# guest's ID numbers (GUESTTCKN / GUESTPASSPORT). TCHD = all children (YCHD+ECHD); BABY is
+# separate; a reservation with NO guest record still returns one row with GUESTID null. Heavy
 # view: a 4-month CHECKOUT window timed out (>60 s), 14 days took 0.6 s — keep windows short.
 RESGUEST_OBJECT = "QA_HOTEL_RESERVATION_GUEST"
-RESGUEST_COLUMNS = ["RESID", "ROOMNO", "GUESTNO", "GUESTNAME", "GUESTSURNAME", "GUESTNAMES",
-                    "GUESTPHONE", "CONTACTPHONE", "AGENCY", "ADULT", "CHECKIN", "CHECKOUT",
+RESGUEST_COLUMNS = ["RESID", "ROOMNO", "GUESTNO", "GUESTID", "GUESTNAME", "GUESTSURNAME",
+                    "GUESTNAMES", "GUESTPHONE", "CONTACTPHONE", "GUESTTCKN", "GUESTPASSPORT",
+                    "AGENCY", "ADULT", "TCHD", "BABY", "CHECKIN", "CHECKOUT",
                     "RESSTATE", "RESSTATEID", "CREATORUSER"]
 
 
