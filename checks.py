@@ -1721,26 +1721,26 @@ vergisi rakamı anında güncellensin. Girdikleriniz yalnızca bu tarayıcıda s
 
 
 # --------------------------------------------------------------------------- Fiyat Kontrol
-# Sahibin kararı (15.10.2026; fiyat listesi 24.10.2026, docs/pricelist/fiyat-listesi.md): aynı oda,
-# aynı gece için misafir HER kanalda aynı fiyatı görür. Fiyatlar iade edilebilir (iadesiz plan
-# 23.10'da kaldırıldı), TL, 1–2 kişi, kahvaltı dahil.
-# Gecenin fiyatı o gece satılmış oda sayısına bağlı: ESIK_ODA'nın altında BAŞLANGIÇ fiyatı
-# (0 = Pazar–Perşembe · 1 = Cuma + Cumartesi), ESIK_ODA ve üstünde NORMAL plan
-# (0 = Pazar + Pazartesi + Salı · 1 = Çarşamba–Cuma · 2 = Cumartesi).
-# Elektra'da baz fiyat EUR'dur (= hedef / kur); kanala giden = baz × kanal çarpanı.
-# Bu tablo değişirse Elektra'daki fiyatlar da değişmeli (Fiyat ve Doluluk → Toplu Güncelleme).
-FIYAT_ODALAR = (  # (anahtar, ad, alt yazı, normal (grup0, grup1, grup2), başlangıç (grup0, grup1))
-    ("eko", "Ekonomik", "balkonlu · yalnızca site, telefon, kapı", (3300, 3500, 3800), (3000, 3300)),
-    ("stu", "Stüdyo", "mutfaklı", (3500, 3800, 4000), (3200, 3500)),
-    ("sup", "Superior", "mutfaklı / mutfaksız", (3700, 4000, 4200), (3400, 3700)),
-    ("dlx", "Deluxe", "mutfaklı / balkonlu", (3900, 4200, 4500), (3600, 3900)),
-    ("sui", "1+1 Suit", "mutfaklı", (4500, 5000, 5500), (4200, 4500)),
+# Sahibin kararı (15.10.2026; fiyat listesi 27.10.2026, docs/pricelist/fiyat-listesi.md): aynı oda,
+# aynı gece için misafir HER kanalda aynı fiyatı görür. Telefonda ve kapıda İNDİRİM YOK: tablo tabandır
+# (eski "en fazla 300 TL" kuralı 27.10'da kaldırıldı — indirim cebe atılıyordu). Fiyatlar iade
+# edilebilir, TL, 1–2 kişi, kahvaltı dahil. Her odanın üç basamağı var; gecenin basamağı tarihe (aynı
+# gün mü, ileri tarih mi), Cumartesi'ye ve o gece satılmış oda sayısına bağlı → basamak().
+# Elektra'da baz fiyat EUR'dur (= TL ÷ günün kuru); fiyat_bandi.py yarım saatte bir uygular.
+FIYAT_ODALAR = (  # (anahtar, ad, alt yazı, (1. basamak, 2. basamak, 3. basamak))
+    ("eko", "Ekonomik", "balkonlu · yalnızca site, telefon, kapı", (3000, 3300, 3800)),
+    ("stu", "Stüdyo", "mutfaklı", (3200, 3500, 4000)),
+    ("sup", "Superior", "mutfaklı / mutfaksız", (3400, 3800, 4200)),
+    ("dlx", "Deluxe", "mutfaklı / balkonlu", (3800, 4000, 4500)),
+    ("sui", "1+1 Suit", "mutfaklı", (4500, 5000, 5500)),
 )
-ESIK_ODA = 30           # o gece bu kadar oda satılınca normal plan
-KAPI_INDIRIM = 300      # telefon / VIP pazarlığında en fazla bu kadar indirim
+ESIK_ODA = (30, 40)     # o gece bu kadar oda satılınca bir üst basamak (30. oda satılınca 31. yeni fiyattan)
+BASAMAK_ADI = ("1. basamak", "2. basamak", "3. basamak")
+# Uzun konaklama 27.10 listesinde değişmedi: taban = 24.10 listesinin Paz–Pzt normal fiyatı,
+# 7+ / 14+ / 28+ gece −300 / −500 / −700 TL (site uzun_konaklama.py da bunu okur).
+UZUN_BAZ = {"stu": 3500, "sup": 3700, "dlx": 3900, "sui": 4500}
+UZUN_INDIRIM = ((28, 700), (14, 500), (7, 300))
 FIYAT_TOLERANS = 40     # hedeften ±40 TL "hedefte" sayılır (kanallar Euro'yu kendi kuruyla çevirir)
-GRUP_ADI = ("Pazar · Pazartesi · Salı", "Çarşamba – Cuma", "Cumartesi")
-BAS_ADI = ("Pazar – Perşembe", "Cuma · Cumartesi")
 GUN_ADI = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
 GUN_KISA = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
 
@@ -1767,26 +1767,40 @@ FIYAT_KANALLAR = {
 }
 
 
-def gun_grubu(d):
-    """Normal plan gün grubu."""
-    wd = d.weekday()
-    return 2 if wd == 5 else (0 if wd in (6, 0, 1) else 1)
+def tr_bugun():
+    """İstanbul'a göre bugün (bulut UTC'de çalışıyor; 00–03 arası tarih kaymasın)."""
+    from zoneinfo import ZoneInfo
+    return dt.datetime.now(ZoneInfo("Europe/Istanbul")).date()
 
 
-def bas_grubu(d):
-    """Başlangıç fiyatı gün grubu."""
-    return 1 if d.weekday() in (4, 5) else 0
+def basamak(d, bugun, dolu):
+    """Gecenin fiyat basamağı (0/1/2). Aynı gün (d ≤ bugun): Cumartesi 3., diğer günler 2., 40+ oda 3.
+    İleri tarih: Cumartesi 2., 30+ oda 3.; diğer günler 1., 30+ oda 2., 40+ oda 3."""
+    cmt = d.weekday() == 5
+    if d <= bugun:
+        return 2 if cmt or dolu >= ESIK_ODA[1] else 1
+    if cmt:
+        return 2 if dolu >= ESIK_ODA[0] else 1
+    return 2 if dolu >= ESIK_ODA[1] else (1 if dolu >= ESIK_ODA[0] else 0)
 
 
-def gece_hedef(oda, d, dolu):
-    """FIYAT_ODALAR satırı → o gecenin hedef fiyatı (o gece `dolu` oda satılmışken)."""
-    return oda[3][gun_grubu(d)] if dolu >= ESIK_ODA else oda[4][bas_grubu(d)]
+def gece_hedef(oda, d, dolu, bugun=None):
+    """FIYAT_ODALAR satırı → o gecenin fiyatı (o gece `dolu` oda satılmışken, `bugun` itibarıyla)."""
+    return oda[3][basamak(d, bugun or tr_bugun(), dolu)]
 
 
-def gece_taban(oda, d):
-    """Gecenin en düşük meşru fiyatı (başlangıç). Bundan ucuz satan kanal gerçekten ucuzdur;
-    gözlem gece 30 odayı geçmeden önce yapılmış olabileceği için ucuz sayımı buna göre."""
-    return oda[4][bas_grubu(d)]
+def gece_taban(oda, d, bugun=None):
+    """Gecenin en düşük meşru fiyatı (doluluk 0). Bundan ucuz satan kanal ya da resepsiyon
+    gerçekten ucuzdur; doluluk yükselmeden önceki bir gözlem/satış da yanlış alarm vermez."""
+    return oda[3][basamak(d, bugun or tr_bugun(), 0)]
+
+
+def uzun_taban(k, gece):
+    """Uzun konaklamada (7+ gece) gecelik taban; uzun konaklama yoksa None."""
+    for n, ind in UZUN_INDIRIM:
+        if gece >= n and k in UZUN_BAZ:
+            return UZUN_BAZ[k] - ind
+    return None
 
 
 def gece_doluluk(env, start, end):
@@ -1854,7 +1868,8 @@ def duzeltilecekler(today):
         if not d or g.get("zaman", "") < sinir or not g.get("fiyat"):
             continue
         rk = g.get("oda", "stu")
-        hedef = dict((r[0], gece_taban(r, d)) for r in FIYAT_ODALAR).get(rk)
+        gordu = pdate(g.get("zaman")) or today      # gözlem günü: o gün aynı gün fiyatı geçerliydi
+        hedef = dict((r[0], gece_taban(r, d, gordu)) for r in FIYAT_ODALAR).get(rk)
         if not hedef:
             continue
         fark = g["fiyat"] - hedef
@@ -1883,7 +1898,7 @@ def build_fiyat(env):
     """Fiyat Kontrol — her kanalda misafirin gördüğü fiyat hedefle aynı mı? Görülen fiyat
     gözlem dosyasından, beklenen fiyat Elektra'daki canlı kanal çarpanından gelir; Elektra'da
     biri çarpanı değiştirirse beklenen fiyat hemen sapar. Yanda resepsiyon için kapı fiyatları."""
-    today = dt.date.today()
+    today = tr_bugun()
     factors, elektra_ok = {}, True
     try:
         for c in E.fetch_channel_factors(env):
@@ -1909,12 +1924,10 @@ def build_fiyat(env):
 
     def bant(d):
         n = dol.get(d, 0)
-        if n >= ESIK_ODA:
-            return f"o gece {n} oda dolu · normal plan"
-        return f"o gece {n} oda dolu · başlangıç fiyatı ({ESIK_ODA} odadan az)"
+        return f"o gece {n} oda dolu · {BASAMAK_ADI[basamak(d, today, n)]}"
 
     def grup(d):
-        return GRUP_ADI[gun_grubu(d)] if dol.get(d, 0) >= ESIK_ODA else BAS_ADI[bas_grubu(d)]
+        return ("aynı gün" if d <= today else "ileri tarih") + (" · Cumartesi" if d.weekday() == 5 else " · Pazar–Cuma")
 
     rooms = [{"k": r[0], "ad": r[1]} for r in FIYAT_ODALAR]
     kanallar, beklenen, gozlem = [], {}, {}
@@ -1939,7 +1952,7 @@ def build_fiyat(env):
                 rk = oda[0]
                 if rk == "eko" and key != "site":
                     continue  # Ekonomik oda kanallarda satılmaz
-                acik = gece_hedef(oda, d, dol.get(d, 0)) * f
+                acik = gece_hedef(oda, d, dol.get(d, 0), today) * f
                 beklenen[iso][key][rk] = [round(acik * (1 - ind)), round(acik) if ind else None]
     for (t, k, rk), o in obs.items():
         gozlem.setdefault(t, {}).setdefault(k, {})[rk] = {
@@ -1951,7 +1964,7 @@ def build_fiyat(env):
         lab = ("Bugün · " if d == today else "Yarın · " if d == today + dt.timedelta(days=1) else "") \
             + f"{d.day} {TR_MONTHS[d.month]} {GUN_KISA[d.weekday()]}"
         gun_list.append({"iso": d.isoformat(), "lab": lab, "grup": grup(d), "bant": bant(d),
-                         "hedef": {r[0]: gece_hedef(r, d, dol.get(d, 0)) for r in FIYAT_ODALAR}})
+                         "hedef": {r[0]: gece_hedef(r, d, dol.get(d, 0), today) for r in FIYAT_ODALAR}})
     data = {"tol": FIYAT_TOLERANS, "rooms": rooms, "days": gun_list, "kanallar": kanallar,
             "beklenen": beklenen, "gozlem": gozlem, "elektra": elektra_ok}
 
@@ -1961,43 +1974,44 @@ def build_fiyat(env):
     for (t, k, rk), o in obs.items():
         d = pdate(t)
         if d and d >= today and o.get("fiyat"):
-            hedef = dict((r[0], gece_taban(r, d)) for r in FIYAT_ODALAR)[rk]
+            hedef = dict((r[0], gece_taban(r, d, today)) for r in FIYAT_ODALAR)[rk]
             if o["fiyat"] < hedef - FIYAT_TOLERANS:
                 ucuz.add(FIYAT_KANALLAR.get(k, (k,))[0])
     for key, per in beklenen.get(today.isoformat(), {}).items():
         v = per.get("stu")
-        hedef = gece_hedef(FIYAT_ODALAR[1], today, dol.get(today, 0))
+        hedef = gece_hedef(FIYAT_ODALAR[1], today, dol.get(today, 0), today)
         if v and abs(v[0] - hedef) > FIYAT_TOLERANS:
             ucuz.add(FIYAT_KANALLAR[key][0] + " (Elektra ayarı)")
 
-    # Kapı fiyatları (resepsiyon): bugün büyük; iki fiyat tablosu ve önümüzdeki geceler küçük.
-    normal_bugun = dol.get(today, 0) >= ESIK_ODA
+    # Kapı fiyatları (resepsiyon): bugünün TABAN fiyatı büyük — indirim yok (27.10.2026); yanında basamak
+    # tablosu, hangi gecenin hangi basamakta olduğu ve önümüzdeki 14 gece.
+    b_bugun = basamak(today, today, dol.get(today, 0))
     kapi = "".join(
         f"<div class='fk-drow'><div class='fk-room'>{esc(r[1])}<small>{esc(r[2])}</small></div>"
-        f"<div class='fk-dp'><span class='fk-big'>{_tl(gece_hedef(r, today, dol.get(today, 0)))}<i>₺</i></span>"
-        f"<span class='fk-min'>en az {_tl(gece_hedef(r, today, dol.get(today, 0)) - KAPI_INDIRIM)}</span></div></div>"
+        f"<div class='fk-dp'><span class='fk-big'>{_tl(r[3][b_bugun])}<i>₺</i></span></div></div>"
         for r in FIYAT_ODALAR)
-
-    def tablo(baslik, sutunlar, idx, simdi):
-        bas = "".join(f"<th class='r'>{esc(s)}</th>" for s in sutunlar)
-        satir = "".join(
-            f"<tr><td>{esc(r[1])}</td>" + "".join(
-                f"<td class='r{' fk-now' if i == simdi else ''}'>{_tl(r[idx][i])}</td>"
-                for i in range(len(sutunlar))) + "</tr>"
-            for r in FIYAT_ODALAR)
-        return (f"<div class='fk-small' style='font-weight:700;color:var(--fg);margin:8px 0 4px'>{baslik}</div>"
-                f"<table class='fk-week'><thead><tr><th>Oda</th>{bas}</tr></thead><tbody>{satir}</tbody></table>")
-
-    hafta = (tablo(f"Başlangıç fiyatı · o gece {ESIK_ODA} odadan az", ("Paz–Per", "Cum·Cmt"), 4,
-                   None if normal_bugun else bas_grubu(today))
-             + tablo(f"Normal plan · o gece {ESIK_ODA} oda ve üstü", ("Paz·Pzt·Sal", "Çar–Cum", "Cmt"), 3,
-                     gun_grubu(today) if normal_bugun else None))
+    bas = "".join(f"<th class='r'>{esc(a)}</th>" for a in BASAMAK_ADI)
+    satir = "".join(
+        f"<tr><td>{esc(r[1])}</td>" + "".join(
+            f"<td class='r{' fk-now' if i == b_bugun else ''}'>{_tl(r[3][i])}</td>" for i in range(3)) + "</tr>"
+        for r in FIYAT_ODALAR)
+    hafta = ("<div class='fk-small' style='font-weight:700;color:var(--fg);margin:8px 0 4px'>Fiyat basamakları</div>"
+             f"<table class='fk-week'><thead><tr><th>Oda</th>{bas}</tr></thead><tbody>{satir}</tbody></table>"
+             "<div class='fk-small' style='font-weight:700;color:var(--fg);margin:10px 0 4px'>Hangi gece hangi basamak</div>"
+             "<table class='fk-week'><thead><tr><th>Gece</th><th class='r'>0–29 oda</th><th class='r'>30–39</th>"
+             "<th class='r'>40+</th></tr></thead><tbody>"
+             "<tr><td>Bu gece · Paz–Cuma</td><td class='r'>2.</td><td class='r'>2.</td><td class='r'>3.</td></tr>"
+             "<tr><td>Bu gece · Cumartesi</td><td class='r'>3.</td><td class='r'>3.</td><td class='r'>3.</td></tr>"
+             "<tr><td>İleri tarih · Paz–Cuma</td><td class='r'>1.</td><td class='r'>2.</td><td class='r'>3.</td></tr>"
+             "<tr><td>İleri tarih · Cumartesi</td><td class='r'>2.</td><td class='r'>3.</td><td class='r'>3.</td></tr>"
+             "</tbody></table>")
     gece = "".join(
-        f"<tr{' class=fk-nrm' if dol.get(d, 0) >= ESIK_ODA else ''}><td>{d.day} {TR_MONTHS[d.month]} "
-        f"{GUN_KISA[d.weekday()]}</td><td class='r'>{dol.get(d, 0)}</td>"
-        f"<td class='r'>{_tl(gece_hedef(FIYAT_ODALAR[1], d, dol.get(d, 0)))}</td></tr>"
+        f"<tr{' class=fk-nrm' if basamak(d, today, dol.get(d, 0)) > basamak(d, today, 0) else ''}>"
+        f"<td>{d.day} {TR_MONTHS[d.month]} {GUN_KISA[d.weekday()]}</td><td class='r'>{dol.get(d, 0)}</td>"
+        f"<td class='r'>{_tl(gece_hedef(FIYAT_ODALAR[1], d, dol.get(d, 0), today))}</td></tr>"
         for d in ileri)
-    hafta += ("<div class='fk-small' style='font-weight:700;color:var(--fg);margin:8px 0 4px'>Önümüzdeki geceler</div>"
+    hafta += ("<div class='fk-small' style='font-weight:700;color:var(--fg);margin:10px 0 4px'>Önümüzdeki geceler "
+              "<span style='font-weight:400'>· kalın: doluluk yüzünden yükselmiş</span></div>"
               "<table class='fk-week'><thead><tr><th>Gece</th><th class='r'>Dolu oda</th>"
               "<th class='r'>Stüdyo</th></tr></thead><tbody>" + gece + "</tbody></table>")
 
@@ -2020,11 +2034,13 @@ def build_fiyat(env):
                 f"<td><span class='fk-diff {ton}'>{esc(kanit)}</span></td>"
                 f"<td class='fk-small'>{esc(r.get('sebep',''))}</td>"
                 f"<td class='fk-small'><b style='color:var(--fg)'>{esc(r.get('yapilacak',''))}</b></td></tr>")
-        duz_html = ("<div class='fk-fix'><div class='fk-fix-h'><b>Düzeltilecekler</b>"
-                    "<span class='fk-small'>sürekli ucuz satan kanallar · istatistik her 3 saatte güncellenir</span></div>"
-                    "<div style='overflow-x:auto'><table class='fk-fixt'><thead><tr><th>Kanal</th><th>Son 7 gün</th>"
+        acik_n = sum(1 for r in duz if r.get("durum") != "çözüldü")
+        duz_html = ("<details class='fk-fix'><summary class='fk-fix-h'><b>Düzeltilecekler</b>"
+                    f"<span class='fk-diff {'fk-low' if acik_n else 'fk-ok'}'>{acik_n} açık</span>"
+                    "<span class='fk-small'>sürekli ucuz satan kanallar · açmak için tıklayın</span></summary>"
+                    "<div style='overflow-x:auto;margin-top:8px'><table class='fk-fixt'><thead><tr><th>Kanal</th><th>Son 7 gün</th>"
                     "<th>Muhtemel sebep</th><th>Yapılacak</th></tr></thead><tbody>"
-                    + "".join(satir) + "</tbody></table></div></div>")
+                    + "".join(satir) + "</tbody></table></div></details>")
     else:
         duz_html = ""
 
@@ -2032,16 +2048,16 @@ def build_fiyat(env):
             .replace("__KAPI__", kapi).replace("__HAFTA__", hafta)
             .replace("__BANT__", esc(bant(today)[0].upper() + bant(today)[1:]))
             .replace("__BUGUN__", esc(f"{today.day} {TR_MONTHS[today.month]} {GUN_ADI[today.weekday()]}"))
-            .replace("__INDIRIM__", _tl(KAPI_INDIRIM)).replace("__TOL__", str(FIYAT_TOLERANS))
+            .replace("__TOL__", str(FIYAT_TOLERANS))
             .replace("__DATA__", json.dumps(data, ensure_ascii=False).replace("</", "<\\/")))
     n = len(ucuz)
     return {"label": "Fiyat Kontrol", "count": n,
             "count_label": "kanal hedeften ucuz" if n else "kanal hedefte",
             "tone": "bad" if n else "ok",
-            "sub": ("ucuz: " + ", ".join(sorted(ucuz))) if n else "her kanalda aynı fiyat · kapı fiyatları",
+            "sub": ("ucuz: " + ", ".join(sorted(ucuz))) if n else "her kanalda aynı fiyat · bugünün taban fiyatları",
             "updated": now_str(),
             "html": PAGE("Fiyat / Parite", "Fiyat Kontrol",
-                         "her kanalda misafirin gördüğü fiyat · bugünün kapı fiyatları", body)}
+                         "her kanalda misafirin gördüğü fiyat · bugün kapıdan taban fiyatlar", body)}
 
 
 FIYAT_HTML = """
@@ -2070,24 +2086,28 @@ FIYAT_HTML = """
 .fk-ok{background:var(--fk-okbg);color:var(--statok)}.fk-low{background:var(--fk-lowbg);color:var(--statbad)}
 .fk-high{background:var(--fk-warnbg);color:var(--fk-warn)}.fk-none{background:var(--fk-soft);color:var(--sub)}
 .fk-door{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;display:grid;gap:12px;min-width:0}
-.fk-door h2{margin:0;font-size:20px}
+.fk-door h2{margin:0;font-size:24px;line-height:1.2}
 .fk-door .when{color:var(--eyebrow);font-weight:700;font-size:13px}
 .fk-rule{background:var(--fk-chip);color:var(--fg);border-radius:10px;padding:9px 12px;font-size:13px}
 .fk-rule b{color:var(--fk-chipfg)}
 .fk-drow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--td-line)}
-.fk-room{font-weight:700;font-size:15px}
+.fk-room{font-weight:700;font-size:18px}
 .fk-room small{display:block;color:var(--sub);font-weight:400;font-size:11.5px}
 .fk-dp{text-align:right;font-variant-numeric:tabular-nums}
-.fk-big{display:block;font-size:26px;font-weight:800;letter-spacing:-.3px;line-height:1.1}
-.fk-big i{font-style:normal;font-size:14px;color:var(--sub);margin-left:3px}
+.fk-big{display:block;font-size:36px;font-weight:800;letter-spacing:-.5px;line-height:1.05}
+.fk-big i{font-style:normal;font-size:18px;color:var(--sub);margin-left:3px}
+.fk-door .fk-nodisc{background:var(--fk-lowbg);color:var(--statbad);border-radius:10px;padding:9px 12px;font-size:14px;font-weight:700}
 .fk-min{display:block;font-size:12px;font-weight:700;color:var(--fk-warn)}
 .fk-week{font-size:12.5px;margin:0}
 .fk-week td,.fk-week th{padding:6px 8px}
 .fk-week td.fk-now{font-weight:800;background:var(--fk-chip);color:var(--fk-chipfg)}
 .fk-week tr.fk-nrm td{font-weight:800}
 .fk-small{color:var(--sub);font-size:11.5px;line-height:1.5}
-.fk-fix{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:16px;box-shadow:inset 4px 0 var(--statbad)}
-.fk-fix-h{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin-bottom:6px}
+.fk-fix{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 16px;margin-bottom:16px;box-shadow:inset 4px 0 var(--statbad)}
+.fk-fix-h{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;cursor:pointer;list-style:none}
+.fk-fix-h::-webkit-details-marker{display:none}
+.fk-fix-h::before{content:"▸";color:var(--sub)}
+.fk-fix[open] .fk-fix-h::before{content:"▾"}
 .fk-fixt{margin:0;font-size:12.5px}
 .fk-fixt td{vertical-align:top}
 .fk-fixt td:nth-child(2){white-space:nowrap}
@@ -2104,10 +2124,10 @@ __DUZ__
       ±__TOL__ TL içi hedefte sayılır; kanallar Euro'yu kendi kuruyla çevirir.</div>
   </div>
   <aside class="fk-door">
-    <div><div class="when">__BUGUN__</div><h2>Bugün kapıdan</h2></div>
-    <div class="fk-rule">Telefon ve VIP misafire en fazla <b>__INDIRIM__ TL</b> indirim. Turuncu "en az" fiyatın altına inilmez.</div>
+    <div><div class="when">__BUGUN__ · bu gece</div><h2>Bugün kapıdan taban fiyatlar</h2></div>
+    <div class="fk-nodisc">İndirim yapılmaz. Telefonda ve kapıda bu fiyatlar söylenir.</div>
     <div>__KAPI__</div>
-    <div class="fk-small">__BANT__. Fiyatlar iade edilebilir, kahvaltı dahil. Ekonomik oda yalnızca telefon, kapı ve web sitesinden satılır. Suit'te 3. kişi +%5, 4. kişi +%10.</div>
+    <div class="fk-small">__BANT__. Fiyatlar 1–2 kişi, kahvaltı dahil, iade edilebilir. Ekonomik oda yalnızca telefon, kapı ve web sitesinden satılır. Suit'te 3. kişi +%5, 4. kişi +%10. İleri tarihli rezervasyonun fiyatı için aşağıdaki tablolara bakın.</div>
     <div>__HAFTA__</div>
   </aside>
 </div>
@@ -2150,7 +2170,7 @@ __DUZ__
     cards.sort(function(a,b){return a.rank-b.rank||(a.diff||0)-(b.diff||0)});
     document.getElementById('fkCards').innerHTML=cards.map(function(c){return c.html}).join('')||'<div class="empty">Bu oda ve tarih için veri yok.</div>';
     var room=D.rooms.filter(function(r){return r.k===selRoom})[0].ad;
-    document.getElementById('fkHero').innerHTML='<div><div class="l">Hedef · '+esc(room)+' · iade edilebilir · '+esc(day.grup)+'</div><div class="big">'+fmt(T)+' ₺</div><div class="l">'+esc(day.bant)+'</div></div>'+
+    document.getElementById('fkHero').innerHTML='<div><div class="l">Hedef · '+esc(room)+' · '+esc(day.grup)+'</div><div class="big">'+fmt(T)+' ₺</div><div class="l">'+esc(day.bant)+'</div></div>'+
       '<div class="l" style="font-size:13px">Görülen fiyatlar: <b style="color:var(--statok)">'+cnt.ok+'</b> hedefte · <b style="color:var(--statbad)">'+cnt.low+'</b> ucuz · <b style="color:var(--fk-warn)">'+cnt.high+'</b> pahalı'+(cnt.bek?' · '+cnt.bek+' kanal kontrol bekliyor':'')+
       (D.elektra?'':'<br><b style="color:var(--statbad)">Elektra’ya ulaşılamadı; beklenen fiyatlar hesaplanmadı.</b>')+'</div>';
   }
@@ -2299,11 +2319,11 @@ GUNLUK_JS = r"""<script>
     var items=scopeRows('sales'); var wk=(scope==='week');
     if(!items.length) return "<h2>Oda Satış Fiyatları — "+scopeLabel()+"</h2><div class='ph'>Bu aralıkta oda satışı (giriş) yok.</div>";
     var h="<h2>Oda Satış Fiyatları — "+scopeLabel()+"</h2>"
-      +"<p class='lead'><b>Giriş yapan</b> odalar — fiyatlar <b>TL</b>. <span class='reason-none'>🔴 Walk-in / Telefon</span> satışı "+money(D.pricemin||3500)+" ₺ altındaysa kırmızı (resepsiyon fiyatı, incele) — acente kontrat fiyatları düşük olabilir, normaldir. <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat. Açıklamayı sağa gir — otomatik saklanır.</p>"
+      +"<p class='lead'><b>Giriş yapan</b> odalar — fiyatlar <b>TL</b>. <b>Liste</b> = fiyat listesine göre o oda ve gece için en düşük fiyat (aynı gün satışta aynı gün fiyatı, 7+ gecede uzun konaklama fiyatı). <span class='reason-none'>🔴 Walk-in / Telefon</span> satışı listenin altındaysa kırmızı: <b>indirim yapılmaz</b>, fiyatı uygulamayan satış — incele. Acente kontrat fiyatları farklı olabilir, kırmızı yapılmaz. <b style='color:var(--statbad)'>💵 NAKİT</b> = folyoda nakit tahsilat; listenin altında + nakit en riskli satıştır. Açıklamayı sağa gir — otomatik saklanır.</p>"
       +agdl(items.map(function(it){return it.r;}))
       +"<div class='filtbar'>🔎 <input data-sfilt list='agdl' placeholder='Oda / acenta / misafir / rez ara'> "
       +"<label style='display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--sub);cursor:pointer'><input type='checkbox' data-sflag> sadece 🔴 işaretli</label></div>"
-      +"<div style='overflow-x:auto'><table><thead><tr>"+(wk?"<th>Gün</th>":"")+"<th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı (₺)</th><th>Ödeme</th><th style='width:20%'>Müdür açıklaması</th></tr></thead><tbody id='salesbody'>";
+      +"<div style='overflow-x:auto'><table><thead><tr>"+(wk?"<th>Gün</th>":"")+"<th>Rez No</th><th>Oda</th><th>Misafir</th><th>Acenta</th><th class='r'>Gece</th><th class='r'>Ort. Gece Fiyatı (₺)</th><th class='r'>Liste (₺)</th><th>Ödeme</th><th style='width:20%'>Müdür açıklaması</th></tr></thead><tbody id='salesbody'>";
     items.forEach(function(it){ var r=it.r;
       var price=r.avg>0?(money(r.avg)+" ₺"):"—";
       if(r.low) price="<span class='reason-none'>"+price+" 🔴</span>";
@@ -2313,7 +2333,7 @@ GUNLUK_JS = r"""<script>
       var txt=esc(((r.room||'')+' '+(r.agency||'')+' '+(r.guest||'')+' '+(r.rez||'')).toLowerCase());
       h+="<tr data-flag='"+flag+"' data-txt=\""+txt+"\""+((r.low||r.cash)?" style='box-shadow:inset 3px 0 var(--statbad)'":"")
         +">"+(wk?"<td class='mono'>"+fdshort(it.day)+"</td>":"")+"<td class='mono'>"+esc(r.rez)+"</td><td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td><td>"+esc(r.agency)+"</td>"
-        +"<td class='r'>"+esc(r.night)+"</td><td class='r mono'>"+price+"</td><td>"+pay+"</td>"+noteD(it.day,'sales','r'+r.rez)+"</tr>";
+        +"<td class='r'>"+esc(r.night)+"</td><td class='r mono'>"+price+"</td><td class='r mono'>"+(r.liste?money(r.liste):"—")+"</td><td>"+pay+"</td>"+noteD(it.day,'sales','r'+r.rez)+"</tr>";
     });
     return h+"</tbody></table></div>"+savebar('sales');
   }
@@ -2449,7 +2469,28 @@ GUNLUK_JS = r"""<script>
 </script>"""
 
 
-SATIS_MIN_FIYAT = 3500     # ort. gece fiyatı bunun altındaysa "düşük" işaretlenir (istenirse değiştir)
+SATIS_MIN_FIYAT = 3500     # oda tipi bilinmeyen satışta yedek sınır
+ODA_KOD = {"EKOBALK": "eko", "STUDMUT": "stu", "SPROOM": "sup", "SPMUT": "sup",
+           "DLXMUT": "dlx", "DLXBALK": "dlx", "SUITMUT": "sui"}   # Elektra ROOMTYPE → FIYAT_ODALAR
+SATIS_PAYI = 30            # TL — kur yuvarlaması; listenin bundan fazla altı "düşük"
+
+
+def satis_liste_fiyati(a):
+    """Rezervasyonun gecelik liste (taban) fiyatı, TL — fiyat listesine göre olması gereken en düşük.
+    Satış günü (CREATEDATE) gecenin kendisiyse aynı gün fiyatı, önceyse ileri tarih fiyatı; doluluk
+    hesaba katılmaz (taban). 7+ gecede uzun konaklama fiyatı. Oda tipi bilinmiyorsa None."""
+    k = ODA_KOD.get(str(a.get("ROOMTYPE") or "").strip().upper())
+    oda = next((r for r in FIYAT_ODALAR if r[0] == k), None)
+    ci, co = pdate(a.get("CHECKIN")), pdate(a.get("CHECKOUT"))
+    if not oda or not ci:
+        return None
+    gece = int(num(a.get("NIGHT")) or ((co - ci).days if co else 1) or 1)
+    ut = uzun_taban(k, gece)
+    if ut:
+        return ut
+    satis = pdate(a.get("CREATEDATE")) or ci
+    geceler = [ci + dt.timedelta(days=i) for i in range(max(1, min(gece, 31)))]
+    return round(sum(gece_taban(oda, d, satis) for d in geceler) / len(geceler))
 
 
 def _is_direct_agency(agency):
@@ -2624,13 +2665,15 @@ def build_gunluk(env):
         cash = any(("cash" in m.lower() or "nakit" in m.lower()) for m in methods)
         agency = (a.get("AGENCY") or "").strip()
         direct = _is_direct_agency(agency)        # kırmızı sadece Walk-in/Telefon/acentasız
+        liste = satis_liste_fiyati(a)             # fiyat listesine göre olması gereken (27.10.2026)
+        alt = (liste - SATIS_PAYI) if liste else SATIS_MIN_FIYAT
         days[day]["sales"].append({
             "room": room, "guest": (a.get("GUESTNAMES") or "")[:34], "agency": agency[:22],
-            "night": a.get("NIGHT") or "", "avg": avg, "pay": methods, "cash": cash,
-            "low": (0 < avg < SATIS_MIN_FIYAT) and direct, "rez": str(a.get("RESID") or "")})
+            "night": a.get("NIGHT") or "", "avg": avg, "pay": methods, "cash": cash, "liste": liste,
+            "low": (0 < avg < alt) and direct, "rez": str(a.get("RESID") or "")})
     for dd in days.values():
-        # işaretliler (düşük fiyat / nakit) üstte, sonra ucuzdan pahalıya
-        dd["sales"].sort(key=lambda s: (not (s["low"] or s["cash"]), s["avg"]))
+        # en üstte listenin altında + NAKİT (en riskli), sonra diğer işaretliler, sonra ucuzdan pahalıya
+        dd["sales"].sort(key=lambda s: (not (s["low"] and s["cash"]), not (s["low"] or s["cash"]), s["avg"]))
     ob = [{"rezid": str(r.get("RESID") or ""), "room": r.get("ROOMNO") or "",
            "guest": (r.get("GUESTNAMES") or "")[:34], "agency": (r.get("AGENCY") or "")[:16],
            "left": bool(r.get("_left")), "borc": round(fbal(r), 2)} for r in owed]

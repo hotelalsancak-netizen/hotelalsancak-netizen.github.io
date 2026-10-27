@@ -1,6 +1,7 @@
 name: Fiyat bandi
 
-# 30 oda kurali (fiyat_bandi.py): bir gece 30 oda ve ustu satilinca o gecenin Elektra temel
+# Fiyat listesi 27.10.2026 (fiyat_bandi.py): uc basamak; gece yarisi bu gece "ayni gun" fiyatina gecer,
+# 30 ve 40 oda dolunca ust basamak. Bir gece 30/40 oda satilinca o gecenin Elektra temel
 # fiyatini fiyat listesindeki normal plana cikarir. Her calismada Elektra gunluk euro kurunu okur, TL
 # fiyat listenin altina dusmesin ve en fazla 5 TL ustunde kalsin diye € fiyatlari ayarlar (26.10.2026).
 # Listeden %6 uzak (elle girilmis ozel) fiyata dokunmaz (elle girilen
