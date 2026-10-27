@@ -2473,6 +2473,7 @@ SATIS_MIN_FIYAT = 3500     # oda tipi bilinmeyen satışta yedek sınır
 ODA_KOD = {"EKOBALK": "eko", "STUDMUT": "stu", "SPROOM": "sup", "SPMUT": "sup",
            "DLXMUT": "dlx", "DLXBALK": "dlx", "SUITMUT": "sui"}   # Elektra ROOMTYPE → FIYAT_ODALAR
 SATIS_PAYI = 30            # TL — kur yuvarlaması; listenin bundan fazla altı "düşük"
+LISTE_TARIHI = dt.date(2026, 10, 27)   # bu tarihten önce satılanlar eski kuralla (SATIS_MIN_FIYAT) değerlendirilir
 
 
 def satis_liste_fiyati(a):
@@ -2489,6 +2490,8 @@ def satis_liste_fiyati(a):
     if ut:
         return ut
     satis = pdate(a.get("CREATEDATE")) or ci
+    if satis < LISTE_TARIHI:
+        return None            # 27.10 listesinden önceki satış: o günkü kural farklıydı (indirim serbestti)
     geceler = [ci + dt.timedelta(days=i) for i in range(max(1, min(gece, 31)))]
     return round(sum(gece_taban(oda, d, satis) for d in geceler) / len(geceler))
 
