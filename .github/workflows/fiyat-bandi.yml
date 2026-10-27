@@ -1,7 +1,9 @@
 name: Fiyat bandi
 
 # 30 oda kurali (fiyat_bandi.py): bir gece 30 oda ve ustu satilinca o gecenin Elektra temel
-# fiyatini fiyat listesindeki normal plana cikarir. Baska hicbir geceye dokunmaz (elle girilen
+# fiyatini fiyat listesindeki normal plana cikarir. Her calismada Elektra gunluk euro kurunu okur, TL
+# fiyat listenin altina dusmesin ve en fazla 5 TL ustunde kalsin diye € fiyatlari ayarlar (26.10.2026).
+# Listeden %6 uzak (elle girilmis ozel) fiyata dokunmaz (elle girilen
 # fiyatlar korunur), hicbir geceyi DUSURMEZ, fiyati girilmemis (satisa kapali) geceyi acmaz.
 # Elektra yeni fiyati kanallara kendisi gonderir. Satisin cogu ayni gun 16-21 arasi geldigi
 # icin yarim saatte bir calismasi gerekir; GitHub schedule bunu 2-4 saate uzattigi icin asil

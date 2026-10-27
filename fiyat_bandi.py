@@ -3,20 +3,26 @@
 
 Kural (sahibin onayı 24.10.2026, tablo checks.FIYAT_ODALAR): o gece ESIK_ODA'dan (30) az oda
 satılmışsa BAŞLANGIÇ fiyatı, 30 ve üstünde NORMAL plan. Elektra'ya giden temel fiyat EUR'dur:
-€ = TL ÷ KUR (iki ondalık, yukarı). Kanallara Elektra kendisi gönderir (temel fiyat × kanal çarpanı);
-fiyat değişince ayrıca "Kanalları Manuel Olarak Tekrar Güncelle" gerekmez.
+€ = TL ÷ günün kuru (iki ondalık, YUKARI). Kur, Elektra'nın kendi günlük kurudur (TCMB döviz alış;
+rezervasyon motoru da TL'yi bununla hesaplar). Kanallara Elektra kendisi gönderir (temel fiyat × kanal
+çarpanı); fiyat değişince ayrıca "Kanalları Manuel Olarak Tekrar Güncelle" gerekmez.
 
 Kullanım:
-  python fiyat_bandi.py                          # otomatik (bulutta yarım saatte bir): yalnız YÜKSELTİR
+  python fiyat_bandi.py                          # otomatik (bulutta yarım saatte bir)
   python fiyat_bandi.py --tablo 2026-10-24 2027-03-31   # aralığın bütün gecelerini tabloya yazar
   ... --kuru                                     # yazmadan ne yapacağını göster
 
-Otomatik mod YALNIZ 30 oda kuralını uygular: gece 30+ oda ve Elektra fiyatı normal planın altında →
-normal plana çıkar. Hiçbir geceyi DÜŞÜRMEZ; 30'un altındaki gecelere hiç dokunmaz, çünkü sahibi
-Elektra'da elle fiyat girebiliyor (24.10.2026: Stüdyo/Ekonomik 25.10–22.11 elle girildi) ve program
-onunla çekişmemeli. İptallerle gece 30'un altına inerse fiyat kendiliğinden inmez.
+Otomatik mod, her gece × oda tipi için (sahibi 26.10.2026: "euro artıp azalıyor, otomatik güncellesin,
+3.200'ün altına düşmesin"):
+  1. TABAN: gece 30+ oda ise normal plan, değilse başlangıç fiyatı. Elektra fiyatı günün kuruyla
+     tabanın altına düştüyse (kur düştü ya da gece 30 odayı buldu) hemen tabana çıkarır.
+  2. KUR: fiyat tablodaki bir değere yakınsa (±%6; başlangıç ya da normal plan) ve euro yükseldiği için
+     misafir KUR_PAYI TL'den fazla öderse, € o tablo değerine indirilir (TL yine tablonun altına inmez).
+     Normal plana çıkmış gece iptallerle 30'un altına inse de normal planda kalır (bant düşmez).
+  3. Tablodan %6'dan fazla uzak fiyat (elle girilmiş özel fiyat: bayram, etkinlik) olduğu gibi kalır,
+     yalnız tabanın altındaysa 1. kural uygulanır.
 Elektra'da fiyatı hiç girilmemiş (0) geceye dokunmaz: o tarih satışa kapalıdır (24.10.2026'da
-31.03.2027 sonrası böyle).
+31.03.2027 sonrası böyle). Günün kuru okunamazsa hiçbir şey yazmaz.
 
 Elektra çağrısı, ekrandaki "Fiyat ve Doluluk → ⚡ → Toplu Güncelleme" formunun yaptığıdır:
   Execute/SP_AVAILABILITY_UPDATE {FROMDATE, TODATE, ROOMTYPEID, DBLPRICE (= Temel Fiyat), gün bayrakları}
@@ -33,8 +39,9 @@ from zoneinfo import ZoneInfo
 import checks
 import elektra_api as E
 
-KUR = 55.5   # 1 € kaç TL — Elektra'nın kendi "Online Kur"u (rezervasyon motoru 26.10.2026: 3.180,13 / 57,3).
-             # Kur değişince güncellenir, sonra --tablo çalıştırılır. Motor tam tablodaki TL'yi göstersin diye.
+KUR = None   # 1 € kaç TL — main() günün Elektra kurunu yazar (elektra_kur). 26.10.2026: 55,4997.
+KUR_PAYI = 5       # TL — euro yükselince misafir tablodan bu kadar fazla öderse € indirilir (sahibi: tam 3.200)
+PENCERE = 0.06     # tablo değerine bu kadar yakın fiyat "tablodaki fiyat" sayılır; uzağı elle girilmiş
 ODA_TIPLERI = {  # FIYAT_ODALAR anahtarı → Elektra HOTEL_ROOMTYPE (ID, ad)
     "eko": ((442638, "Ekonomik Oda - Balkonlu"),),
     "stu": ((442639, "Studio Oda - Mutfaklı"),),
@@ -54,6 +61,20 @@ def euro(tl):
     """TL → Elektra temel fiyatı (€, iki ondalık, YUKARI yuvarlanır ki motor TL'nin altına düşmesin:
     3.200 TL → 57,66 € → 3.200,13 TL). Sahibi 26.10: "3.180 değil 3.200 olsun"."""
     return math.ceil(tl / KUR * 100 - 1e-9) / 100
+
+
+def elektra_kur(e, hid, gun):
+    """Elektra'nın o günkü EUR→TL kuru: Günlük Kur ekranının fonksiyonu, BUYRATE = TCMB döviz alış.
+    Rezervasyon motoru TL'yi bununla hesaplıyor (26.10.2026: 57,3 € → 3.180,13 TL = 55,4997)."""
+    rows = E.Elektra.function(e, "FN_HOTEL_EXCHANGERATES_WITHCOMMISSION_BETWEENDATES",
+                              {"DATE": (gun - dt.timedelta(days=7)).isoformat(), "DATE2": gun.isoformat(),
+                               "CURRIDS": [44], "HOTELID": int(hid)})
+    kur = [(checks.pdate(r.get("DATE")), float(r.get("BUYRATE") or 0)) for r in rows
+           if r.get("BASECURRENCYID") == 44 and r.get("TARGETCURRENCYID") == 142]
+    kur = [(d, k) for d, k in kur if d and d <= gun and 30 < k < 150]
+    if not kur:
+        raise SystemExit("günün euro kuru Elektra'dan okunamadı — hiçbir şey yazılmadı")
+    return max(kur)[1]
 
 
 def elektra_fiyatlar(e, hid, frm, to):
@@ -138,19 +159,74 @@ def otomatik(e, env, hid, bugun, kuru):
     son = bugun + dt.timedelta(days=UFUK)
     dol = checks.gece_doluluk(env, bugun, son)
     simdi = elektra_fiyatlar(e, hid, bugun, son)
-    bekle = {}
-    for (d, rt), eur in sorted(simdi.items()):
-        if rt not in ODA or eur <= 0 or dol.get(d, 0) < checks.ESIK_ODA:
-            continue    # fiyatı girilmemiş gece satışa kapalıdır (açma); 30 altı gece sahibinin
+    bekle, neden = {}, {}
+    for (d, rt), p in simdi.items():
+        if rt not in ODA or p <= 0:
+            continue    # fiyatı girilmemiş gece satışa kapalıdır; açma
         oda, ad = ODA[rt]
-        hedef = euro(checks.gece_hedef(oda, d, dol[d]))
-        if eur < hedef - PAY:
-            print(f"{d} {ad}: {eur:.1f} → {hedef:.1f} € (30+ oda · normal plan)")
-            yaz(e, hid, rt, d, d, hedef, None, kuru)
-            bekle[(d, rt)] = hedef
+        bas, nor = euro(oda[4][checks.bas_grubu(d)]), euro(oda[3][checks.gun_grubu(d)])
+        otuz = dol.get(d, 0) >= checks.ESIK_ODA
+        taban = nor if otuz else bas
+        if p < taban - PAY:
+            bekle[(d, rt)], neden[(d, rt)] = taban, ("30+ oda" if otuz and p < bas + PAY * 2 else "taban")
+            continue
+        aday = [c for c in (bas, nor) if c >= taban - PAY and abs(p - c) <= PENCERE * c]
+        if aday:
+            c = min(aday, key=lambda c: abs(p - c))
+            if (p - c) * KUR > KUR_PAYI:
+                bekle[(d, rt)], neden[(d, rt)] = c, "kur"
     if not bekle:
-        print("değişiklik yok")
+        print(f"değişiklik yok (kur {KUR})")
+        return bekle
+    sayi = {}
+    for k, v in neden.items():
+        sayi.setdefault((ODA[k[1]][1], v), []).append(k[0])
+    for (ad, v), gunler in sorted(sayi.items()):
+        aciklama = {"30+ oda": "30+ oda · normal plan", "taban": "kur düştü · tabana çıkarıldı",
+                    "kur": "euro yükseldi · € indirildi"}[v]
+        print(f"{ad}: {len(gunler)} gece ({min(gunler)} – {max(gunler)}) · {aciklama}")
+    yaz_toplu(e, hid, bekle, simdi, kuru)
     return bekle
+
+
+def yaz_toplu(e, hid, bekle, simdi, kuru):
+    """Başlangıç fiyatına giden geceleri gün grubu bayraklarıyla toplu yazar: (oda tipi, grup) başına
+    ardışık takvim parçaları, her biri ≤ 91 gece. Parça, o gruptaki her geceyi ancak güvenliyse kapsar:
+    yazılacak gece ya da fiyatı zaten aynı olan gece. Arada özel/normal plan fiyatlı gece varsa parça
+    orada bölünür, ona dokunulmaz. Normal plana giden geceler tek tek yazılır."""
+    n = 0
+    for rt, (oda, ad) in ODA.items():
+        tek = []
+        for g, gunler in enumerate(BAS_GUNLER):
+            v = euro(oda[4][g])
+            hedef = {d for (d, r), x in bekle.items() if r == rt and d.weekday() in gunler and abs(x - v) <= PAY}
+            if not hedef:
+                continue
+            guvenli = hedef | {d for (d, r), x in simdi.items()
+                               if r == rt and d.weekday() in gunler and abs(x - v) <= PAY}
+            d, son = min(hedef), max(hedef)
+            parca = None
+            while d <= son + GUN:
+                grupta = d.weekday() in gunler
+                if d > son or (grupta and d not in guvenli) or (parca and (d - parca[0]).days >= 91):
+                    if parca and any(parca[0] <= x <= parca[1] for x in hedef):
+                        yaz(e, hid, rt, parca[0], parca[1], v, gunler, kuru)
+                        n += 1
+                    parca = None
+                    if d > son:
+                        break
+                    if grupta and d not in guvenli:
+                        d += GUN
+                        continue
+                if grupta:
+                    parca = (parca[0] if parca else d, d)
+                d += GUN
+        tek = sorted(d for (d, r), x in bekle.items()
+                     if r == rt and abs(x - euro(oda[4][checks.bas_grubu(d)])) > PAY)
+        for d in tek:
+            yaz(e, hid, rt, d, d, bekle[(d, rt)], None, kuru)
+            n += 1
+    print(f"{n} çağrı" + (" (kuru)" if kuru else ""))
 
 
 def main():
@@ -158,9 +234,12 @@ def main():
     ap.add_argument("--tablo", nargs=2, metavar=("BAŞ", "SON"), help="aralığı tabloya yaz (YYYY-AA-GG)")
     ap.add_argument("--kuru", action="store_true", help="Elektra'ya yazma, yalnız göster")
     a = ap.parse_args()
+    global KUR
     e, env = E.connect()
     hid = int(env.get("ELEKTRA_HOTELID") or E.DEFAULT_TENANT)
     bugun = dt.datetime.now(ZoneInfo("Europe/Istanbul")).date()
+    KUR = elektra_kur(e, hid, bugun)
+    print(f"günün euro kuru (Elektra): {KUR}")
     if a.tablo:
         frm, to = (dt.date.fromisoformat(x) for x in a.tablo)
         if frm < bugun:
