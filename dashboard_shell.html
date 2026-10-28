@@ -254,10 +254,10 @@ async function getJSON(url){
 // ---- Menü düzeni. Yeni bir bölüm eklenince anahtarını buraya, uygun gruba ekle;
 // eklenmezse menünün sonunda "Diğer" altında görünür (yine çalışır). ----
 const GROUPS = [
-  ["Günlük işler",   ["gunsonu","gunluk","odeme","bakiye","eksik","fiyat"]],
+  ["Günlük işler",   ["gunluk","odeme","fiyat","eksik","gunsonu"]],   // sahibin sırası, 28.10.2026
   ["Denetim",        ["kasa","iptal","indirim","kart"]],
   ["Satış",          ["satis","stats"]],
-  ["Muhasebe",       ["vergi"]],
+  ["Muhasebe",       ["bakiye","vergi"]],
   ["Araçlar",        ["tvkart"]],
 ];
 const ICONS = {
