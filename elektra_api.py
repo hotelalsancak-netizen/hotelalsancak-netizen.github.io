@@ -694,16 +694,21 @@ def fetch_res_guests(where, env=None):
                     per_page=500)
 
 
+_CHECKIN_USERS = {}   # RESID -> (usercode, yerel saat); giriş bir kez yapılır → süreç boyunca sakla
+
+
 def fetch_checkin_users(res_ids, env=None):
     """RESID -> (usercode, 'DD.MM HH:MM' local) of whoever performed the Check-In, read
     from each reservation's log ("Check-In (SP_EASYPMS_CHECKIN)" entry; USERID there is
     the staff usercode). LOGTIMEUTC is UTC; Turkey is UTC+3 all year. One GetLog
     call per reservation (~0.7 s), so pass only the ids you need; they run on a few
     parallel connections sharing ONE login (59 ids: 44 s serial). A reservation with no
-    check-in entry is left out."""
+    check-in entry is left out. Results are cached for the process (_CHECKIN_USERS), so the
+    Eksik Bilgiler page and the Günlük Rapor tab built in the same run ask Elektra once."""
     ids = sorted({int(r) for r in res_ids if str(r).strip().isdigit()})
-    if not ids:
-        return {}
+    need = [i for i in ids if i not in _CHECKIN_USERS]
+    if not need:
+        return {str(i): _CHECKIN_USERS[i] for i in ids if i in _CHECKIN_USERS}
     e, env = connect(env)
 
     def last_checkin(logs):
@@ -721,10 +726,9 @@ def fetch_checkin_users(res_ids, env=None):
         c.base, c.token = e.base, e.token        # aynı oturum, iş parçacığı başına ayrı bağlantı
         return [(rid, last_checkin(_reservation_log(c, rid))) for rid in chunk]
 
-    workers = min(6, len(ids))
+    workers = min(6, len(need))
     with ThreadPoolExecutor(workers) as ex:
-        found = [x for part in ex.map(run, [ids[i::workers] for i in range(workers)]) for x in part]
-    out = {}
+        found = [x for part in ex.map(run, [need[i::workers] for i in range(workers)]) for x in part]
     for rid, best in found:
         if not best:
             continue
@@ -733,8 +737,8 @@ def fetch_checkin_users(res_ids, env=None):
             local = t.strftime("%d.%m %H:%M")
         except ValueError:
             local = ""
-        out[str(rid)] = (best[1], local)
-    return out
+        _CHECKIN_USERS[rid] = (best[1], local)
+    return {str(i): _CHECKIN_USERS[i] for i in ids if i in _CHECKIN_USERS}
 
 
 # ---------------------------------------------------------------------------

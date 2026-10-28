@@ -25,7 +25,7 @@ boş oda satılıp cebe mi atıldı?"
   sonundan beri telefon/e-postayı `***0X***` diye maskeliyor** → maskeli = "girilmiş"; yer tutucu gönderen
   kanallarda (Expedia `111111111111`, Tatil Budur `0`) "elle kontrol" listesi. Kimlik: **her kişi** için geçerli
   TC (kontrol haneli) ya da pasaport, ve kayıt sayısı ≥ yetişkin+çocuk(`TCHD`)+`BABY`. Girişi yapan =
-  rezervasyon log'undaki Check-In kullanıcısı; **`GetLog` artık `Tenant` ister**, yoksa HTTP 400 → sessizce boş liste).
+  rezervasyon log'undaki Check-In kullanıcısı (`E._CHECKIN_USERS` süreç önbelleği); **`GetLog` artık `Tenant` ister**, yoksa HTTP 400 → sessizce boş liste). Günlük Rapor'da da **Eksik Bilgiler sekmesi** var: son `EKSIK_GUNLUK_GUN`=7 günün girişleri gömülür, sekme seçilen gün + önceki günü gösterir, konaklayanlar üstte.
 - **Fiyat bandı (Elektra'ya YAZAR):** `fiyat_bandi.py` → `.github/workflows/fiyat-bandi.yml` (yarım saatte bir). Tablo `checks.FIYAT_ODALAR` (normal plan + başlangıç fiyatı), eşik `checks.ESIK_ODA` = 30 oda, € = TL ÷ `KUR`. Bir gece 30 oda olunca o gecenin temel fiyatını normal plana çıkarır; 30 altı gecelere dokunmaz (sahibi elle fiyat giriyor), asla düşürmez, fiyatı 0 olan (satışa kapalı) geceye dokunmaz. Tablo ya da kur değişince bir kez `python fiyat_bandi.py --tablo BAŞ SON` (önce `--kuru`). Çağrı `Execute/SP_AVAILABILITY_UPDATE` (Toplu Güncelleme formu); ROOMTYPEID boşsa BÜTÜN oda tiplerine uygulanır.
 - **Canlı fiyat (site için):** `motor_fiyat.py` → `.github/workflows/canli-fiyat.yml` (saatte bir) → `canli-fiyat` dalı → rivaalsancak.com/oda-fiyatlari.html okur. Otelin kendi rezervasyon motoru, 30 gece; captcha'yı sayfa kendisi çözer, başarısız saatlerde dala yazılmaz.
 

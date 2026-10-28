@@ -2363,6 +2363,36 @@ GUNLUK_JS = r"""<script>
       +"<button class='btn ghost' data-addbtn='"+tab+"'>+ Ekle</button></div>"+savebar(tab);
     return h;
   }
+  // ---- Eksik Bilgiler: gün modunda seçilen gün + ÖNCEKİ gün girişleri (sahibin isteği, 28.10.2026),
+  // diğer kapsamlarda kapsam günleri. Veri GÜNCEL durumdur: listedekiler ŞU AN hâlâ eksik.
+  // Hâlâ konaklayanlar üstte — misafir otelde, hemen tamamlanabilir.
+  function eksikDays(){ return scope==='day' ? [dmin(cur,1), cur] : scopeDays(); }
+  function eksikRows(){ var ds=eksikDays();
+    return (D.eksik||[]).filter(function(x){return ds.indexOf(x.day)>=0;}).sort(function(a,b){
+      return (b.inhouse-a.inhouse) || (a.day<b.day?1:(a.day>b.day?-1:0)) || ((+a.room)-(+b.room)); }); }
+  function pEksik(){
+    var ds=eksikDays();
+    var title="Eksik Bilgiler — "+(scope==='day'?(fday(ds[0])+' + '+fday(ds[1])):scopeLabel())+" girişleri";
+    if(D.eksik==null) return "<h2>"+title+"</h2><div class='ph'>Eksik bilgi verisi bu güncellemede alınamadı; bir sonraki güncellemede gelir.</div>";
+    var items=eksikRows();
+    if(!items.length) return "<h2>"+title+"</h2><div class='ph'>Bu günlerde girişi yapılan kayıtlarda eksik telefon / kimlik yok. (Son 7 günün girişleri izlenir.)</div>";
+    var h="<h2>"+title+"</h2>"
+      +"<p class='lead'>Resepsiyonun bu günlerde girişini yaptığı ve <b>hâlâ</b> telefonu ya da kimliği eksik kayıtlar. "
+      +"<b>Konaklayanlar üstte</b> (kırmızı kenar) — misafir otelde, hemen tamamlansın. Telefon: odada tek numara yeter; "
+      +"kimlik: odadaki her kişi. Expedia / Tatil Budur gibi kanalların gizli numaraları burada sayılmaz — Eksik Bilgiler sayfasındaki <i>elle kontrol</i> listesine bakın.</p>"
+      +"<div style='overflow-x:auto'><table><thead><tr><th>Durum</th><th>Giriş → Çıkış</th><th>Oda</th><th>Misafir</th>"
+      +"<th class='r'>Kişi</th><th>Kanal</th><th>Eksik</th><th>Girişi yapan</th><th>Rez No</th></tr></thead><tbody>";
+    items.forEach(function(r){
+      h+="<tr"+(r.inhouse?" style='box-shadow:inset 3px 0 var(--statbad)'":"")+">"
+        +"<td>"+(r.inhouse?"<b>Konaklıyor</b>":"<span style='color:var(--sub)'>Çıktı</span>")+"</td>"
+        +"<td class='mono'>"+fdshort(r.ci)+"<span class='arw'>→</span>"+fdshort(r.co)+"</td>"
+        +"<td class='mono'>"+esc(r.room)+"</td><td>"+esc(r.guest)+"</td><td class='r'>"+esc(r.pax||'—')+"</td>"
+        +"<td>"+esc(r.agency)+"</td><td>"+(r.gaps||[]).map(esc).join('<br>')+"</td>"
+        +"<td style='white-space:nowrap'>"+(r.user?"<span class='who'>"+esc(r.user)+"</span> <span style='color:var(--sub);font-size:11.5px'>"+esc(r.utime)+"</span>":"—")+"</td>"
+        +"<td class='mono'>"+esc(r.rez)+"</td></tr>";
+    });
+    return h+"</tbody></table></div>";
+  }
   var YPLAT=['','Google','Tripadvisor','Booking','Expedia','ETS','Diğer'];
   function psel(key){var v=sget(key);
     return "<select data-k='"+key+"'>"+YPLAT.map(function(o){
@@ -2395,6 +2425,7 @@ GUNLUK_JS = r"""<script>
     {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
     {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
     {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return scopeRows('sales').filter(function(x){return x.r.low||x.r.cash;}).length;}, f:pSales},
+    {k:'eksik',t:'Eksik Bilgiler', cnt:function(){return eksikRows().filter(function(x){return x.inhouse;}).length;}, f:pEksik},
     {k:'rc',   t:'Oda Değişimleri', cnt:function(){return scopeRows('rc').filter(function(x){return !x.r.reason;}).length;}, f:pRC},
     // yeşil = yorum istenen, kırmızı = henüz istenmeyen çıkış (sahibin isteği, 28.10.2026)
     {k:'yorum',t:'İstenilen Yorumlar', ok:function(){return yorumSay(true);}, cnt:function(){return yorumSay(false);}, f:pYorum},
@@ -2706,8 +2737,29 @@ def build_gunluk(env):
                 rooms.add(str(rm))
     rooms = sorted(rooms, key=lambda s: int(s))
 
+    # --- Eksik Bilgiler sekmesi: son EKSIK_GUNLUK_GUN günde girişi yapılmış ve telefonu/kimliği
+    # ŞU AN hâlâ eksik kayıtlar (kurallar guest_gaps'te). Sekme seçilen gün + önceki günü gösterir.
+    # Bu ek veri alınamazsa Günlük Rapor yine çıkar; sekme "alınamadı" der (eksik=None).
+    try:
+        eks_frm = today - dt.timedelta(days=EKSIK_GUNLUK_GUN)
+        eks_rows = [r for r in E.fetch_res_guests(
+            [{"Column": "CHECKIN", "Operator": ">=", "Value": f"{eks_frm} 00:00:00"},
+             {"Column": "CHECKIN", "Operator": "<=", "Value": f"{today} 23:59:59.999"}], env=env)
+            if r.get("RESSTATE") in ("InHouse", "CheckOut")]
+        eks = [x for x in guest_gaps(eks_rows)[0] if x["phone"] is not None or x["ident"]]
+        eks_who = E.fetch_checkin_users([x["rez"] for x in eks], env=env)
+        eksik = [{"day": x["ci"].isoformat() if x["ci"] else "",
+                  "ci": x["ci"].isoformat() if x["ci"] else "",
+                  "co": x["co"].isoformat() if x["co"] else "",
+                  "room": x["room"], "guest": x["guest"][:40], "pax": x["pax"],
+                  "agency": x["agency"][:16], "inhouse": x["state"] == "InHouse",
+                  "gaps": gap_texts(x), "user": eks_who.get(x["rez"], ("", ""))[0],
+                  "utime": eks_who.get(x["rez"], ("", ""))[1], "rez": x["rez"]} for x in eks]
+    except Exception:
+        eksik = None
+
     data = {"today": today.isoformat(), "days": days, "openbal": ob, "cari": cr,
-            "rooms": rooms, "pricemin": SATIS_MIN_FIYAT}
+            "rooms": rooms, "pricemin": SATIS_MIN_FIYAT, "eksik": eksik}
     skeleton = (
         "<div class='topbar'><div class='daynav'>"
         "<button id='dprev' title='önceki gün'>‹</button>"
@@ -2737,6 +2789,7 @@ def build_gunluk(env):
 
 # --------------------------------------------------------------------------- Eksik Bilgiler
 EKSIK_CIKIS_GUN = 3     # "eksik bilgiyle çıkanlar" listesi: son kaç gün (hafta sonu da kapsansın)
+EKSIK_GUNLUK_GUN = 7    # Günlük Rapor "Eksik Bilgiler" sekmesi: son kaç günün girişleri gömülür
 
 
 # Bu kanallar telefon yerine yer tutucu gönderiyor: Expedia '111111111111', Tatil Budur '0',
@@ -2820,8 +2873,19 @@ def guest_gaps(rows):
         names = first.get("GUESTNAMES") or " / ".join(_guest_name(g) for g in recs)
         out.append({"rez": rid, "room": str(first.get("ROOMNO")), "guest": names, "pax": pax,
                     "agency": agency, "ci": pdate(first.get("CHECKIN")), "co": pdate(first.get("CHECKOUT")),
-                    "phone": phone, "phone_unsure": unsure, "ident": ident})
+                    "phone": phone, "phone_unsure": unsure, "ident": ident,
+                    "state": first.get("RESSTATE")})
     return out, len(groups)
+
+
+def gap_texts(x):
+    """Bir guest_gaps kaydının eksikleri düz metin satırları olarak (📞 telefon, 🪪 kimlik).
+    Eksik Bilgiler sayfası ve Günlük Rapor sekmesi aynı metni kullanır."""
+    g = []
+    if x["phone"] is not None:
+        g.append("📞 telefon yok" + (f" (gerçek numara değil: {', '.join(x['phone'])[:30]})"
+                                     if x["phone"] else ""))
+    return g + [f"🪪 {s}" for s in x["ident"]]
 
 
 def build_eksik(env):
@@ -2951,11 +3015,7 @@ def build_eksik(env):
 
     if left:
         def gaps(x):
-            g = []
-            if x["phone"] is not None:
-                g.append("📞 telefon yok" + (f" ({fake_note(x)})" if x["phone"] else ""))
-            g += [f"🪪 {s}" for s in x["ident"]]
-            return "<br>".join(esc(s) for s in g)
+            return "<br>".join(esc(s) for s in gap_texts(x))
         ltrs = "".join(
             f"<tr><td><b>{esc(x['room'])}</b></td><td>{esc(x['guest'][:40])}</td>"
             f"<td>{esc(x['agency'][:16])}</td><td style='white-space:nowrap'>{stay(x)}</td>"
