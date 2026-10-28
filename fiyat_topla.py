@@ -278,6 +278,9 @@ def parse_trivago(deals, adlar):
         oda_ad = (dl.get("description") or "").strip()
         if oda_ad:
             oda = oda_key_trivago(oda_ad)  # tanınmayan oda adı → None → kaydedilmez
+            if oda == "eko" and k != "site":
+                # Ekonomik acentede satılmaz; nereden geldiğini görmek için ham teklifi yaz (28.10.2026).
+                print("EKO İZ", ad, json.dumps(dl, ensure_ascii=False)[:2500], flush=True)
         elif k == "site":
             continue
         else:
