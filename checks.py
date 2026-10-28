@@ -2198,6 +2198,7 @@ GUNLUK_CSS = """<style>
 .tab.active{color:var(--eyebrow);border-bottom:2px solid var(--eyebrow);background:var(--card)}
 .tab .cnt{display:inline-block;background:var(--statbad);color:#fff;border-radius:999px;
   font-size:10.5px;padding:0 6px;margin-left:5px;font-weight:800;vertical-align:1px}
+.tab .cnt.ok{background:#15803d}
 .panel{display:none;padding-top:14px}.panel.active{display:block}
 .mono{font-family:ui-monospace,Menlo,monospace}
 .chg{font-family:ui-monospace,Menlo,monospace;font-weight:700}.chg .arw{color:var(--eyebrow);padding:0 4px}
@@ -2228,7 +2229,7 @@ GUNLUK_JS = r"""<script>
   var D = window.__GUNLUK__ || {days:{},openbal:[],cari:[],today:''};
   var alldays = Object.keys(D.days).sort();
   var cur = (D.today && D.days[D.today]) ? D.today : (alldays[alldays.length-1] || D.today);
-  var curTab = 'rc';
+  var curTab = 'bal';      // ilk sekme açık gelir (sekme sırası sahibin, 28.10.2026)
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function money(n){return (Math.round((+n||0)*100)/100).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});}
   var MON=['','Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
@@ -2366,6 +2367,8 @@ GUNLUK_JS = r"""<script>
   function psel(key){var v=sget(key);
     return "<select data-k='"+key+"'>"+YPLAT.map(function(o){
       return "<option value='"+esc(o)+"'"+(o===v?' selected':'')+">"+(o?esc(o):'(seç)')+"</option>";}).join('')+"</select>";}
+  function yorumSay(istendi){ return scopeRows('dep').filter(function(x){
+      return (sget(Kd(x.day,'yistendi',x.r.rez||(x.day+'i'+x.idx)))==='1')===istendi; }).length; }
   function pYorum(){
     var items=scopeRows('dep'); var wk=(scope==='week');
     if(!items.length) return "<h2>İstenilen Yorumlar</h2><div class='ph'>Bu aralıkta çıkış yok.</div>";
@@ -2389,18 +2392,21 @@ GUNLUK_JS = r"""<script>
     return h+"</tbody></table></div>"+savebar('yorum');
   }
   var TABS=[
-    {k:'rc',   t:'Oda Değişimleri', cnt:function(){return scopeRows('rc').filter(function(x){return !x.r.reason;}).length;}, f:pRC},
     {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
     {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
     {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return scopeRows('sales').filter(function(x){return x.r.low||x.r.cash;}).length;}, f:pSales},
+    {k:'rc',   t:'Oda Değişimleri', cnt:function(){return scopeRows('rc').filter(function(x){return !x.r.reason;}).length;}, f:pRC},
+    // yeşil = yorum istenen, kırmızı = henüz istenmeyen çıkış (sahibin isteği, 28.10.2026)
+    {k:'yorum',t:'İstenilen Yorumlar', ok:function(){return yorumSay(true);}, cnt:function(){return yorumSay(false);}, f:pYorum},
     {k:'odap', t:'Oda Problemleri', cnt:function(){return scopeProblems('odap').filter(function(x){return !x.r.done;}).length;}, f:function(){return pProb('odap','Oda Problemleri');}},
-    {k:'temp', t:'Temizlik Problemleri', cnt:function(){return scopeProblems('temp').filter(function(x){return !x.r.done;}).length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
-    {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum}
+    {k:'temp', t:'Temizlik Problemleri', cnt:function(){return scopeProblems('temp').filter(function(x){return !x.r.done;}).length;}, f:function(){return pProb('temp','Temizlik Problemleri');}}
   ];
   // ---- render ----
   function renderTabs(){
     document.getElementById('tabs').innerHTML=TABS.map(function(tb){
-      var c=tb.cnt(); var b=c>0?" <span class='cnt'>"+c+"</span>":"";
+      var c=tb.cnt(), g=tb.ok?tb.ok():0;
+      var b=(g>0?" <span class='cnt ok' title='yorum istendi'>"+g+"</span>":"")
+           +(c>0?" <span class='cnt'"+(tb.ok?" title='yorum istenmedi'":"")+">"+c+"</span>":"");
       return "<button class='tab"+(tb.k===curTab?" active":"")+"' data-tab='"+tb.k+"'>"+tb.t+b+"</button>";
     }).join('');
   }
@@ -2434,7 +2440,7 @@ GUNLUK_JS = r"""<script>
     if(did) flash();
   });
   document.getElementById('panels').addEventListener('change',function(e){
-    var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')){ sset(t.getAttribute('data-ck'),t.checked?'1':'0'); flash(); }
+    var t=e.target; if(t.hasAttribute&&t.hasAttribute('data-ck')){ sset(t.getAttribute('data-ck'),t.checked?'1':'0'); if(t.getAttribute('data-ck').indexOf(':yistendi:')>0) renderTabs(); flash(); }
     if(t.hasAttribute&&t.hasAttribute('data-done')){ var dday=t.getAttribute('data-day')||cur, dtab=t.getAttribute('data-tab'), da=loadListD(dday,dtab), di=+t.getAttribute('data-done'); if(da[di]){da[di].done=t.checked; saveListD(dday,dtab,da);} renderTabs(); renderPanel(); flash(); }
     if(t.tagName==='SELECT'&&t.hasAttribute&&t.hasAttribute('data-k')){ sset(t.getAttribute('data-k'),t.value); flash(); }
     if(t.getAttribute&&t.getAttribute('data-rfilt')!=null){ applyFilter(t); }
