@@ -21,25 +21,25 @@
    "kanal": "tatilbudur",
    "tarih": "2026-10-19",
    "durum": "açık",
-   "sorun": "24 Ekim ve 2 Kasım'da Stüdyo 150–170 TL ucuz",
-   "sebep": "Stüdyo iadesize %5 'eşitleme ets' kampanyası ÜÇÜNCÜ kez açılmış (#181869 → #182638 → #183099). 19.10'da #183099 kapatıldı. Adı Etstur'a eşitleme için açıldığını düşündürüyor; TatilBudur'un kendi ekibi açıyor olabilir",
-   "yapilacak": "19.10: temsilciye yazıldı, cevap bekleniyor (onaysız indirim/eşitleme açılmasın). Panel şifresini değiştir"
+   "sorun": "26.10'dan beri Elektra fiyatlarını kabul etmiyor: hafta içi 3.227, Cumartesi 3.617'de takılı",
+   "sebep": "Chrome 26.10'da iadesiz planları TatilBudur'da pasif yaptı; Elektra hâlâ o planlara fiyat gönderiyor, TatilBudur 'RatePlanIds is passive' diye bütün gönderimi reddediyor. Ayrıca Ekonomik oda TatilBudur'da satışta (olmamalı)",
+   "yapilacak": "komut-U: Elektra'da 7 iadesiz + 4 Ekonomik eşleşme satırını boşalt, TatilBudur'da Ekonomik'i kapat, fiyatları yeniden gönder"
   },
   {
    "kanal": "etstur",
    "tarih": "2026-10-19",
-   "durum": "açık",
+   "durum": "çözüldü",
    "sorun": "Aynı gün için 145 TL ucuz (obilet de aynı fiyattan)",
-   "sebep": "Aynı gün indirimi; obilet Etstur'un stoğunu satıyor",
-   "yapilacak": "Etspartners'a giriş yapılıp kontrol edilecek (19.10'da şifre istedi): son dakika indirimi, Ekonomik oda"
+   "sebep": "28.10: Etstur aynı gün Stüdyo 3.499, liste 3.500 — 27.10 fiyat listesinden sonra aynı gün fiyatı doğru. Eski okumalar 7 gün içinde istatistikten düşer",
+   "yapilacak": "—"
   },
   {
    "kanal": "obilet",
    "tarih": "2026-10-19",
    "durum": "açık",
-   "sorun": "2 Kasım'da Ekonomik oda 2.901 TL'ye satılıyor",
-   "sebep": "obilet'teki 'Ekonomik' 2.901 TL günden güne hiç değişmiyor (13.10'da Google'da da aynıydı) — eski, güncellenmeyen bir ilan; Elektra'daki obilet bağlantısı kapalı",
-   "yapilacak": "obilet'e yazıp eski ilanı kapattır (ya da obilet'i Elektra'dan düzgün bağla)"
+   "sorun": "Stüdyo ve Ekonomik eski fiyatta (28.10: aynı gün 3.187, Cumartesi 3.602; Ekonomik 2.901)",
+   "sebep": "obilet TatilBudur'un stoğunu satıyor (fiyatları TatilBudur ile birebir). TatilBudur 26.10'dan beri Elektra fiyatlarını reddediyor; Ekonomik oda da yalnız TatilBudur'da bağlı",
+   "yapilacak": "TatilBudur düzeltilince kendiliğinden düzelir (komut-U). 2 gün sonra Ekonomik hâlâ görünürse obilet'e yazılacak"
   }
  ]
 }
