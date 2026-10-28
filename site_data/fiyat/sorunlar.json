@@ -36,10 +36,10 @@
   {
    "kanal": "obilet",
    "tarih": "2026-10-19",
-   "durum": "açık",
-   "sorun": "Ekonomik oda 2.901 TL'de takılı (Stüdyo artık doğru: TatilBudur'u izliyor)",
-   "sebep": "obilet Stüdyo'yu TatilBudur'dan alıyor, 28.10'da düzeldi. Ekonomik ise TatilBudur'da kapalı; obilet'in kendi eski kaydı",
-   "yapilacak": "obilet'e yaz: Ekonomik oda tipini kaldırsınlar (mesaj taslağı sahibinde, 28.10)"
+   "durum": "çözüldü",
+   "sorun": "trivago'da obilet teklifi olarak 'Ekonomik' 2.901 TL (yalnız yurt dışından görünüyor)",
+   "sebep": "Toplayıcı ABD sunucusundan trivago'yu okuyor; bu teklif orada çıkıyor. Türkiye'den trivago'da ve obilet sitesinde yok (sahibi ve Türkiye'den deneme, 28.10). Stüdyo TatilBudur'la birlikte düzeldi",
+   "yapilacak": "Gerek yok; Türkiye'den görünmeye başlarsa obilet'e yazılacak"
   }
  ]
 }
