@@ -2392,10 +2392,10 @@ GUNLUK_JS = r"""<script>
     {k:'rc',   t:'Oda Değişimleri', cnt:function(){return scopeRows('rc').filter(function(x){return !x.r.reason;}).length;}, f:pRC},
     {k:'bal',  t:'Açık Bakiyeler',  cnt:function(){return (D.openbal||[]).length;}, f:pBal},
     {k:'cari', t:'Açık Cariler',    cnt:function(){return (D.cari||[]).length;}, f:pCari},
+    {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return scopeRows('sales').filter(function(x){return x.r.low||x.r.cash;}).length;}, f:pSales},
     {k:'odap', t:'Oda Problemleri', cnt:function(){return scopeProblems('odap').filter(function(x){return !x.r.done;}).length;}, f:function(){return pProb('odap','Oda Problemleri');}},
     {k:'temp', t:'Temizlik Problemleri', cnt:function(){return scopeProblems('temp').filter(function(x){return !x.r.done;}).length;}, f:function(){return pProb('temp','Temizlik Problemleri');}},
-    {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum},
-    {k:'sales',t:'Oda Satış Fiyatları', cnt:function(){return scopeRows('sales').filter(function(x){return x.r.low||x.r.cash;}).length;}, f:pSales}
+    {k:'yorum',t:'İstenilen Yorumlar', cnt:function(){return 0;}, f:pYorum}
   ];
   // ---- render ----
   function renderTabs(){
