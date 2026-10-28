@@ -36,10 +36,10 @@
   {
    "kanal": "obilet",
    "tarih": "2026-10-19",
-   "durum": "çözüldü",
-   "sorun": "trivago'da obilet teklifi olarak 'Ekonomik' 2.901 TL (yalnız yurt dışından görünüyor)",
-   "sebep": "Toplayıcı ABD sunucusundan trivago'yu okuyor; bu teklif orada çıkıyor. Türkiye'den trivago'da ve obilet sitesinde yok (sahibi ve Türkiye'den deneme, 28.10). Stüdyo TatilBudur'la birlikte düzeldi",
-   "yapilacak": "Gerek yok; Türkiye'den görünmeye başlarsa obilet'e yazılacak"
+   "durum": "açık",
+   "sorun": "obilet.com'da 'Ekonomik Oda (Balkonlu)' 2.901 TL, ücretsiz iptal — donmuş eski ilan",
+   "sebep": "KAYNAK BULUNDU (28.10): obilet'in Elektra'ya doğrudan bağlantısı 12.08.2026'da kapatıldı (Elektra'da Obilet kanalı pasif). obilet o bağlantıdan son aldığı odaları/fiyatları göstermeye devam ediyor; Ekonomik ('Economic Balcony') yalnız oradan geliyordu. Stüdyo vb. artık TatilBudur'dan geliyor. Bu eski ilandan yapılan rezervasyon Elektra'ya düşmeyebilir",
+   "yapilacak": "obilet'e yaz: doğrudan bağlantı kapalı, eski ilanı (en azından Ekonomik'i) kapatsınlar"
   }
  ]
 }
