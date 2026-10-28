@@ -20,10 +20,10 @@
   {
    "kanal": "tatilbudur",
    "tarih": "2026-10-19",
-   "durum": "açık",
+   "durum": "çözüldü",
    "sorun": "26.10'dan beri Elektra fiyatlarını kabul etmiyor: hafta içi 3.227, Cumartesi 3.617'de takılı",
-   "sebep": "Chrome 26.10'da iadesiz planları TatilBudur'da pasif yaptı; Elektra hâlâ o planlara fiyat gönderiyor, TatilBudur 'RatePlanIds is passive' diye bütün gönderimi reddediyor. Ayrıca Ekonomik oda TatilBudur'da satışta (olmamalı)",
-   "yapilacak": "komut-U: Elektra'da 7 iadesiz + 4 Ekonomik eşleşme satırını boşalt, TatilBudur'da Ekonomik'i kapat, fiyatları yeniden gönder"
+   "sebep": "28.10 11:14: Elektra'da pasif iadesiz planların ve Ekonomik'in eşleşmesi boşaltıldı (komut-U); TatilBudur fiyatları yeniden kabul ediyor. 12:30 okuması: 29.10 3.173, 31.10 3.500, 04.11 3.200",
+   "yapilacak": "—"
   },
   {
    "kanal": "etstur",
@@ -37,9 +37,9 @@
    "kanal": "obilet",
    "tarih": "2026-10-19",
    "durum": "açık",
-   "sorun": "Stüdyo ve Ekonomik eski fiyatta (28.10: aynı gün 3.187, Cumartesi 3.602; Ekonomik 2.901)",
-   "sebep": "obilet TatilBudur'un stoğunu satıyor (fiyatları TatilBudur ile birebir). TatilBudur 26.10'dan beri Elektra fiyatlarını reddediyor; Ekonomik oda da yalnız TatilBudur'da bağlı",
-   "yapilacak": "TatilBudur düzeltilince kendiliğinden düzelir (komut-U). 2 gün sonra Ekonomik hâlâ görünürse obilet'e yazılacak"
+   "sorun": "Ekonomik oda 2.901 TL'de takılı (Stüdyo artık doğru: TatilBudur'u izliyor)",
+   "sebep": "obilet Stüdyo'yu TatilBudur'dan alıyor, 28.10'da düzeldi. Ekonomik ise TatilBudur'da kapalı; obilet'in kendi eski kaydı",
+   "yapilacak": "obilet'e yaz: Ekonomik oda tipini kaldırsınlar (mesaj taslağı sahibinde, 28.10)"
   }
  ]
 }
