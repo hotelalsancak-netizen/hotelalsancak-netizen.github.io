@@ -9,7 +9,7 @@ name: Fiyat toplayici
 
 on:
   schedule:
-    - cron: '20 */3 * * *'      # her 3 saatte bir
+    - cron: '20 */3 * * *'      # YEDEK: asıl tetikleyici pano-nabzi.yml (saatte bir)
   workflow_dispatch:
 
 permissions:
