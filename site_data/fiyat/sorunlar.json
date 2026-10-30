@@ -20,10 +20,10 @@
   {
    "kanal": "tatilbudur",
    "tarih": "2026-10-19",
-   "durum": "çözüldü",
-   "sorun": "26.10'dan beri Elektra fiyatlarını kabul etmiyor: hafta içi 3.227, Cumartesi 3.617'de takılı",
-   "sebep": "28.10 11:14: Elektra'da pasif iadesiz planların ve Ekonomik'in eşleşmesi boşaltıldı (komut-U); TatilBudur fiyatları yeniden kabul ediyor. 12:30 okuması: 29.10 3.173, 31.10 3.500, 04.11 3.200",
-   "yapilacak": "—"
+   "durum": "açık",
+   "sorun": "30.10 gecesi Stüdyo 3.115 TL: üstü çizili 4.375 doğru, indirim %20 yerine ~%29",
+   "sebep": "Elektra'dan değil (bugün TatilBudur'a fiyat gitmedi). 04:07–12:43 arasında fazladan indirim açılmış ve fiyat Etstur'un 3.116'sına eşitlenmiş. Daha önce üç kez kapatılan 'eşitleme ets' kampanyası gibi (#181869, #182638, #183099). Etstur düzeldiği hâlde TatilBudur ve obilet 3.115'te kaldı",
+   "yapilacak": "TB Extranet'te %20 dışındaki kampanyayı kapat (komut-W), temsilciye onaysız kampanya açılmamasını yaz"
   },
   {
    "kanal": "etstur",
