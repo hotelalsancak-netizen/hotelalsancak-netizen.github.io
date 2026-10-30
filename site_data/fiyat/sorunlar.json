@@ -28,10 +28,10 @@
   {
    "kanal": "etstur",
    "tarih": "2026-10-19",
-   "durum": "çözüldü",
-   "sorun": "Aynı gün için 145 TL ucuz (obilet de aynı fiyattan)",
-   "sebep": "28.10: Etstur aynı gün Stüdyo 3.499, liste 3.500 — 27.10 fiyat listesinden sonra aynı gün fiyatı doğru. Eski okumalar 7 gün içinde istatistikten düşer",
-   "yapilacak": "—"
+   "durum": "açık",
+   "sorun": "Yakın gecede Stüdyo düşüyor: 30.10 gecesi 3.500 → 3.191 → 3.116 TL (İptal Edilemez plan, %20 öncesi 3.895)",
+   "sebep": "Elektra'dan değil: 28.10 16:28'de iki plana da 78,94 € gitti (= 3.500 TL), sonra Etstur'a fiyat gönderilmedi; fiyat 29.10 öğleden sonra Etstur tarafında düştü. Yalnız Stüdyo, yalnız o gece. 'Aynı gün ucuz' sorunu büyük ihtimalle aynı şey; 28.10'da erken 'çözüldü' denmişti",
+   "yapilacak": "Etspartners'ta o gecenin plan fiyatı ve kampanyalar okunacak (komut-V), fiyat Elektra'dan yeniden gönderilecek; tekrarlarsa Etstur temsilcisine sorulacak"
   },
   {
    "kanal": "obilet",
