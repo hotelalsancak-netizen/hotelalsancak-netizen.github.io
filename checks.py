@@ -1758,7 +1758,7 @@ FIYAT_KANALLAR = {
     "tatilbudur": ("TatilBudur", "TatilBudur", 0.20, "%20 Erken rezervasyon", ""),
     "enuygun":    ("Enuygun", "Enuygun", 0.28, "%28 · Enuygun'un indirimi", ""),
     "jolly":      ("Jollytur", "JollyTur", 0.20, "%20 · Jolly'nin indirimi", ""),
-    "obilet":     ("obilet", None, None, "bağlı değil · Etstur stoğu", ""),
+    "obilet":     ("obilet", None, None, "bağlı değil · TatilBudur / Etstur stoğu", ""),
     "zenhotels":  ("ZenHotels", None, None, "bağlı değil · toptancıdan", ""),
     "sembo":      ("sembo", None, None, "bağlı değil · Expedia ortağı", ""),
     # trivago'dan okunan diğer satıcılar (fiyat_topla.py → oku_trivago)

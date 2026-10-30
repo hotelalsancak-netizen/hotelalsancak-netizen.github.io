@@ -20,10 +20,10 @@
   {
    "kanal": "tatilbudur",
    "tarih": "2026-10-19",
-   "durum": "açık",
-   "sorun": "30.10 gecesi Stüdyo 3.115 TL: üstü çizili 4.375 doğru, indirim %20 yerine ~%29",
-   "sebep": "Elektra'dan değil (bugün TatilBudur'a fiyat gitmedi). 04:07–12:43 arasında fazladan indirim açılmış ve fiyat Etstur'un 3.116'sına eşitlenmiş. Daha önce üç kez kapatılan 'eşitleme ets' kampanyası gibi (#181869, #182638, #183099). Etstur düzeldiği hâlde TatilBudur ve obilet 3.115'te kaldı",
-   "yapilacak": "TB Extranet'te %20 dışındaki kampanyayı kapat (komut-W), temsilciye onaysız kampanya açılmamasını yaz"
+   "durum": "çözüldü",
+   "sorun": "30.10 gecesi Stüdyo 3.115 TL",
+   "sebep": "TB Extranet'te #178641 'Eşitleme ets' kampanyası: yalnız 30.10 konaklama, yalnız Stüdyo, %11. Etstur'daki düşüş de aynı gece, aynı oda, aynı oran (70,28 / 78,94 = −%11). Panelde kimin açtığı görünmüyor; kampanya numarası eski, yani eski bir kampanya bu geceye yeniden tarihlenmiş",
+   "yapilacak": "30.10 13:5x kapatıldı, site 3.500. Dördüncü kez açıldı: TatilBudur temsilcisine ve panel erişimi olanlara sorulacak"
   },
   {
    "kanal": "etstur",
