@@ -152,7 +152,8 @@ def otomatik(e, env, hid, bugun, kuru):
             continue    # fiyatı girilmemiş gece satışa kapalıdır; açma
         oda, ad = ODA[rt]
         b0 = checks.basamak(d, bugun, dol.get(d, 0))
-        adaylar = [euro(oda[3][i]) for i in range(b0, 3)]
+        ind = checks.GECE_INDIRIM.get(d, 0)      # sahibin tek gecelik indirimi tabloyu aşağı çeker
+        adaylar = [euro(oda[3][i] - ind) for i in range(b0, 3)]
         taban = adaylar[0]
         if p < taban - PAY:
             if b0 > checks.basamak(d, bugun, 0):

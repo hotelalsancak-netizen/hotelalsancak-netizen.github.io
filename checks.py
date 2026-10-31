@@ -1736,6 +1736,9 @@ FIYAT_ODALAR = (  # (anahtar, ad, alt yazı, (1. basamak, 2. basamak, 3. basamak
 )
 ESIK_ODA = (30, 40)     # o gece bu kadar oda satılınca bir üst basamak (30. oda satılınca 31. yeni fiyattan)
 BASAMAK_ADI = ("1. basamak", "2. basamak", "3. basamak")
+# Sahibin tek gecelik kararı: o gecenin bütün oda fiyatlarından bu kadar TL düşülür (liste bozulmaz).
+# Pano, kapı fiyatı, Günlük Rapor ve fiyat_bandi.py bunu okur; geçmiş geceler zararsızdır.
+GECE_INDIRIM = {dt.date(2026, 10, 31): 300}
 # Uzun konaklama 27.10 listesinde değişmedi: taban = 24.10 listesinin Paz–Pzt normal fiyatı,
 # 7+ / 14+ / 28+ gece −300 / −500 / −700 TL (site uzun_konaklama.py da bunu okur).
 UZUN_BAZ = {"stu": 3500, "sup": 3700, "dlx": 3900, "sui": 4500}
@@ -1786,13 +1789,13 @@ def basamak(d, bugun, dolu):
 
 def gece_hedef(oda, d, dolu, bugun=None):
     """FIYAT_ODALAR satırı → o gecenin fiyatı (o gece `dolu` oda satılmışken, `bugun` itibarıyla)."""
-    return oda[3][basamak(d, bugun or tr_bugun(), dolu)]
+    return oda[3][basamak(d, bugun or tr_bugun(), dolu)] - GECE_INDIRIM.get(d, 0)
 
 
 def gece_taban(oda, d, bugun=None):
     """Gecenin en düşük meşru fiyatı (doluluk 0). Bundan ucuz satan kanal ya da resepsiyon
     gerçekten ucuzdur; doluluk yükselmeden önceki bir gözlem/satış da yanlış alarm vermez."""
-    return oda[3][basamak(d, bugun or tr_bugun(), 0)]
+    return oda[3][basamak(d, bugun or tr_bugun(), 0)] - GECE_INDIRIM.get(d, 0)
 
 
 def uzun_taban(k, gece):
@@ -1988,7 +1991,7 @@ def build_fiyat(env):
     b_bugun = basamak(today, today, dol.get(today, 0))
     kapi = "".join(
         f"<div class='fk-drow'><div class='fk-room'>{esc(r[1])}<small>{esc(r[2])}</small></div>"
-        f"<div class='fk-dp'><span class='fk-big'>{_tl(r[3][b_bugun])}<i>₺</i></span></div></div>"
+        f"<div class='fk-dp'><span class='fk-big'>{_tl(gece_hedef(r, today, dol.get(today, 0), today))}<i>₺</i></span></div></div>"
         for r in FIYAT_ODALAR)
     bas = "".join(f"<th class='r'>{esc(a)}</th>" for a in BASAMAK_ADI)
     satir = "".join(
