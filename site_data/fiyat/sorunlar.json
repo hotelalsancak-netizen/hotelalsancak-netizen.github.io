@@ -15,7 +15,7 @@
    "durum": "açık",
    "sorun": "Stüdyo 80–250 TL, Superior 330–370 TL ucuz",
    "sebep": "Trip'in KENDİ indirimi: otelde yalnız 'Mobile %10' açık, hiçbir programa katılım yok; son 3 rezervasyonda otele kalan tutardan yalnız mobil %10 düşülmüş (Trip'in indirimi otelden çıkmıyor). Takvim fiyatları doğru (21.10 Standart 76,57 €, Superior 80,61 €) — eşleştirme hatası yok",
-   "yapilacak": "Trip temsilcisine yazılacak: Anıl Dağdelen (anil.dagdelen@trip.com), CC Lodgingsupport@trip.com — Trip'in kendi indirimi / fiyat eşleştirme otelimize uygulanmasın. Olmazsa Trip çarpanını yükseltmeyi değerlendir"
+   "yapilacak": "Çarpan 02.11'de 1,21 yapıldı (ekrandan kaydedilince işledi) ve 31.03'e kadar gönderildi. Okumalarda izle"
   },
   {
    "kanal": "tatilbudur",
@@ -37,9 +37,17 @@
    "kanal": "obilet",
    "tarih": "2026-10-19",
    "durum": "açık",
-   "sorun": "obilet.com'da Ekonomik 2.901 TL satışta; 02.11 sayfasında Stüdyo 3.165, Superior 3.429, Deluxe 3.692",
-   "sebep": "Ekonomik 2.901, 13.10'dan beri hiç değişmedi: 12.08'de kapatılan doğrudan bağlantıdan kalma ilan. 02.11 ve 04.11 sayfalarında bütün odalar aynı fiyatta, yani aynı gün fiyatı uygulanmıyor. Bu kanal Elektra'da pasif, Elektra bu fiyatları göndermiyor. Türkiye'den de görünüyor. Panodaki Stüdyo 2.901 yanlıştı: trivago'da oda adı boş gelen Ekonomik teklifi Stüdyo sayılıyordu (düzeltildi)",
-   "yapilacak": "obilet'e yaz: eski ilanı kapatsınlar, bu fiyatların kaynağını söylesinler"
+   "sorun": "obilet'te Stüdyo 3.165, Superior 3.429, Deluxe 3.692 (02.11). Ekonomik oda kalktı",
+   "sebep": "Ekonomik 2.901, 12.08'de kapatılan doğrudan bağlantıdan kalmıştı. 02.11'de Obilet kanalı Elektra'da yeniden açıldı (çarpan 1,20, TL), Ekonomik'e stop sale gitti ve sayfadan kalktı. Elektra'nın gönderdiği Stüdyo 3.840 sayfada görünmedi: obilet başka bir kaynağın daha ucuz fiyatını gösteriyor olabilir",
+   "yapilacak": "TatilBudur ve Etstur fiyatları düzelince obilet de düzeliyor mu izle. Kanal açık: obilet rezervasyonları Elektra'ya düşüyor mu kontrol et"
+  },
+  {
+   "kanal": "etstur",
+   "tarih": "2026-11-02",
+   "durum": "açık",
+   "sorun": "Etstur'un kendi sitesinde bütün geceler %8 düşük (3.200 yerine 2.944, 3.500 yerine 3.220)",
+   "sebep": "02.11'de Elektra'dan Etstur'a fiyat gitmedi; trivago'daki Etstur liste fiyatında. Kaynağı bilinmiyor",
+   "yapilacak": "Etspartners'ta aktif kampanyalara ve 02.11 işlem kaydına bak"
   }
  ]
 }
