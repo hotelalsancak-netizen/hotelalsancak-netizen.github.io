@@ -37,9 +37,9 @@
    "kanal": "obilet",
    "tarih": "2026-10-19",
    "durum": "açık",
-   "sorun": "obilet'te Stüdyo 3.165, Superior 3.429, Deluxe 3.692 (02.11). Ekonomik oda kalktı",
-   "sebep": "Ekonomik 2.901, 12.08'de kapatılan doğrudan bağlantıdan kalmıştı. 02.11'de Obilet kanalı Elektra'da yeniden açıldı (çarpan 1,20, TL), Ekonomik'e stop sale gitti ve sayfadan kalktı. Elektra'nın gönderdiği Stüdyo 3.840 sayfada görünmedi: obilet başka bir kaynağın daha ucuz fiyatını gösteriyor olabilir",
-   "yapilacak": "TatilBudur ve Etstur fiyatları düzelince obilet de düzeliyor mu izle. Kanal açık: obilet rezervasyonları Elektra'ya düşüyor mu kontrol et"
+   "sorun": "Ekonomik oda obilet sayfasından kalktı. trivago'da obilet Ekonomik 2.901 hâlâ görünebilir (eski kayıt)",
+   "sebep": "Ekonomik 2.901, 12.08'de kapatılan doğrudan bağlantıdan kalmıştı. 02.11'de Obilet kanalı Elektra'da yeniden açıldı, Ekonomik'e stop sale gitti. obilet sayfası gönderilen fiyatın %86,67'sini gösteriyor (kendi %13,3 indirimi); bu yüzden çarpan 1,16 yapıldı",
+   "yapilacak": "trivago'daki 2.901 birkaç güne silinmezse yeniden bak. Kanal açık: obilet rezervasyonları Elektra'ya düşüyor mu izle"
   },
   {
    "kanal": "etstur",
