@@ -281,8 +281,8 @@ def parse_trivago(deals, adlar):
             if oda == "eko" and k != "site":
                 # Ekonomik acentede satılmaz; nereden geldiğini görmek için ham teklifi yaz (28.10.2026).
                 print("EKO İZ", ad, json.dumps(dl, ensure_ascii=False)[:2500], flush=True)
-        elif k == "site":
-            continue
+        elif k in ("site", "obilet"):
+            continue    # obilet'in adsız teklifi en ucuz odası (Ekonomik 2.901); Stüdyo sanılıyordu (02.11)
         else:
             oda = "stu"
         cizili = (dl.get("pricePerNightStrikethrough") or {}).get("amount")
