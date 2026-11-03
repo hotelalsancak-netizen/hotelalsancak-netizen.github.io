@@ -46,8 +46,8 @@
    "tarih": "2026-11-02",
    "durum": "açık",
    "sorun": "Etstur'un kendi sitesinde bütün geceler %8 düşük (3.200 yerine 2.944, 3.500 yerine 3.220)",
-   "sebep": "02.11'de Elektra'dan Etstur'a fiyat gitmedi; trivago'daki Etstur liste fiyatında. Kaynağı bilinmiyor",
-   "yapilacak": "Etspartners'ta aktif kampanyalara ve 02.11 işlem kaydına bak"
+   "sebep": "Etstur'da her odanın iki fiyatı var: biri %20 indirimle liste fiyatında, diğeri 02.11 öğleden beri aynı fiyatın üstüne ek %8 indirimle. Elektra'nın gönderdiği fiyat değişmedi; ek %8 Etstur tarafında tanımlı",
+   "yapilacak": "03.11: Elektra'da Etstur çarpanı 1,25 → 1,36 yapıldı (en ucuz Etstur fiyatı = liste; diğer fiyat %8,8 pahalı). Ek %8 kalkarsa çarpanı 1,25'e geri al"
   }
  ]
 }
