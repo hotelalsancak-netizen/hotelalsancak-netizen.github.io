@@ -46,8 +46,8 @@
    "tarih": "2026-11-02",
    "durum": "açık",
    "sorun": "Etstur'un kendi sitesinde bütün geceler %8 düşük (3.200 yerine 2.944, 3.500 yerine 3.220)",
-   "sebep": "Etstur'da her odanın iki fiyatı var: biri %20 indirimle liste fiyatında, diğeri 02.11 öğleden beri aynı fiyatın üstüne ek %8 indirimle. Elektra'nın gönderdiği fiyat değişmedi; ek %8 Etstur tarafında tanımlı",
-   "yapilacak": "03.11: Elektra'da Etstur çarpanı 1,25 → 1,36 yapıldı (en ucuz Etstur fiyatı = liste; diğer fiyat %8,8 pahalı). Ek %8 kalkarsa çarpanı 1,25'e geri al"
+   "sebep": "Etstur'da Stüdyo ve Superior'ın iki fiyatı var: biri %20 indirimle liste fiyatında, diğeri 02.11 öğleden beri aynı fiyatın üstüne ek %8 indirimle. Deluxe ve Suit'te ek %8 yok. Elektra'nın gönderdiği fiyat değişmedi; ek %8 Etstur tarafında tanımlı",
+   "yapilacak": "03.11: Elektra'da Etstur çarpanı 1,25 → 1,36; Deluxe Mutfaklı, Deluxe Balkonlu ve Suit için Kanal Fiyat Çarpanları'nda −%8,08 (03.11.2026–31.03.2027), yani onlar yine 1,25. Ek %8 kalkarsa çarpanı 1,25'e geri al ve bu üç satırı sil"
   }
  ]
 }
