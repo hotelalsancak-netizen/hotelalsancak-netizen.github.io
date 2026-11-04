@@ -1739,6 +1739,10 @@ BASAMAK_ADI = ("1. basamak", "2. basamak", "3. basamak")
 # Sahibin tek gecelik kararı: o gecenin bütün oda fiyatlarından bu kadar TL düşülür (liste bozulmaz).
 # Pano, kapı fiyatı, Günlük Rapor ve fiyat_bandi.py bunu okur; geçmiş geceler zararsızdır.
 GECE_INDIRIM = {dt.date(2026, 10, 31): 300}
+ELLE_FIYAT = {  # sahibinin elle girdiği kısa süreli fiyat: (gece, oda) → misafirin gördüğü TL; fiyat_bandi.py bu gecelere dokunmaz
+    (dt.date(2026, 11, 9), "stu"): 2234,    # 40 € (sahibi 04.11.2026)
+    (dt.date(2026, 11, 10), "stu"): 2234,
+}
 # Uzun konaklama 27.10 listesinde değişmedi: taban = 24.10 listesinin Paz–Pzt normal fiyatı,
 # 7+ / 14+ / 28+ gece −300 / −500 / −700 TL (site uzun_konaklama.py da bunu okur).
 UZUN_BAZ = {"stu": 3500, "sup": 3700, "dlx": 3900, "sui": 4500}
@@ -1777,11 +1781,11 @@ def tr_bugun():
 
 
 def basamak(d, bugun, dolu):
-    """Gecenin fiyat basamağı (0/1/2). Aynı gün (d ≤ bugun): Cumartesi 3., diğer günler 2., 40+ oda 3.
-    İleri tarih: Cumartesi 2., 30+ oda 3.; diğer günler 1., 30+ oda 2., 40+ oda 3."""
+    """Gecenin fiyat basamağı (0/1/2). Pazar–Cuma (aynı gün de, 04.11.2026'dan beri): 1., 30+ oda 2.,
+    40+ oda 3. Cumartesi: aynı gün 3.; ileri tarih 2., 30+ oda 3."""
     cmt = d.weekday() == 5
-    if d <= bugun:
-        return 2 if cmt or dolu >= ESIK_ODA[1] else 1
+    if d <= bugun and cmt:
+        return 2
     if cmt:
         return 2 if dolu >= ESIK_ODA[0] else 1
     return 2 if dolu >= ESIK_ODA[1] else (1 if dolu >= ESIK_ODA[0] else 0)
@@ -1789,12 +1793,16 @@ def basamak(d, bugun, dolu):
 
 def gece_hedef(oda, d, dolu, bugun=None):
     """FIYAT_ODALAR satırı → o gecenin fiyatı (o gece `dolu` oda satılmışken, `bugun` itibarıyla)."""
+    if (d, oda[0]) in ELLE_FIYAT:
+        return ELLE_FIYAT[(d, oda[0])]
     return oda[3][basamak(d, bugun or tr_bugun(), dolu)] - GECE_INDIRIM.get(d, 0)
 
 
 def gece_taban(oda, d, bugun=None):
     """Gecenin en düşük meşru fiyatı (doluluk 0). Bundan ucuz satan kanal ya da resepsiyon
     gerçekten ucuzdur; doluluk yükselmeden önceki bir gözlem/satış da yanlış alarm vermez."""
+    if (d, oda[0]) in ELLE_FIYAT:
+        return ELLE_FIYAT[(d, oda[0])]
     return oda[3][basamak(d, bugun or tr_bugun(), 0)] - GECE_INDIRIM.get(d, 0)
 
 
@@ -2003,7 +2011,7 @@ def build_fiyat(env):
              "<div class='fk-small' style='font-weight:700;color:var(--fg);margin:10px 0 4px'>Hangi gece hangi basamak</div>"
              "<table class='fk-week'><thead><tr><th>Gece</th><th class='r'>0–29 oda</th><th class='r'>30–39</th>"
              "<th class='r'>40+</th></tr></thead><tbody>"
-             "<tr><td>Bu gece · Paz–Cuma</td><td class='r'>2.</td><td class='r'>2.</td><td class='r'>3.</td></tr>"
+             "<tr><td>Bu gece · Paz–Cuma</td><td class='r'>1.</td><td class='r'>2.</td><td class='r'>3.</td></tr>"
              "<tr><td>Bu gece · Cumartesi</td><td class='r'>3.</td><td class='r'>3.</td><td class='r'>3.</td></tr>"
              "<tr><td>İleri tarih · Paz–Cuma</td><td class='r'>1.</td><td class='r'>2.</td><td class='r'>3.</td></tr>"
              "<tr><td>İleri tarih · Cumartesi</td><td class='r'>2.</td><td class='r'>3.</td><td class='r'>3.</td></tr>"
@@ -2535,7 +2543,11 @@ def satis_liste_fiyati(a):
     if satis < LISTE_TARIHI:
         return None            # 27.10 listesinden önceki satış: o günkü kural farklıydı (indirim serbestti)
     if satis < ILK_BASAMAK_04_11:
+        # 04.11'den önceki satış: eski 1. basamak, aynı gün Pazar–Cuma en az 2. basamak
         oda = oda[:3] + ((ILK_BASAMAK_ESKI[k],) + tuple(oda[3][1:]),)
+        geceler = [ci + dt.timedelta(days=i) for i in range(max(1, min(gece, 31)))]
+        return round(sum(oda[3][1] - GECE_INDIRIM.get(d, 0) if d <= satis and d.weekday() != 5
+                         else gece_taban(oda, d, satis) for d in geceler) / len(geceler))
     geceler = [ci + dt.timedelta(days=i) for i in range(max(1, min(gece, 31)))]
     return round(sum(gece_taban(oda, d, satis) for d in geceler) / len(geceler))
 

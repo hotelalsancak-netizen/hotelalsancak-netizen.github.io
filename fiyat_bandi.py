@@ -121,6 +121,8 @@ def hedefler(dol, frm, to, bugun):
     out, d = {}, frm
     while d <= to:
         for rt, (oda, _) in ODA.items():
+            if (d, oda[0]) in checks.ELLE_FIYAT:
+                continue    # sahibinin elle girdiği kısa süreli fiyat
             out[(d, rt)] = euro(checks.gece_hedef(oda, d, dol.get(d, 0), bugun))
         d += GUN
     return out
@@ -151,6 +153,8 @@ def otomatik(e, env, hid, bugun, kuru):
         if rt not in ODA or p <= 0:
             continue    # fiyatı girilmemiş gece satışa kapalıdır; açma
         oda, ad = ODA[rt]
+        if (d, oda[0]) in checks.ELLE_FIYAT:
+            continue    # sahibinin elle girdiği kısa süreli fiyat; dokunma
         b0 = checks.basamak(d, bugun, dol.get(d, 0))
         ind = checks.GECE_INDIRIM.get(d, 0)      # sahibin tek gecelik indirimi tabloyu aşağı çeker
         adaylar = [euro(oda[3][i] - ind) for i in range(b0, 3)]
@@ -205,7 +209,8 @@ def yaz_hedefler(e, hid, bekle, simdi, kuru, hepsi=False):
                 if not gerek:
                     continue
                 degerler = {bekle[(d, rt)] for d in gerek}
-                if len(degerler) == 1:
+                elle = any((d, ODA[rt][0][0]) in checks.ELLE_FIYAT for d in ds)
+                if len(degerler) == 1 and not elle:
                     v = degerler.pop()
                     if hepsi or all((d, rt) in bekle or abs(simdi.get((d, rt), -1) - v) <= PAY for d in ds):
                         gruplar.setdefault(v, []).append(wd)
