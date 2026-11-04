@@ -1728,11 +1728,11 @@ vergisi rakamı anında güncellensin. Girdikleriniz yalnızca bu tarayıcıda s
 # gün mü, ileri tarih mi), Cumartesi'ye ve o gece satılmış oda sayısına bağlı → basamak().
 # Elektra'da baz fiyat EUR'dur (= TL ÷ günün kuru); fiyat_bandi.py yarım saatte bir uygular.
 FIYAT_ODALAR = (  # (anahtar, ad, alt yazı, (1. basamak, 2. basamak, 3. basamak))
-    ("eko", "Ekonomik", "balkonlu · yalnızca site, telefon, kapı", (3000, 3300, 3800)),
-    ("stu", "Stüdyo", "mutfaklı", (3200, 3500, 4000)),
-    ("sup", "Superior", "mutfaklı / mutfaksız", (3400, 3800, 4200)),
-    ("dlx", "Deluxe", "mutfaklı / balkonlu", (3800, 4000, 4500)),
-    ("sui", "1+1 Suit", "mutfaklı", (4500, 5000, 5500)),
+    ("eko", "Ekonomik", "balkonlu · yalnızca site, telefon, kapı", (2800, 3300, 3800)),
+    ("stu", "Stüdyo", "mutfaklı", (3000, 3500, 4000)),
+    ("sup", "Superior", "mutfaklı / mutfaksız", (3200, 3800, 4200)),
+    ("dlx", "Deluxe", "mutfaklı / balkonlu", (3600, 4000, 4500)),
+    ("sui", "1+1 Suit", "mutfaklı", (4300, 5000, 5500)),
 )
 ESIK_ODA = (30, 40)     # o gece bu kadar oda satılınca bir üst basamak (30. oda satılınca 31. yeni fiyattan)
 BASAMAK_ADI = ("1. basamak", "2. basamak", "3. basamak")
@@ -2514,6 +2514,8 @@ ODA_KOD = {"EKOBALK": "eko", "STUDMUT": "stu", "SPROOM": "sup", "SPMUT": "sup",
            "DLXMUT": "dlx", "DLXBALK": "dlx", "SUITMUT": "sui"}   # Elektra ROOMTYPE → FIYAT_ODALAR
 SATIS_PAYI = 30            # TL — kur yuvarlaması; listenin bundan fazla altı "düşük"
 LISTE_TARIHI = dt.date(2026, 10, 27)   # bu tarihten önce satılanlar eski kuralla (SATIS_MIN_FIYAT) değerlendirilir
+ILK_BASAMAK_04_11 = dt.date(2026, 11, 4)   # 1. basamak 200 TL indi; bundan önceki satışlar eski 1. basamakla
+ILK_BASAMAK_ESKI = {"eko": 3000, "stu": 3200, "sup": 3400, "dlx": 3800, "sui": 4500}
 
 
 def satis_liste_fiyati(a):
@@ -2532,6 +2534,8 @@ def satis_liste_fiyati(a):
     satis = pdate(a.get("CREATEDATE")) or ci
     if satis < LISTE_TARIHI:
         return None            # 27.10 listesinden önceki satış: o günkü kural farklıydı (indirim serbestti)
+    if satis < ILK_BASAMAK_04_11:
+        oda = oda[:3] + ((ILK_BASAMAK_ESKI[k],) + tuple(oda[3][1:]),)
     geceler = [ci + dt.timedelta(days=i) for i in range(max(1, min(gece, 31)))]
     return round(sum(gece_taban(oda, d, satis) for d in geceler) / len(geceler))
 
