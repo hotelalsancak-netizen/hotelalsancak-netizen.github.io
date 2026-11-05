@@ -1758,8 +1758,8 @@ GUN_KISA = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
 # çarpanlı fiyatı görür (açık fiyat).
 FIYAT_KANALLAR = {
     "site":       ("Kendi siteniz", "", 0.0, "indirim yok", ""),
-    "booking":    ("Booking", "Booking.com", 0.10, "mobil %10", "bilgisayardan"),
-    "hotels":     ("Hotels.com / Expedia", "Expedia", 0.19, "%19 herkese · mobil + bilgisayar (05.11)", ""),
+    "booking":    ("Booking", "Booking.com", 0.19, "Basic %10 + Genius %10 birleşik · üye değilse yalnız %10", ""),
+    "hotels":     ("Hotels.com / Expedia", "Expedia", 0.19, "%10 herkese + üye %10 birleşik · üye değilse yalnız %10 (05.11)", ""),
     "trip":       ("Trip.com", "Ctrip", 0.10, "mobil %10", "bilgisayardan"),
     "etstur":     ("Etstur", "ETSTUR", 0.264, "%20 Özel fırsat + %8 (03.11)", ""),
     "tatilbudur": ("TatilBudur", "TatilBudur", 0.20, "%20 Erken rezervasyon", ""),
