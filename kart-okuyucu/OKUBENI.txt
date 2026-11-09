@@ -1,0 +1,217 @@
+===============================================================
+   KART KAYIT GONDER
+   Kale Kilit oda kayitlarini otomatik alip sunucuya gonderir
+===============================================================
+
+
+NASIL KULLANILIR
+----------------
+Masaustundeki
+
+        KART KAYITLARINI AL VE GONDER
+
+kisayoluna CIFT TIKLAYIN. Baska hicbir sey yapmaniza gerek yok.
+
+TEK SART: El terminali bilgisayara USB ile TAKILI olmali.
+
+
+PROGRAM NE YAPIYOR
+------------------
+1) Kale Kilit KAPALIYSA  -> kendisi acar
+2) Giris YAPILMAMISSA    -> kendisi giris yapar (operator: ADMIN)
+3) Yanlis ekrandaysa     -> menuden "Kayit arama -> Kilit acilis
+                            kayitlari" ekranini kendisi acar
+4) USB secili degilse    -> isaretler
+5) Tum odalari sirayla okur, her odayi KENDI ODA ADI ile PDF yapar
+       C:\Users\OTEL\Desktop\<BUGUNUN TARIHI>\336.pdf
+6) Klasoru tek ZIP'e sikistirir
+7) AES-256-GCM ile SIFRELER
+8) GitHub'a yukler ve dogrular
+
+Hepsi tek programda. Ayri bir yukleme adimi yok.
+
+
+CALISIRKEN
+----------
+  - FARE VE KLAVYEYE DOKUNMAYIN. Program Kale Kilit penceresini
+    kullanir.
+  - Yaklasik 15-20 dakika surer.
+  - Ekranda her oda icin soyle yazar:
+        [12/55] Sira 12 okunuyor... Oda 322 ...  OK  (131 KB)
+  - Sonunda ozet cikar:
+        Okunan oda   : 54
+        Yuklenen yol : site_data/cardreads-incoming/20260804.zip.enc
+        Commit sha   : ...
+
+
+ONEMLI - DOSYA ADI NEREDEN GELIR?
+---------------------------------
+Kilit bilgisindeki "Oda No" teknik numaradir, otelde kullanilan
+numara DEGILDIR. Ornegin:
+
+        Oda No:242   ->   Oda adi:336
+
+Dosya adi HER ZAMAN "Oda adi" alanindan uretilir.
+
+
+EKSIK ODA KONTROLU  (onemli)
+----------------------------
+Program, otelin TUM odalarinin alindigindan emin olmadan sunucuya
+HICBIR SEY GONDERMEZ. Beklenen oda listesi burada tutulur:
+
+    C:\OdaKartOku\odalar.txt      (55 oda)
+
+Calisma sirasi:
+  ADIM 1/3  Okumadan ONCE bugunun klasoru listeyle karsilastirilir.
+            - Hepsi zaten alinmissa okuma atlanir, dogrudan gonderilir
+            - Eksik varsa yalnizca eksikler okunur (hepsi bastan degil)
+  ADIM 2/3  Eksik odalar Kale Kilit'ten okunur
+  ADIM 3/3  Hepsi tamamsa sifrelenip sunucuya gonderilir
+
+Eksik kalirsa gonderim YAPILMAZ ve ekranda hangi odalarin eksik
+oldugu listelenir. O odalarin kilitleri el terminaline okutulup
+program tekrar calistirilmalidir. Daha once alinan odalar korunur,
+tekrar okunmaz - genelde birkac dakikada biter.
+
+Otele oda eklenir/cikarilirsa odalar.txt dosyasini guncelleyin.
+
+BOS SIRALAR
+-----------
+Terminaldeki kayitlar ARDISIK DEGILDIR. Aradaki bir sira bos olsa da
+sonraki siralarda veri olabilir. Ornegin:
+
+    [30/55] ... Oda 324 ...  OK
+    [31/55] ...              BOS (atlandi)
+    [32/55] ... Oda 101 ...  OK
+
+Bu yuzden program bos siraya rastlayinca DURMAZ, atlayip devam eder.
+Bos sirayi anlamasi ~5 saniye surer, vakit kaybettirmez.
+
+Sadece 10 sira UST USTE bos gelirse "terminalde baska kayit yok"
+deyip durur.
+
+Sonunda hangi siralarin bos oldugunu ozet olarak yazar:
+    OZET: 54 basarili, 0 basarisiz
+          1 sira bostu, atlandi: 31
+
+Bir oda hata verirse de program DURMAZ, digerlerine devam eder ve
+sonunda hangi odalarin alinamadigini listeler.
+
+
+BIR ODAYI TEKRAR ALMAK
+----------------------
+Ornegin 12. sira alinamadiysa, komut satirindan:
+
+    C:\OdaKartOku\KartKayitGonder.exe /ilk:12 /son:12
+
+Verdiginiz secenekler okuma programina oldugu gibi aktarilir.
+
+
+KOMUT SATIRI SECENEKLERI
+------------------------
+  /ilk:N          Baslangic sira numarasi (varsayilan 1)
+  /son:N          Bitis sira numarasi (varsayilan 55)
+  /klasor:"yol"   Farkli bir kayit klasoru
+  /tumunu         Alinmis odalari da bastan oku (atlama yapma)
+  /zorla          Eksik oda olsa bile sunucuya gonder
+  /kullanici:AD   Otomatik giris operatoru (varsayilan ADMIN)
+  /sifre:XXXX     Otomatik giris sifresi
+
+
+SIFRELEME BICIMI
+----------------
+GitHub deposu HERKESE ACIK oldugu icin misafir verisi asla sifresiz
+gitmez. Evdeki analiz programi tam olarak bu bicimi bekler:
+
+    [ salt: 16 bayt ][ nonce: 12 bayt ][ ciphertext + 16 bayt GCM tag ]
+    anahtar = PBKDF2-HMAC-SHA256(parola, salt, 200000 tur, 32 bayt)
+    sifre   = AES-256-GCM
+
+Program, gondermeden ONCE urettigi dosyayi kendisi geri cozup
+orijinal ZIP ile karsilastirir. Cozemezse GONDERMEZ.
+
+Gonderilen yer:
+    hotelalsancak-netizen/hotelalsancak-netizen.github.io
+    site_data/cardreads-incoming/<HAFTA>.zip.enc      (HAFTA = YYYYMMDD)
+
+Klasor adi 04.08.2026 ise hafta kodu otomatik 20260804 olur.
+Ayni gun tekrar calistirilirsa sunucudaki dosyanin uzerine yazar.
+
+
+SORUN GIDERME
+-------------
+"Kale Kilit'te su anda baska bir islem acik"
+    -> Acik olan kart basma / check-in penceresini kapatin.
+       Program calisan isleminizi bilerek bolmez.
+
+"Cihaz hata verdi: 254:Unknow Error"
+"Okuma baslamadi (terminal yanit vermedi)"
+    -> El terminali takili degil veya icinde kayit yok.
+       Terminali takip kartlari okuttuktan sonra tekrar deneyin.
+
+"[N/55] ... BOS (atlandi)"
+    -> Hata degildir. O sirada terminalde kayit yok, program devam eder.
+
+"10 sira ust uste bos geldi -> terminalde baska kayit yok"
+    -> Hata degildir. Terminaldeki tum kayitlar alinmistir.
+
+"Giris reddedildi: 650:Sifre yanlis"
+    -> Kale Kilit sifresi degismis. Once su sekilde deneyin:
+           KartKayitGonder.exe /sifre:YENISIFRE
+       Kalici cozum: src\OdaKartOku.cs icindeki _sifre satirini
+       guncelleyip yeniden derleyin (asagida komut var).
+
+"Ekrandaki kontroller taninamadi"
+    -> Kale Kilit penceresi kucultulmus olabilir. Pencereyi
+       buyutup tekrar calistirin.
+
+Ayrintili islem gunlugu:
+    C:\OdaKartOku\log\odakartoku.log
+
+
+GUVENLIK NOTU
+-------------
+KartKayitGonder.exe icinde sunlar GOMULUDUR:
+    - Kale Kilit operator adi ve sifresi
+    - GitHub erisim jetonu
+    - ZIP sifreleme parolasi
+
+Bu exe'yi disariya vermeyin, e-posta ile gondermeyin. Exe'yi eline
+gecirenler bu bilgileri cikarabilir.
+
+GitHub jetonu yalnizca O TEK depoya yazma yetkisi olacak sekilde
+(fine-grained token) uretilmelidir. Jeton sizarsa GitHub'dan hemen
+iptal edip yenisini uretin ve exe'yi yeniden derleyin.
+
+
+DOSYALAR
+--------
+  C:\OdaKartOku\KartKayitGonder.exe   ANA PROGRAM (tek dosya)
+  C:\OdaKartOku\OdaKartOku.exe        Okuma motoru (ana programa gomulu)
+  C:\OdaKartOku\cardreads_upload.exe  Sadece gonderme (yedek/manuel)
+  C:\OdaKartOku\src\                  Kaynak kodlar
+  C:\OdaKartOku\log\odakartoku.log    Islem gunlugu
+
+
+YENIDEN DERLEME
+---------------
+1) Okuma motoru (C#, ek kurulum gerektirmez):
+
+   C:\Windows\Microsoft.NET\Framework\v4.0.30319\csc.exe /target:exe
+     /platform:x86
+     /reference:System.IO.Compression.dll
+     /reference:System.IO.Compression.FileSystem.dll
+     /reference:System.Security.dll
+     /out:C:\OdaKartOku\OdaKartOku.exe
+     C:\OdaKartOku\src\OdaKartOku.cs C:\OdaKartOku\src\Yukleyici.cs
+
+2) Ana program (okuma motorunu icine gomer):
+
+   C:\OdaKartOku\src\derle.bat
+
+   Bu dosya PyInstaller'i cagirir; ciktisi src\derle.log icine yazilir.
+   Gereken: Python 3.12 + requests, cryptography, pyinstaller
+   (bu bilgisayarda kurulu).
+
+ONEMLI: Once (1) sonra (2) calistirilmalidir; aksi halde ana
+program eski okuma motorunu tasimaya devam eder.

@@ -42,3 +42,10 @@ hata.log
 # not: site_data/ (şifreli kart bloğu) commit EDİLİR — güvenli.
 parite.py
 site_data/fiyat/otomatik.json
+
+# Resepsiyon kart programı: gizli bilgi GÖMÜLÜ exe/zip ve işlem günlükleri asla repoya girmez
+OdaKartOku*.zip
+kart-okuyucu/**/*.exe
+kart-okuyucu/build/
+kart-okuyucu/log/
+kart-okuyucu/src/derle.log
