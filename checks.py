@@ -1743,6 +1743,12 @@ ELLE_FIYAT = {  # sahibinin elle girdiği kısa süreli fiyat: (gece, oda) → m
     (dt.date(2026, 11, 9), "stu"): 2234,    # 40 € (sahibi 04.11.2026)
     (dt.date(2026, 11, 10), "stu"): 2234,
 }
+# Sahibinin elle fiyat girdiği BÜTÜN gece (yılbaşı gibi): her oda tipi korunur; değer, girdiği günün
+# Elektra fiyatının TL karşılığı (panel hedefi). Sahibi "fiyat güncellemesinde bunlara dokunma" (09.11.2026).
+ELLE_GECE = {
+    dt.date(2026, 12, 31): {"eko": 3300, "stu": 3500, "sup": 3800, "dlx": 4000, "sui": 5000},  # yılbaşı
+}
+ELLE_FIYAT.update({(d, k): v for d, odalar in ELLE_GECE.items() for k, v in odalar.items()})
 # Uzun konaklama 27.10 listesinde değişmedi: taban = 24.10 listesinin Paz–Pzt normal fiyatı,
 # 7+ / 14+ / 28+ gece −300 / −500 / −700 TL (site uzun_konaklama.py da bunu okur).
 UZUN_BAZ = {"stu": 3500, "sup": 3700, "dlx": 3900, "sui": 4500}
