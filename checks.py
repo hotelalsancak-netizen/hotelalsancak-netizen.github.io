@@ -2838,6 +2838,9 @@ def phone_ok(p):
     return len(d) >= 7 and len(set(d)) > 1
 
 
+# Elektra ~09.11.2026'dan beri TC/pasaport no'yu da telefon gibi '***0X***' maskeliyor: maskeli =
+# "girilmiş" sayılır (kontrol hanesi artık doğrulanamaz). Asıl açık — odada kaydı HİÇ olmayan kişi —
+# kayıt sayısından çıktığı için maskeden etkilenmez.
 def tckn_ok(s):
     """Geçerli TC kimlik no mu: 11 hane, 0 ile başlamaz, iki kontrol hanesi tutar
     (yabancılara verilen 99… YKN de aynı algoritmayla geçer)."""
@@ -2891,7 +2894,8 @@ def guest_gaps(rows):
         recs = list({g["GUESTID"]: g for g in gs if g.get("GUESTID")}.values())
         ident = [f"{_guest_name(g)}: " + ("TC no hatalı" if str(g.get("GUESTTCKN") or "").strip()
                                           else "kimlik no yok")
-                 for g in recs if not (tckn_ok(g.get("GUESTTCKN")) or passport_ok(g.get("GUESTPASSPORT")))]
+                 for g in recs if not (tckn_ok(g.get("GUESTTCKN")) or passport_ok(g.get("GUESTPASSPORT"))
+                                       or masked_phone(g.get("GUESTTCKN")) or masked_phone(g.get("GUESTPASSPORT")))]
         pax = int(num(first.get("ADULT")) + num(first.get("TCHD")) + num(first.get("BABY")))
         if len(recs) < pax:
             ident.insert(0, f"{pax - len(recs)} kişinin misafir kaydı yok ({pax} kişi, {len(recs)} kayıt)")
@@ -3061,7 +3065,8 @@ def build_eksik(env):
             "Ekim 2026 sonundan beri numaraları gizli (<i>***0X***</i>) gönderiyor: gizli numara "
             "\"girilmiş\" sayılır; sahte numara gönderen kanallarda (Expedia, Tatil Budur, Jolly) ise "
             "\"elle kontrol\" listesine düşer. "
-            "<b>Kimlik:</b> TC numarası kontrol haneleriyle doğrulanır; yabancılar için pasaport / kimlik no "
+            "<b>Kimlik:</b> Elektra Kasım 2026'dan beri TC / pasaport numaralarını da gizli gönderiyor: gizli "
+            "numara \"girilmiş\" sayılır, boş olan eksiktir; açıktaki TC kontrol haneleriyle doğrulanır, pasaport "
             "(en az 5 karakter). Kişi sayısı = yetişkin + çocuk + bebek. Girişi yapan = rezervasyon "
             "geçmişindeki Check-In işlemini yapan kullanıcı. No-show ve sanal folyolar hariç.</div>")
     sub = (f"{len(tel)} odada telefon, {len(kim)} odada kimlik eksik · {n_in} konaklayan oda"
