@@ -1740,8 +1740,7 @@ BASAMAK_ADI = ("1. basamak", "2. basamak", "3. basamak")
 # Pano, kapı fiyatı, Günlük Rapor ve fiyat_bandi.py bunu okur; geçmiş geceler zararsızdır.
 GECE_INDIRIM = {dt.date(2026, 10, 31): 300}
 ELLE_FIYAT = {  # sahibinin elle girdiği kısa süreli fiyat: (gece, oda) → misafirin gördüğü TL; fiyat_bandi.py bu gecelere dokunmaz
-    (dt.date(2026, 11, 9), "stu"): 2234,    # 40 € (sahibi 04.11.2026)
-    (dt.date(2026, 11, 10), "stu"): 2234,
+    # 9–10.11 Stüdyo 40 € kaldırıldı: sahibi 09.11 sabah Elektra'da listeye döndürdü (33 oda dolu → 3.500)
 }
 # Sahibinin elle fiyat girdiği BÜTÜN gece (yılbaşı gibi): her oda tipi korunur; değer, girdiği günün
 # Elektra fiyatının TL karşılığı (panel hedefi). Sahibi "fiyat güncellemesinde bunlara dokunma" (09.11.2026).
