@@ -439,11 +439,18 @@ def main():
 
     log("5/6  Rapor üretiliyor + şifreleniyor...")
     html, sus = build_week(cards, changes, occ, lo, hi, pdf_dir=src_dir)
+    # Okunmayan oda varsa kutu kırmızı olur ve alt yazıda odalar yazılır — eksik döküm
+    # "0 şüpheli" diye sakin görünmesin (build_report.missing_rooms, 09.11.2026).
+    eksik = build_report.missing_rooms(cards, occ)
+    if eksik:
+        log(f"     ⚠️ {len(eksik)} odanın kilidi dökümde YOK: {', '.join(eksik)} — tekrar okutulmalı")
     section = {
         "label": "Haftalık Kart Güvenliği",
         "count": sus, "count_label": "şüpheli",
-        "tone": "bad" if sus else "ok",
-        "sub": f"{lo.day}–{hi.day} {TR_MON[hi.month]} {hi.year} · satılmadan kullanılan odalar",
+        "tone": "bad" if (sus or eksik) else "ok",
+        "sub": f"{lo.day}–{hi.day} {TR_MON[hi.month]} {hi.year} · "
+               + (f"⚠️ {len(eksik)} oda okunmadı: {', '.join(eksik[:8])}{'…' if len(eksik) > 8 else ''}"
+                  if eksik else "satılmadan kullanılan odalar"),
         "updated": dt.datetime.now().strftime("%d.%m.%Y %H:%M"),
         "html": html,
     }

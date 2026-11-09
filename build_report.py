@@ -349,6 +349,24 @@ def _suspicious_room_pdfs(sus, pdf_dir):
     return out
 
 
+# Otelin 55 fiziksel odası (403 yok). Dökümde OLMAYAN her oda kör noktadır — boş bir odanın
+# kilidi okunmazsa satılmadan kullanılıp kullanılmadığı da hiç bilinemez (eskiden yalnızca o
+# hafta Elektra'da dolu görünen odalar uyarılıyordu; 26.10 haftasında 131 böyle kaçtı). Elektra'da
+# görünen ama listede olmayan yeni bir numaralı oda da (occ) ayrıca sayılır.
+HOTEL_ROOMS = frozenset(
+    "101 102 103 104 111 112 121 122 123 124 131 132 133 134 135 136 "
+    "201 202 203 204 211 212 221 222 223 224 231 232 233 234 235 236 "
+    "301 302 303 304 311 312 321 322 323 324 331 332 333 334 335 336 "
+    "401 402 404 411 412 413 414".split())
+
+
+def missing_rooms(cards, occ):
+    """Kilidi bu dökümde HİÇ okunmamış fiziksel odalar (sıralı)."""
+    occ_rooms = {str(r["room"]) for r in occ.get("reservations", []) + occ.get("blocks", [])
+                 if str(r["room"]).isdigit()}
+    return sorted((HOTEL_ROOMS | occ_rooms) - set(cards), key=lambda x: (len(x), x))
+
+
 def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
     grid = collect(cards, lo, hi)
     sold = build_occupancy(occ, changes)
@@ -393,17 +411,17 @@ def build(cards, changes, occ, lo=LO, hi=HI, pdf_dir=None):
     # Only PHYSICAL (numeric) rooms: a no-show is parked in a virtual 'NSNSNS…' room that
     # the calendar returns as ROOMNO=None, which used to print "EKSİK KİLİT OKUMASI: None"
     # nearly every week — a false alarm that teaches the owner to ignore the banner.
-    occ_rooms = {str(r["room"]) for r in occ.get("reservations", []) + occ.get("blocks", [])
-                 if str(r["room"]).isdigit()}
-    missing_cards = sorted(occ_rooms - set(rooms), key=lambda x: (len(x), x))
+    missing_cards = missing_rooms(cards, occ)
     if missing_cards:
-        o.append('<div style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;'
-                 'padding:12px 16px;border-radius:10px;margin:0 0 16px;font-size:13.5px">'
-                 '⚠️ <b>EKSİK KİLİT OKUMASI — kör nokta.</b> Şu oda(lar) bu hafta Elektra\'da '
-                 'aktifti ama kart dökümünde YOK, yani <b>hiç kontrol edilemedi</b>: '
+        o.append('<div style="background:#fef2f2;border:2px solid #dc2626;color:#991b1b;'
+                 'padding:14px 18px;border-radius:10px;margin:0 0 16px;font-size:14px">'
+                 f'⚠️ <b>EKSİK KİLİT OKUMASI — {len(missing_cards)} oda okunmadı, kör nokta.</b> '
+                 f'Otelin {len(HOTEL_ROOMS)} odasından şunların kilidi bu dökümde YOK, yani '
+                 '<b>hiç kontrol edilemedi</b>: '
                  f'<b>{", ".join(html.escape(r) for r in missing_cards)}</b>. '
-                 'Bu oda(lar) satılmadan kullanılsa bu rapor yakalayamaz — terminalden '
-                 'eksik odaların kilidini de okutup yeniden yükleyin.</div>')
+                 'Bu oda(lar) satılmadan kullanılsa bu rapor yakalayamaz — terminalle bu '
+                 'odaların kilidini okutup dökümü <b>yeniden yükleyin</b> (kilit ~8 haftalık '
+                 'geçmiş tuttuğu için geç okutmak da yeter).</div>')
 
     o.append('<div class="stats">')
     o.append(f'<div class="stat bad"><div class="n">{len(strong)}</div>'
