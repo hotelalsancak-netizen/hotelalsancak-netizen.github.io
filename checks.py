@@ -1766,7 +1766,7 @@ FIYAT_KANALLAR = {
     "booking":    ("Booking", "Booking.com", 0.19, "Basic %10 + Genius %10 birleşik · üye değilse yalnız %10", ""),
     "hotels":     ("Hotels.com / Expedia", "Expedia", 0.19, "%10 herkese + üye %10 birleşik · üye değilse yalnız %10 (05.11)", ""),
     "trip":       ("Trip.com", "Ctrip", 0.213, "Basic %10 + mobil %10 birleşik · bilgisayarda yalnız %10 · Trip kendi %3–8 ekliyor → çarpan 1,27 (06.11)", ""),
-    "etstur":     ("Etstur", "ETSTUR", 0.264, "%20 Özel fırsat + %8 (03.11)", ""),
+    "etstur":     ("Etstur", "ETSTUR", 0.264, "%20 Özel fırsat + %8 (03.11) · yakın gecede Etstur kendi kesince ets_duzelt.py düzeltir (10.11)", ""),
     "tatilbudur": ("TatilBudur", "TatilBudur", 0.20, "%20 Erken rezervasyon", ""),
     "enuygun":    ("Enuygun", "Enuygun", 0.28, "%28 · Enuygun'un indirimi", ""),
     "jolly":      ("Jollytur", "JollyTur", 0.20, "%20 · Jolly'nin indirimi", ""),

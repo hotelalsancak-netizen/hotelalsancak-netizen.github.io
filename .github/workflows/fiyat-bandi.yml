@@ -39,3 +39,12 @@ jobs:
           ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
           ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
         run: python fiyat_bandi.py
+      - name: Etstur gozlemlerini al (fiyat-veri dali)
+        run: git fetch -q origin fiyat-veri --depth=1 && git show origin/fiyat-veri:otomatik.json > site_data/fiyat/otomatik.json || echo "fiyat-veri dali yok"
+      - name: Etstur son dakika duzeltmesi (ets_duzelt.py)
+        continue-on-error: true
+        env:
+          ELEKTRA_HOTELID: ${{ secrets.ELEKTRA_HOTELID }}
+          ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
+          ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
+        run: python ets_duzelt.py
