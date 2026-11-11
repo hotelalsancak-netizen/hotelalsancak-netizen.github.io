@@ -1756,6 +1756,7 @@ ELLE_FIYAT.update({(d, k): v for d, odalar in ELLE_GECE.items() for k, v in odal
 # 7+ / 14+ / 28+ gece −300 / −500 / −700 TL (site uzun_konaklama.py da bunu okur).
 UZUN_BAZ = {"stu": 3500, "sup": 3700, "dlx": 3900, "sui": 4500}
 UZUN_INDIRIM = ((28, 700), (14, 500), (7, 300))
+UYESIZ_OKUMA = {"hotels": 0.10}   # bu kanalın trivago okuması üye indirimi olmadan; üye indirimi oranı
 FIYAT_TOLERANS = 40     # hedeften ±40 TL "hedefte" sayılır (kanallar Euro'yu kendi kuruyla çevirir)
 GUN_ADI = ("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar")
 GUN_KISA = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
@@ -1989,9 +1990,13 @@ def build_fiyat(env):
                 acik = gece_hedef(oda, d, dol.get(d, 0), today) * f
                 beklenen[iso][key][rk] = [round(acik * (1 - ind)), round(acik) if ind else None]
     for (t, k, rk), o in obs.items():
-        gozlem.setdefault(t, {}).setdefault(k, {})[rk] = {
-            "p": o["fiyat"], "acik": o.get("acik"), "et": o.get("etiket", ""),
-            "src": o.get("kaynak", ""), "t": o.get("zaman", "")}
+        g = {"p": o["fiyat"], "acik": o.get("acik"), "et": o.get("etiket", ""),
+             "src": o.get("kaynak", ""), "t": o.get("zaman", "")}
+        if k in UYESIZ_OKUMA and "trivago" in g["src"]:
+            # trivago Hotels.com'un ÜYE OLMAYAN fiyatını gösterir (%10); Booking okuması ise Genius'lu
+            # (%10+%10). Kıyas üye fiyatıyla yapılsın, yoksa Expedia hep "+350 pahalı" görünür (11.11.2026).
+            g["uyesiz"], g["p"] = o["fiyat"], round(o["fiyat"] * (1 - UYESIZ_OKUMA[k]))
+        gozlem.setdefault(t, {}).setdefault(k, {})[rk] = g
 
     gun_list = []
     for d in days:
@@ -2192,6 +2197,7 @@ __DUZ__
       if(gor)cnt[s]++;else cnt.bek++;
       var acik=o&&o.acik?o.acik:(b&&b[1]?b[1]:null);
       var lines='<div class="meta">'+esc(o&&o.et?o.et:meta.etiket)+'</div>';
+      if(o&&o.uyesiz)lines+='<div class="meta">üye fiyatı (yukarıda) · üye olmayan misafir: '+fmt(o.uyesiz)+' ₺ (trivago bunu gösterir)</div>';
       if(acik&&meta.acikNot)lines+='<div class="meta">'+esc(meta.acikNot)+': '+fmt(acik)+' ₺</div>';
       if(selRoom==='eko'&&k!=='site'&&o)lines+='<div class="meta" style="color:var(--statbad);font-weight:700">Ekonomik oda burada satılmamalı</div>';
       lines+='<div class="meta">'+(gor?('görüldü: '+esc(o.src)+' · '+esc(kisa(o.t))):'<b>hesaplanan</b> · gerçek fiyat henüz okunmadı')+'</div>';
