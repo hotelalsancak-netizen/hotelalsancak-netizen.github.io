@@ -2029,13 +2029,13 @@ def build_fiyat(env):
         f"<div class='fk-drow'><div class='fk-room'>{esc(r[1])}<small>{esc(r[2])}</small></div>"
         f"<div class='fk-dp'><span class='fk-big'>{_tl(gece_hedef(r, today, dol.get(today, 0), today))}<i>₺</i></span></div></div>"
         for r in FIYAT_ODALAR)
-    bas = "".join(f"<th class='r'>{esc(a)}</th>" for a in BASAMAK_ADI)
+    bas = "".join(f"<th class='r'>{i + 1}.</th>" for i in range(len(BASAMAK_ADI)))   # dar sütun: 5 basamak sığsın
     satir = "".join(
         f"<tr><td>{esc(r[1])}</td>" + "".join(
             f"<td class='r{' fk-now' if i == b_bugun else ''}'>{_tl(r[3][i])}</td>" for i in range(len(BASAMAK_ADI))) + "</tr>"
         for r in FIYAT_ODALAR)
     hafta = ("<div class='fk-small' style='font-weight:700;color:var(--fg);margin:8px 0 4px'>Fiyat basamakları</div>"
-             f"<table class='fk-week'><thead><tr><th>Oda</th>{bas}</tr></thead><tbody>{satir}</tbody></table>"
+             f"<table class='fk-week'><thead><tr><th>Oda · basamak</th>{bas}</tr></thead><tbody>{satir}</tbody></table>"
              "<div class='fk-small' style='font-weight:700;color:var(--fg);margin:10px 0 4px'>Hangi gece hangi basamak</div>"
              "<table class='fk-week'><thead><tr><th>Gece</th><th class='r'>0–25 oda</th><th class='r'>26–30</th>"
              "<th class='r'>31–35</th><th class='r'>36+</th></tr></thead><tbody>"
@@ -2135,8 +2135,10 @@ FIYAT_HTML = """
 .fk-big i{font-style:normal;font-size:18px;color:var(--sub);margin-left:3px}
 .fk-door .fk-nodisc{background:var(--fk-lowbg);color:var(--statbad);border-radius:10px;padding:9px 12px;font-size:14px;font-weight:700}
 .fk-min{display:block;font-size:12px;font-weight:700;color:var(--fk-warn)}
-.fk-week{font-size:12.5px;margin:0}
-.fk-week td,.fk-week th{padding:6px 8px}
+.fk-week{font-size:12.5px;margin:0;width:100%;table-layout:fixed}
+.fk-week td,.fk-week th{padding:6px 4px;overflow-wrap:anywhere}
+.fk-week td:first-child,.fk-week th:first-child{width:30%;padding-left:8px}
+.fk-split>*{min-width:0}
 .fk-week td.fk-now{font-weight:800;background:var(--fk-chip);color:var(--fk-chipfg)}
 .fk-week tr.fk-nrm td{font-weight:800}
 .fk-small{color:var(--sub);font-size:11.5px;line-height:1.5}
