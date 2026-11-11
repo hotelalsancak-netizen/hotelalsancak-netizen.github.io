@@ -1929,6 +1929,71 @@ def _tl(n):
     return f"{n:,.0f}".replace(",", ".")
 
 
+# Sahibinin kuralı (11.11.2026): "Expedia ve Booking mutlaka aynı fiyatı vermeli, çok ufak farklar olabilir."
+# İki tarafı da denetler: Elektra'nın gönderdiği (çarpan + oda bazlı kanal çarpanı satırları) ve misafirin
+# gördüğü (okumalar, üye fiyatı kıyası). Fark çıkarsa Fiyat Kontrol kırmızı olur.
+PARITE_IKILI = ("Booking.com", "Expedia")   # Online Kanallar adı
+PARITE_KANAL = {"Booking": 12, "Expedia": 10}
+PARITE_ODA_HARIC = ("sui",)   # Booking okuması Suit'te 3 kişilik fiyatı gösteriyor (×1,05); Elektra tarafı yine denetlenir   # HOTEL_CHANNELMANAGER_PRICING CHANNELID
+PARITE_TL, PARITE_ORAN = 60, 0.02       # bundan küçük fark "ufak fark" (kur, yuvarlama)
+PARITE_TAZE_SAAT = 48
+
+
+def booking_expedia_parite(factors, obs, today):
+    """→ (sorunlar [str], bilgi [str]). Boş sorun listesi = kural tutuyor."""
+    sorun, bilgi = [], []
+    fb, fe = (factors.get(a) for a in PARITE_IKILI)
+    if fb is None or fe is None:
+        sorun.append("Elektra'da Booking ya da Expedia çarpanı okunamadı (kanal kapalı olabilir)")
+    elif abs(fb - fe) > 0.001:
+        sorun.append(f"Elektra çarpanı farklı: Booking {fb:g}, Expedia {fe:g} — ikisi aynı olmalı")
+    else:
+        bilgi.append(f"Elektra çarpanı ikisinde de {fb:g}")
+    try:
+        e, _ = E.connect()
+        satir = {}
+        for ad, kid in PARITE_KANAL.items():
+            r = e._post("Select/HOTEL_CHANNELMANAGER_PRICING",
+                        {"Object": "HOTEL_CHANNELMANAGER_PRICING",
+                         "Where": [{"Column": "CHANNELID", "Operator": "=", "Value": kid}], "Select": []},
+                        action_name="Select")
+            satir[ad] = {(str(x["ROOMTYPEID"]), str(x["FROMDATE"])[:10], str(x["TODATE"])[:10],
+                          float(x.get("WEEKDAYPERCENT") or 0), float(x.get("WEEKENDPERCENT") or 0),
+                          float(x.get("WEEKDAYAMOUNT") or 0), float(x.get("WEEKENDAMOUNT") or 0))
+                         for x in ((r or {}).get("ResultSets") or [[]])[0]
+                         if str(x["TODATE"])[:10] >= today.isoformat()
+                         and any(float(x.get(c) or 0) for c in ("WEEKDAYPERCENT", "WEEKENDPERCENT",
+                                                                  "WEEKDAYAMOUNT", "WEEKENDAMOUNT"))}
+        if satir["Booking"] != satir["Expedia"]:
+            sorun.append("Elektra 'Kanal Fiyat Çarpanları'nda Booking ile Expedia'nın oda/tarih satırları farklı "
+                         f"(Booking {len(satir['Booking'])}, Expedia {len(satir['Expedia'])} satır)")
+    except Exception as ex:
+        bilgi.append(f"oda bazlı çarpan satırları okunamadı ({type(ex).__name__})")
+    sinir = (dt.datetime.now() - dt.timedelta(hours=PARITE_TAZE_SAAT)).strftime("%Y-%m-%d %H:%M")
+    n, en = 0, 0
+    for (t, k, rk), b in obs.items():
+        d = pdate(t)
+        h = obs.get((t, "hotels", rk))
+        if k != "booking" or rk in PARITE_ODA_HARIC or not d or d < today or not h or not b.get("fiyat") or not h.get("fiyat"):
+            continue
+        if b.get("zaman", "") < sinir or h.get("zaman", "") < sinir:
+            continue
+        hf = h["fiyat"] * (1 - UYESIZ_OKUMA["hotels"]) if "trivago" in h.get("kaynak", "") else h["fiyat"]
+        fark = hf - b["fiyat"]
+        n += 1
+        en = max(en, abs(fark), key=abs)
+        if abs(fark) > max(PARITE_TL, PARITE_ORAN * b["fiyat"]):
+            oda = dict((r[0], r[1]) for r in FIYAT_ODALAR).get(rk, rk)
+            sorun.append(f"{d.day} {TR_MONTHS[d.month]} {oda}: Booking {_tl(b['fiyat'])} ₺, Expedia (üye) "
+                         f"{_tl(hf)} ₺ — fark {'+' if fark > 0 else ''}{_tl(fark)} ₺")
+    if n:
+        bilgi.append(f"son {PARITE_TAZE_SAAT} saatte {n} gece × oda kıyaslandı, en büyük fark {_tl(abs(en))} ₺")
+    else:
+        bilgi.append(f"son {PARITE_TAZE_SAAT} saatte aynı gece için iki kanaldan okuma yok (yalnız Elektra tarafı denetlendi)")
+    return sorun, bilgi
+
+
+
 def build_fiyat(env):
     """Fiyat Kontrol — her kanalda misafirin gördüğü fiyat hedefle aynı mı? Görülen fiyat
     gözlem dosyasından, beklenen fiyat Elektra'daki canlı kanal çarpanından gelir; Elektra'da
@@ -2022,6 +2087,16 @@ def build_fiyat(env):
         if v and abs(v[0] - hedef) > FIYAT_TOLERANS:
             ucuz.add(FIYAT_KANALLAR[key][0] + " (Elektra ayarı)")
 
+    p_sorun, p_bilgi = booking_expedia_parite(factors, obs, today)
+    if p_sorun:
+        ucuz.add("Booking ≠ Expedia")
+    parite_html = ("<div class='fk-fix' style='box-shadow:inset 4px 0 " + ("var(--statbad)" if p_sorun else "var(--statok)")
+                   + "'><b>Booking = Expedia kuralı</b> <span class='fk-diff " + ("fk-low'>FARK VAR" if p_sorun else "fk-ok'>aynı fiyat")
+                   + "</span><div class='fk-small' style='margin-top:4px'>"
+                   + "".join(f"<div style='color:var(--statbad);font-weight:700'>• {esc(x)}</div>" for x in p_sorun)
+                   + " · ".join(esc(x) for x in p_bilgi)
+                   + " · üye fiyatıyla kıyas, ±" + str(PARITE_TL) + " TL ufak fark sayılır</div></div>")
+
     # Kapı fiyatları (resepsiyon): bugünün TABAN fiyatı büyük — indirim yok (27.10.2026); yanında basamak
     # tablosu, hangi gecenin hangi basamakta olduğu ve önümüzdeki 14 gece.
     b_bugun = basamak(today, today, dol.get(today, 0))
@@ -2081,7 +2156,7 @@ def build_fiyat(env):
     else:
         duz_html = ""
 
-    body = (FIYAT_HTML.replace("__DUZ__", duz_html)
+    body = (FIYAT_HTML.replace("__DUZ__", parite_html + duz_html)
             .replace("__KAPI__", kapi).replace("__HAFTA__", hafta)
             .replace("__BANT__", esc(bant(today)[0].upper() + bant(today)[1:]))
             .replace("__BUGUN__", esc(f"{today.day} {TR_MONTHS[today.month]} {GUN_ADI[today.weekday()]}"))
