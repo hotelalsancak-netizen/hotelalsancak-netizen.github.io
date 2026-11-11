@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Fiyat bandı — Elektra'daki oda temel fiyatlarını fiyat listesine göre tutar.
 
-Kural (sahibin onayı 27.10.2026, docs/pricelist/fiyat-listesi.md; tablo checks.FIYAT_ODALAR, basamak
-seçimi checks.basamak): her odanın üç fiyat basamağı var. İleri tarihli Pazar–Cuma gecesi 1. basamakta
-başlar, 30 oda satılınca 2., 40 oda satılınca 3. basamağa çıkar; ileri tarihli Cumartesi 2.'de başlar,
-30 odada 3.'ye çıkar. Gece "aynı gün" olunca (gece yarısı) Pazar–Cuma en az 2., Cumartesi 3. basamaktır;
-40 odada 3. Elektra'ya giden temel fiyat EUR'dur: € = TL ÷ günün kuru (iki ondalık, YUKARI). Kur,
+Kural (sahibin onayı 11.11.2026, docs/pricelist/fiyat-listesi.md; tablo checks.FIYAT_ODALAR, basamak
+seçimi checks.basamak): her odanın beş fiyat basamağı var. Pazar–Perşembe gecesi 1. basamakta, Cuma–
+Cumartesi 2. basamakta başlar; o gece 25, 30 ve 35 oda satılınca birer basamak çıkar (Paz–Per en çok 4.,
+Cuma–Cmt en çok 5.). Aynı gün kuralı yok (11.11'de kalktı). Elektra'ya giden temel fiyat EUR'dur:
+€ = TL ÷ günün kuru (iki ondalık, YUKARI). Kur,
 Elektra'nın kendi günlük kurudur (TCMB döviz alış; rezervasyon motoru da TL'yi bununla hesaplar).
 Kanallara Elektra kendisi gönderir (temel fiyat × kanal çarpanı).
 
@@ -16,7 +16,7 @@ Kullanım:
 
 Otomatik mod, her gece × oda tipi için:
   1. TABAN: gecenin bugünkü basamağı (tarih, Cumartesi, doluluk). Elektra fiyatı günün kuruyla
-     tabanın altındaysa (gece yarısı aynı güne geçti, 30/40 oda doldu ya da kur düştü) hemen tabana çıkar.
+     tabanın altındaysa (25/30/35 oda doldu, liste değişti ya da kur düştü) hemen tabana çıkar.
   2. KUR: fiyat tabandaki ya da daha yüksek bir basamağa yakınsa (±%6), euro yükseldiği için misafir
      KUR_PAYI TL'den fazla öderse € o basamağa indirilir. Yükselmiş gece iptallerle boşalsa da
      basamağı düşmez.
@@ -157,7 +157,8 @@ def otomatik(e, env, hid, bugun, kuru):
             continue    # sahibinin elle girdiği kısa süreli fiyat; dokunma
         b0 = checks.basamak(d, bugun, dol.get(d, 0))
         ind = checks.GECE_INDIRIM.get(d, 0)      # sahibin tek gecelik indirimi tabloyu aşağı çeker
-        adaylar = [euro(oda[3][i] - ind) for i in range(b0, 3)]
+        ust = checks.basamak(d, bugun, 10 ** 6)  # o günün en üst basamağı (Paz–Per 4., Cuma–Cmt 5.)
+        adaylar = [euro(oda[3][i] - ind) for i in range(b0, ust + 1)]
         taban = adaylar[0]
         if p < taban - PAY:
             if b0 > checks.basamak(d, bugun, 0):
@@ -180,7 +181,7 @@ def otomatik(e, env, hid, bugun, kuru):
     for k, v in neden.items():
         sayi.setdefault((ODA[k[1]][1], v), []).append(k[0])
     for (ad, v), gunler in sorted(sayi.items()):
-        aciklama = {"aynı gün": "gece yarısı aynı gün fiyatına geçti", "doluluk": "30/40 oda · üst basamak",
+        aciklama = {"aynı gün": "gece yarısı aynı gün fiyatına geçti", "doluluk": "25/30/35 oda · üst basamak",
                     "taban": "tabanın altındaydı (yeni liste ya da kur) · tabana çıkarıldı", "kur": "euro yükseldi · € indirildi"}[v]
         print(f"{ad}: {len(gunler)} gece ({min(gunler)} – {max(gunler)}) · {aciklama}")
     yaz_hedefler(e, hid, bekle, simdi, kuru)
