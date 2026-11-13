@@ -1771,7 +1771,7 @@ FIYAT_KANALLAR = {
     "booking":    ("Booking", "Booking.com", 0.19, "Basic %10 + Genius %10 birleşik · üye değilse yalnız %10", ""),
     "hotels":     ("Hotels.com / Expedia", "Expedia", 0.19, "%10 herkese + üye %10 birleşik · üye değilse yalnız %10 (05.11)", ""),
     "trip":       ("Trip.com", "Ctrip", 0.213, "Basic %10 + mobil %10 birleşik · bilgisayarda yalnız %10 · Trip kendi %3–8 ekliyor → çarpan 1,27 (06.11)", ""),
-    "etstur":     ("Etstur", "ETSTUR", 0.264, "%20 Özel fırsat + %8 (03.11) · yakın gecede Etstur kendi kesince ets_duzelt.py düzeltir (10.11)", ""),
+    "etstur":     ("Etstur", "ETSTUR", 0.264, "%20 Özel indirim · Elektra'da her odaya −%8,08 satırı (13.11) · ets_duzelt.py yarım saatte bir denetler", ""),
     "tatilbudur": ("TatilBudur", "TatilBudur", 0.20, "%20 Erken rezervasyon", ""),
     "enuygun":    ("Enuygun", "Enuygun", 0.28, "%28 · Enuygun'un indirimi", ""),
     "jolly":      ("Jollytur", "JollyTur", 0.20, "%20 · Jolly'nin indirimi", ""),
@@ -1955,7 +1955,8 @@ def booking_expedia_parite(factors, obs, today):
         for ad, kid in PARITE_KANAL.items():
             r = e._post("Select/HOTEL_CHANNELMANAGER_PRICING",
                         {"Object": "HOTEL_CHANNELMANAGER_PRICING",
-                         "Where": [{"Column": "CHANNELID", "Operator": "=", "Value": kid}], "Select": []},
+                         "Where": [{"Column": "CHANNELID", "Operator": "=", "Value": kid}], "Select": [],
+                         "Paging": {"ItemsPerPage": 1000, "Current": 1}},   # yoksa yalnız 10 satır
                         action_name="Select")
             satir[ad] = {(str(x["ROOMTYPEID"]), str(x["FROMDATE"])[:10], str(x["TODATE"])[:10],
                           float(x.get("WEEKDAYPERCENT") or 0), float(x.get("WEEKENDPERCENT") or 0),
@@ -1991,6 +1992,76 @@ def booking_expedia_parite(factors, obs, today):
     else:
         bilgi.append(f"son {PARITE_TAZE_SAAT} saatte aynı gece için iki kanaldan okuma yok (yalnız Elektra tarafı denetlendi)")
     return sorun, bilgi
+
+
+
+# Etstur kuralı (sahibi 13.11.2026: "her güncellemede kontrol et"): Etstur'da misafirin gördüğü = hedef.
+# Elektra tarafı: ETSTUR çarpanı × oda satırı × (1 − %20 Etspartners indirimi) her odada ≈ 1 olmalı.
+# Okuma tarafı: son ETS_TAZE_SAAT saatin Etstur okumaları ÷ hedef. Bozulursa ets_duzelt.py oda satırını
+# yarım saatte bir düzeltir (3 gün sonrası okumalara bakarak); kutu bunu izlemek içindir.
+ETS_INDIRIM, ETS_TAZE_SAAT, ETS_ESIK = 0.20, 6, 0.03
+ETS_ODA_TIPI = {"stu": 442639, "sup": 455224, "dlx": 442634, "sui": 442636}
+
+
+def etstur_kontrol(factors, obs, today):
+    """→ (sorunlar [str], bilgi [str])."""
+    sorun, bilgi = [], []
+    adlar = dict((r[0], r[1]) for r in FIYAT_ODALAR)
+    f = factors.get("ETSTUR")
+    if not f:
+        return ["Elektra'da ETSTUR çarpanı okunamadı (kanal kapalı olabilir)"], bilgi
+    try:
+        e, _ = E.connect()
+        r = e._post("Select/HOTEL_CHANNELMANAGER_PRICING",
+                    {"Object": "HOTEL_CHANNELMANAGER_PRICING",
+                     "Where": [{"Column": "CHANNELID", "Operator": "=", "Value": 147}], "Select": [],
+                     "Paging": {"ItemsPerPage": 1000, "Current": 1}}, action_name="Select")
+        rows = ((r or {}).get("ResultSets") or [[]])[0]
+        t = today.isoformat()
+        etkin = []
+        for k, rt in ETS_ODA_TIPI.items():
+            uzun = [x for x in rows if x["ROOMTYPEID"] == rt and str(x["FROMDATE"])[:10] <= t <= str(x["TODATE"])[:10]
+                    and str(x["FROMDATE"])[:10] < str(x["TODATE"])[:10]]
+            yuzde = float(uzun[0]["WEEKDAYPERCENT"]) if uzun else 0.0
+            m = f * (1 + yuzde / 100) * (1 - ETS_INDIRIM)
+            etkin.append(f"{adlar[k]} ×{m:.3f}")
+            if abs(m - 1) > 0.01:
+                sorun.append(f"Elektra: {adlar[k]} Etstur'a %{(m - 1) * 100:+.1f} farklı gidiyor "
+                             f"(çarpan {f:g}, oda satırı %{yuzde:g})")
+        tek = [x for x in rows if str(x["FROMDATE"])[:10] == str(x["TODATE"])[:10] >= t
+               and abs(float(x["WEEKDAYPERCENT"]) - next((float(y["WEEKDAYPERCENT"]) for y in rows
+                       if y["ROOMTYPEID"] == x["ROOMTYPEID"] and str(y["FROMDATE"])[:10] < str(y["TODATE"])[:10]
+                       and str(y["FROMDATE"])[:10] <= str(x["FROMDATE"])[:10] <= str(y["TODATE"])[:10]), 0.0)) > 0.01]
+        if tek:
+            sorun.append(f"Elektra: {len(tek)} tek gecelik Etstur satırı oda satırından farklı (elle bakılmalı)")
+        bilgi.append("Elektra'dan giden (%20 sonrası ÷ liste): " + ", ".join(etkin))
+    except Exception as ex:
+        bilgi.append(f"Etstur oda satırları okunamadı ({type(ex).__name__})")
+    sinir = (dt.datetime.now() - dt.timedelta(hours=ETS_TAZE_SAAT)).strftime("%Y-%m-%d %H:%M")
+    say, sapma = 0, {}
+    for (tt, k, rk), o in obs.items():
+        d = pdate(tt)
+        if k != "etstur" or not d or d < today or not o.get("fiyat") or o.get("zaman", "") < sinir:
+            continue
+        oda = next((r for r in FIYAT_ODALAR if r[0] == rk), None)
+        if not oda or (rk == "eko"):
+            continue
+        say += 1
+        # hedef: doluluk basamağı dahil (panel kartıyla aynı)
+        dol_hedef = gece_hedef(oda, d, ETS_DOLULUK.get(d, 0), today)
+        oran = o["fiyat"] / dol_hedef
+        if abs(oran - 1) > ETS_ESIK:
+            sapma.setdefault(rk, []).append((d, o["fiyat"], dol_hedef))
+    for rk, l in sapma.items():
+        l.sort()
+        orn = "; ".join(f"{d.day} {TR_MONTHS[d.month]}: {_tl(p)} ₺ (hedef {_tl(h)})" for d, p, h in l[:3])
+        sorun.append(f"Etstur'da görülen {adlar.get(rk, rk)}: {len(l)} gece hedeften farklı — {orn}")
+    bilgi.append(f"son {ETS_TAZE_SAAT} saatte {say} Etstur okuması kıyaslandı" if say
+                 else f"son {ETS_TAZE_SAAT} saatte Etstur okuması yok")
+    return sorun, bilgi
+
+
+ETS_DOLULUK = {}   # build_fiyat doldurur (gece → dolu oda)
 
 
 
@@ -2087,6 +2158,17 @@ def build_fiyat(env):
         if v and abs(v[0] - hedef) > FIYAT_TOLERANS:
             ucuz.add(FIYAT_KANALLAR[key][0] + " (Elektra ayarı)")
 
+    ETS_DOLULUK.clear()
+    ETS_DOLULUK.update(dol)
+    e_sorun, e_bilgi = etstur_kontrol(factors, obs, today)
+    if e_sorun:
+        ucuz.add("Etstur ≠ hedef")
+    etstur_html = ("<div class='fk-fix' style='box-shadow:inset 4px 0 " + ("var(--statbad)" if e_sorun else "var(--statok)")
+                   + "'><b>Etstur kuralı</b> <span class='fk-diff " + ("fk-low'>FARK VAR" if e_sorun else "fk-ok'>hedefte")
+                   + "</span><div class='fk-small' style='margin-top:4px'>"
+                   + "".join(f"<div style='color:var(--statbad);font-weight:700'>• {esc(x)}</div>" for x in e_sorun)
+                   + " · ".join(esc(x) for x in e_bilgi)
+                   + " · ±%3 ufak fark sayılır · ets_duzelt.py yarım saatte bir oda çarpanını düzeltir</div></div>")
     p_sorun, p_bilgi = booking_expedia_parite(factors, obs, today)
     if p_sorun:
         ucuz.add("Booking ≠ Expedia")
@@ -2156,7 +2238,7 @@ def build_fiyat(env):
     else:
         duz_html = ""
 
-    body = (FIYAT_HTML.replace("__DUZ__", parite_html + duz_html)
+    body = (FIYAT_HTML.replace("__DUZ__", parite_html + etstur_html + duz_html)
             .replace("__KAPI__", kapi).replace("__HAFTA__", hafta)
             .replace("__BANT__", esc(bant(today)[0].upper() + bant(today)[1:]))
             .replace("__BUGUN__", esc(f"{today.day} {TR_MONTHS[today.month]} {GUN_ADI[today.weekday()]}"))
