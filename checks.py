@@ -2065,6 +2065,44 @@ ETS_DOLULUK = {}   # build_fiyat doldurur (gece → dolu oda)
 
 
 
+# Trip.com ve obilet (sahibi 14.11.2026: "Trip Booking Expedia ile aynı fiyat olacak", "sürekli indirim yapıyor
+# yapamasın"): son okumalar ÷ hedef. Bozulursa gece_duzelt.py yarım saatte bir Elektra'da o kanalın gece/oda
+# çarpanını düzeltir (yakın 4 gece tek tek, sonrası tek satır). Kutu bunu izlemek içindir.
+OKUMA_KURAL = (("trip", "Trip.com = Booking kuralı"), ("obilet", "obilet kuralı"))
+
+
+def okuma_kontrol(anahtar, obs, today, saat=6, esik=0.03):
+    """→ (sorunlar, bilgi): son `saat` saatin okumaları hedeften ±esik'ten fazla sapan geceler."""
+    sorun, bilgi = [], []
+    adlar = dict((r[0], r[1]) for r in FIYAT_ODALAR)
+    sinir = (dt.datetime.now() - dt.timedelta(hours=saat)).strftime("%Y-%m-%d %H:%M")
+    say, sapma = 0, {}
+    for (tt, k, rk), o in obs.items():
+        d = pdate(tt)
+        oda = next((r for r in FIYAT_ODALAR if r[0] == rk), None)
+        if k != anahtar or not d or d < today or not o.get("fiyat") or o.get("zaman", "") < sinir or not oda or rk == "eko":
+            continue
+        say += 1
+        h = gece_hedef(oda, d, ETS_DOLULUK.get(d, 0), today)
+        if abs(o["fiyat"] / h - 1) > esik:
+            sapma.setdefault(rk, []).append((d, o["fiyat"], h))
+    for rk, l in sapma.items():
+        l.sort()
+        orn = "; ".join(f"{d.day} {TR_MONTHS[d.month]}: {_tl(p)} ₺ (hedef {_tl(h)})" for d, p, h in l[:3])
+        sorun.append(f"{adlar.get(rk, rk)}: {len(l)} gece hedeften farklı — {orn}")
+    bilgi.append(f"son {saat} saatte {say} okuma kıyaslandı" if say else f"son {saat} saatte okuma yok")
+    return sorun, bilgi
+
+
+def kural_kutusu(baslik, sorun, bilgi, ek):
+    return ("<div class='fk-fix' style='box-shadow:inset 4px 0 " + ("var(--statbad)" if sorun else "var(--statok)")
+            + f"'><b>{esc(baslik)}</b> <span class='fk-diff " + ("fk-low'>FARK VAR" if sorun else "fk-ok'>hedefte")
+            + "</span><div class='fk-small' style='margin-top:4px'>"
+            + "".join(f"<div style='color:var(--statbad);font-weight:700'>• {esc(x)}</div>" for x in sorun)
+            + " · ".join(esc(x) for x in bilgi) + " · " + esc(ek) + "</div></div>")
+
+
+
 def build_fiyat(env):
     """Fiyat Kontrol — her kanalda misafirin gördüğü fiyat hedefle aynı mı? Görülen fiyat
     gözlem dosyasından, beklenen fiyat Elektra'daki canlı kanal çarpanından gelir; Elektra'da
@@ -2169,6 +2207,12 @@ def build_fiyat(env):
                    + "".join(f"<div style='color:var(--statbad);font-weight:700'>• {esc(x)}</div>" for x in e_sorun)
                    + " · ".join(esc(x) for x in e_bilgi)
                    + " · ±%3 ufak fark sayılır · ets_duzelt.py yarım saatte bir oda çarpanını düzeltir</div></div>")
+    for anahtar, baslik in OKUMA_KURAL:
+        o_sorun, o_bilgi = okuma_kontrol(anahtar, obs, today)
+        if o_sorun:
+            ucuz.add(baslik.split(" ")[0] + " ≠ hedef")
+        etstur_html += kural_kutusu(baslik, o_sorun, o_bilgi,
+                                    "±%3 ufak fark sayılır · gece_duzelt.py yarım saatte bir kanal çarpanını düzeltir")
     p_sorun, p_bilgi = booking_expedia_parite(factors, obs, today)
     if p_sorun:
         ucuz.add("Booking ≠ Expedia")
