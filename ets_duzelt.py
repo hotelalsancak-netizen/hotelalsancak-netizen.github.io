@@ -25,6 +25,7 @@ import argparse
 import datetime as dt
 import statistics
 import sys
+import time
 
 import requests
 
@@ -67,9 +68,16 @@ def son_degisim(e, hid, satir):
     """Satırın en son değiştiği an, İstanbul saatiyle 'YYYY-AA-GG SS:DD' (okuma zamanıyla kıyas için)."""
     if not satir:
         return ""
-    r = e._post("GetLog/HOTEL_CHANNELMANAGER_PRICING",
-                {"Object": "HOTEL_CHANNELMANAGER_PRICING", "PrimaryKey": satir["ID"], "Tenant": hid},
-                action_name="GetLog")
+    for deneme in range(3):
+        try:
+            r = e._post("GetLog/HOTEL_CHANNELMANAGER_PRICING",
+                        {"Object": "HOTEL_CHANNELMANAGER_PRICING", "PrimaryKey": satir["ID"], "Tenant": hid},
+                        action_name="GetLog")
+            break
+        except Exception:
+            time.sleep(5)
+    else:
+        return "9999"     # kayıt okunamadı → hiçbir okuma sayılmaz (güvenli taraf)
     ts = [x.get("LOGTIMEUTC", "") for x in ((r or {}).get("ResultSets") or [[]])[0]]
     if not ts:
         return ""

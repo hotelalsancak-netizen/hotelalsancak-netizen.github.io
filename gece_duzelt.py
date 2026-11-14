@@ -25,6 +25,7 @@ import datetime as dt
 import json
 import statistics
 import sys
+import time
 
 import requests
 
@@ -61,9 +62,16 @@ def deger_degisim(e, hid, satir):
     """Satırın yüzdesinin en son değiştiği an (İstanbul, 'YYYY-AA-GG SS:DD'); yalnız tarih kaydırma sayılmaz."""
     if not satir:
         return ""
-    r = e._post("GetLog/HOTEL_CHANNELMANAGER_PRICING",
-                {"Object": "HOTEL_CHANNELMANAGER_PRICING", "PrimaryKey": satir["ID"], "Tenant": hid},
-                action_name="GetLog")
+    for deneme in range(3):
+        try:
+            r = e._post("GetLog/HOTEL_CHANNELMANAGER_PRICING",
+                        {"Object": "HOTEL_CHANNELMANAGER_PRICING", "PrimaryKey": satir["ID"], "Tenant": hid},
+                        action_name="GetLog")
+            break
+        except Exception:
+            time.sleep(5)
+    else:
+        return "9999"     # kayıt okunamadı → hiçbir okuma sayılmaz, bu satıra dokunulmaz (güvenli taraf)
     kayit = sorted(((x.get("LOGTIMEUTC", ""), x.get("BODY") or "{}")
                     for x in ((r or {}).get("ResultSets") or [[]])[0]))
     son, onceki = "", None
