@@ -136,7 +136,7 @@ def main():
         eski = [mevcut.get(rt) for rt in tipler]
         c = float(eski[0]["WEEKDAYPERCENT"]) if eski[0] else 0.0
         degisim = max(son_degisim(e, hid, s) for s in eski) if any(eski) else ""
-        if degisim:
+        if degisim and degisim != "9999":
             degisim = (dt.datetime.strptime(degisim, "%Y-%m-%d %H:%M")
                        + dt.timedelta(minutes=BEKLE_DK)).strftime("%Y-%m-%d %H:%M")
         oranlar = [o for (d, z), o in okuma.get(k, {}).items() if z > degisim]
