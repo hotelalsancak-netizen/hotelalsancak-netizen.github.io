@@ -3291,6 +3291,79 @@ def build_tvkart(env=None):
                          body)}
 
 
+
+# ---------------------------------------------------------------------------
+# Google Yorum Kartları (16.11.2026) — çıkışta her misafire verilen QR'lı A6 kart.
+# Üretici: kartlar/yorum/uret.py (5 renk, ön TR / arka EN, matbaa + A4). dashboard.py dosyaları
+# public/kartlar/yorum/'a şifresiz kopyalar (basılı kart, gizli değil). QR → rivaalsancak.com/yorum.html
+# → Google "yorum yaz"; hedef değişirse sitedeki yorum.html güncellenir, basılı kart değişmez.
+# ---------------------------------------------------------------------------
+YORUMKART_DIR = _pathlib.Path(__file__).resolve().parent / "kartlar" / "yorum"
+YORUMKART_URL = "kartlar/yorum/"
+YORUMKART_CSS = """
+<style>
+.ykr{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:14px 0 4px}
+.ykr .card{display:flex;flex-direction:column;gap:10px;padding:14px}
+.ykr .yuz{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ykr .thumb{display:block;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:#fff}
+.ykr .thumb img{display:block;width:100%;height:auto}
+.ykr h3{margin:0;font-size:14px;display:flex;align-items:center;gap:8px}
+.ykr .sw{width:16px;height:16px;border-radius:5px;border:1px solid var(--border);flex:none}
+.ykr .cap{font-size:11.5px;color:var(--sub);text-align:center;margin-top:3px}
+</style>"""
+
+
+def build_yorumkart(env=None):
+    m = json.loads((YORUMKART_DIR / "kartlar.json").read_text(encoding="utf-8"))
+    kartlar = m["kartlar"]
+    u = lambda f: esc(YORUMKART_URL + f)
+    isim = lambda k, uz: esc(f"Riva-yorum-karti-{k['kod']}{uz}")
+    cards = "".join(
+        f"<div class='card'>"
+        f"<h3><span class='sw' style='background:{esc(k['renk'])}'></span>{esc(k['ad'])}</h3>"
+        f"<div class='yuz'>"
+        f"<div><a class='thumb' href='{u(k['png_on'])}' target='_blank' rel='noopener' title='Büyük görmek için tıklayın'>"
+        f"<img src='{u(k['onizleme'])}' alt='{esc(k['ad'])} yorum kartı ön yüz' loading='lazy'></a><div class='cap'>Ön · Türkçe</div></div>"
+        f"<div><a class='thumb' href='{u(k['png_arka'])}' target='_blank' rel='noopener' title='Büyük görmek için tıklayın'>"
+        f"<img src='{u(k['onizleme_arka'])}' alt='{esc(k['ad'])} yorum kartı arka yüz' loading='lazy'></a><div class='cap'>Arka · İngilizce</div></div>"
+        f"</div><div class='btns'>"
+        f"<a class='dl main' href='{u(k['matbaa'])}' download='{isim(k, '-matbaa.pdf')}'>⤓ Matbaa PDF</a>"
+        f"<a class='dl' href='{u(k['pdf'])}' download='{isim(k, '.pdf')}'>⤓ PDF</a>"
+        f"<a class='dl' href='{u(k['a4'])}' download='{isim(k, '-A4-4lu.pdf')}'>⤓ A4 · 4'lü</a>"
+        f"<a class='dl' href='{u(k['png_on'])}' download='{isim(k, '-on.png')}'>⤓ PNG <small>ön</small></a>"
+        f"<a class='dl' href='{u(k['png_arka'])}' download='{isim(k, '-arka.png')}'>⤓ PNG <small>arka</small></a>"
+        f"</div></div>" for k in kartlar)
+    body = (
+        TVKART_CSS + YORUMKART_CSS +
+        "<p class='lead'>Çıkışta <b>her misafire</b> verilen kart. Misafir QR'ı telefon kamerasıyla okutunca "
+        "doğrudan Google'da otelimize yorum yazma ekranı açılır. Beş renk var; birini seçip basın. "
+        "Görsele tıklayınca kart büyük açılır.</p>"
+        f"<div class='ykr'>{cards}</div>"
+        "<div class='grid2' style='margin-top:18px'>"
+        "<div class='card'><h3>Matbaaya göndermek</h3>"
+        "<p class='lead' style='margin-bottom:4px'>Seçtiğiniz rengin <b>Matbaa PDF</b> dosyasını gönderin; "
+        "adedi yazın (öneri: 1.000 adet, ~2–3 aylık çıkış).</p>"
+        "<dl class='spec'>"
+        "<dt>Kesim boyu</dt><dd>A6 yatay · 148 × 105 mm</dd>"
+        "<dt>Dosya</dt><dd>2 sayfa: ön (Türkçe) + arka (İngilizce); her yanda 3 mm taşma, kesim işaretli</dd>"
+        "<dt>Baskı</dt><dd>çift yüz, 4 renk</dd>"
+        "<dt>Kâğıt önerisi</dt><dd>350 g kuşe + mat selefon (QR parlamaz)</dd>"
+        "<dt>Renk</dt><dd>RGB — matbaa CMYK'ya kendisi çevirir</dd>"
+        "</dl></div>"
+        "<div class='card'><h3>Ofis yazıcısında basmak</h3>"
+        "<ol class='howto'><li><b>A4 · 4'lü</b> dosyasını açın; ölçek <b>%100 / Gerçek boyut</b>.</li>"
+        "<li>Çift yüz (dupleks) seçin, <b>uzun kenardan çevir</b>.</li>"
+        "<li>Kesik çizgilerden kesin — bir A4'ten dört kart çıkar.</li></ol></div></div>"
+        "<div class='note'><b>Google kuralı:</b> yorum karşılığında indirim ya da hediye verilmez ve kart yalnız "
+        "memnun misafire değil <b>herkese</b> verilir; aksi hâlde Google yorumları silebilir. QR, "
+        "<b>rivaalsancak.com/yorum.html</b> adresine gider; Google bağlantısı değişirse yalnız o sayfa "
+        "güncellenir, basılı kartlar geçerli kalır.</div>")
+    return {"label": "Yorum Kartları", "count": len(kartlar), "count_label": "renk",
+            "tone": "ok", "sub": "Google yorum kartı · QR · matbaa ve A4 PDF",
+            "updated": now_str(),
+            "html": PAGE("Pazarlama", "Google Yorum Kartları",
+                         "Çıkışta her misafire: QR'ı okutan doğrudan Google'da yorum yazar", body)}
+
 def build_gunluk(env):
     today = dt.date.today()
     start = today - dt.timedelta(days=30)          # son 31 gün (gün/hafta/ay kapsamı için)

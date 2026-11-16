@@ -1,0 +1,66 @@
+{
+ "uretim": "2026-11-16",
+ "hedef": "https://www.rivaalsancak.com/yorum.html",
+ "kartlar": [
+  {
+   "kod": "lacivert",
+   "ad": "Lacivert",
+   "renk": "#132742",
+   "pdf": "yorum-karti-lacivert.pdf",
+   "png_on": "yorum-karti-lacivert-on.png",
+   "png_arka": "yorum-karti-lacivert-arka.png",
+   "matbaa": "matbaa/yorum-karti-lacivert-matbaa.pdf",
+   "a4": "yorum-karti-lacivert-A4.pdf",
+   "onizleme": "onizleme-lacivert.jpg",
+   "onizleme_arka": "onizleme-lacivert-arka.jpg"
+  },
+  {
+   "kod": "mavi",
+   "ad": "Mavi",
+   "renk": "#537eac",
+   "pdf": "yorum-karti-mavi.pdf",
+   "png_on": "yorum-karti-mavi-on.png",
+   "png_arka": "yorum-karti-mavi-arka.png",
+   "matbaa": "matbaa/yorum-karti-mavi-matbaa.pdf",
+   "a4": "yorum-karti-mavi-A4.pdf",
+   "onizleme": "onizleme-mavi.jpg",
+   "onizleme_arka": "onizleme-mavi-arka.jpg"
+  },
+  {
+   "kod": "beyaz",
+   "ad": "Beyaz",
+   "renk": "#ffffff",
+   "pdf": "yorum-karti-beyaz.pdf",
+   "png_on": "yorum-karti-beyaz-on.png",
+   "png_arka": "yorum-karti-beyaz-arka.png",
+   "matbaa": "matbaa/yorum-karti-beyaz-matbaa.pdf",
+   "a4": "yorum-karti-beyaz-A4.pdf",
+   "onizleme": "onizleme-beyaz.jpg",
+   "onizleme_arka": "onizleme-beyaz-arka.jpg"
+  },
+  {
+   "kod": "acik-mavi",
+   "ad": "Açık mavi",
+   "renk": "#f0f6fd",
+   "pdf": "yorum-karti-acik-mavi.pdf",
+   "png_on": "yorum-karti-acik-mavi-on.png",
+   "png_arka": "yorum-karti-acik-mavi-arka.png",
+   "matbaa": "matbaa/yorum-karti-acik-mavi-matbaa.pdf",
+   "a4": "yorum-karti-acik-mavi-A4.pdf",
+   "onizleme": "onizleme-acik-mavi.jpg",
+   "onizleme_arka": "onizleme-acik-mavi-arka.jpg"
+  },
+  {
+   "kod": "iki-renk",
+   "ad": "İki renk",
+   "renk": "#132742",
+   "pdf": "yorum-karti-iki-renk.pdf",
+   "png_on": "yorum-karti-iki-renk-on.png",
+   "png_arka": "yorum-karti-iki-renk-arka.png",
+   "matbaa": "matbaa/yorum-karti-iki-renk-matbaa.pdf",
+   "a4": "yorum-karti-iki-renk-A4.pdf",
+   "onizleme": "onizleme-iki-renk.jpg",
+   "onizleme_arka": "onizleme-iki-renk-arka.jpg"
+  }
+ ]
+}

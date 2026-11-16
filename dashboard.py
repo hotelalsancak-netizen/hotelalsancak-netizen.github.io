@@ -45,7 +45,7 @@ SHELL = ROOT / "dashboard_shell.html"
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
 SECTION_ORDER = ["gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "eksik",
-                 "fiyat", "kart", "stats", "satis", "borclar", "vergi", "tvkart"]
+                 "fiyat", "kart", "stats", "satis", "borclar", "vergi", "tvkart", "yorumkart"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -125,7 +125,7 @@ def build_kart() -> dict:
 # Fiyat Kontrol iki role de açık: resepsiyon kapı fiyatlarını oradan görür (17.10.2026).
 # Eksik Bilgiler iki role de açık: otel müdürü kontrol eder, resepsiyon da kendi
 # eksiğini görüp tamamlar (20.10.2026).
-RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat", "eksik"}
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat", "eksik", "yorumkart"}
 
 
 def passwords() -> dict:
@@ -204,7 +204,7 @@ def build_cloud():
             ("stats", checks.build_stats), ("satis", checks.build_satis),
             ("borclar", checks.build_borclar),
             ("vergi", checks.build_vergi), ("gunluk", checks.build_gunluk),
-            ("tvkart", checks.build_tvkart))
+            ("tvkart", checks.build_tvkart), ("yorumkart", checks.build_yorumkart))
     for key, fn in live:
         try:
             section = fn(env)
@@ -258,6 +258,11 @@ def build_cloud():
     # değil). Üretici betik, ara HTML ve ham görseller yayına çıkmaz.
     if (ROOT / "kartlar" / "tv-kumanda").is_dir():
         shutil.copytree(ROOT / "kartlar" / "tv-kumanda", PUBLIC / "kartlar" / "tv-kumanda",
+                        dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("*.py", "*.html", "img", ".tmp-*", "__pycache__"))
+    # Google yorum kartları (16.11.2026): basılı misafir kartı, gizli değil.
+    if (ROOT / "kartlar" / "yorum").is_dir():
+        shutil.copytree(ROOT / "kartlar" / "yorum", PUBLIC / "kartlar" / "yorum",
                         dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("*.py", "*.html", "img", ".tmp-*", "__pycache__"))
     (PUBLIC / "data" / "manifest.json").write_text(
