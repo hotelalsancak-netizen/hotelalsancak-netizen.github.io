@@ -479,6 +479,23 @@ def fetch_account_balances(env=None, master_code="120"):
     return list(agg.values())
 
 
+
+def fetch_account_statement(code, frm="2000-01-01", to="2099-12-31", env=None):
+    """Hesap ekstresi: `code` (ana hesap ya da yaprak, ör. '320.0126') altındaki HER fiş
+    satırı, ham haliyle (RECEIPTDATE, LOCALDEBIT/LOCALCREDIT, DOCTYPE, INVOICENUMBER,
+    DETAILNOTES, RECEIPTNOTES, RECEIPTID …). Borçlar sayfası Bilsa carisinin aylık seyrini
+    ve son hareketlerini buradan çıkarır. Yıl kapanış/açılış fişleri de gelir (RECEIPTNOTES
+    'Kapanış Fişi' / 'Açılış Fişi'); bakiye seyrinde bunları ATLA, yoksa ocakta sıçrar."""
+    e, env = connect(env)
+    hid = int(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
+    d = e._post("Execute/" + ACC_TRANS_PROC,
+                {"Object": ACC_TRANS_PROC, "Action": "Execute", "Select": ["*"],
+                 "Parameters": {"HOTELID": hid, "CODE": code, "FROM": frm, "TO": to}},
+                action_name="Execute")
+    if isinstance(d, list):
+        return d[0] if (d and isinstance(d[0], list)) else d
+    return ((d or {}).get("ResultSets") or [[]])[0]
+
 # ---------------------------------------------------------------------------
 # Muhasebe MİZANI — /app/grid/acctrialbalance4 ("Trial Balance") ekranının arkasındaki
 # proc. GetConfig/grid.acctrialbalance4.config -> Object SP_EASYPMS_ACCOUNT_TRIALBALANCE4.

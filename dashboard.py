@@ -45,7 +45,7 @@ SHELL = ROOT / "dashboard_shell.html"
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
 SECTION_ORDER = ["gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "eksik",
-                 "fiyat", "kart", "stats", "satis", "vergi", "tvkart"]
+                 "fiyat", "kart", "stats", "satis", "borclar", "vergi", "tvkart"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -202,6 +202,7 @@ def build_cloud():
             ("eksik", checks.build_eksik),
             ("fiyat", checks.build_fiyat),
             ("stats", checks.build_stats), ("satis", checks.build_satis),
+            ("borclar", checks.build_borclar),
             ("vergi", checks.build_vergi), ("gunluk", checks.build_gunluk),
             ("tvkart", checks.build_tvkart))
     for key, fn in live:

@@ -1500,7 +1500,7 @@ def build_vergi(env):
         f"<td class='r money'>{tl(kon_yil)} ₺</td></tr></table>")
 
     # ---- Kurumlar / geçici vergi: kümülatif dönemler ----------------------
-    kv_rows, onceki_vergi, kv_bugun = [], 0.0, None
+    kv_rows, onceki_vergi, kv_bugun, kv_donemler = [], 0.0, None, []
     for son_ay, ad, aralik, vade in KV_PERIODS:
         ms = [m for m in months if m["m"] <= son_ay]
         if not ms:
@@ -1528,6 +1528,9 @@ def build_vergi(env):
             f"<td class='r money'>{son_hucre}</td></tr>")
         if today.month <= son_ay and kv_bugun is None:
             kv_bugun = {"ad": ad, "matrah": matrah, "vergi": vergi, "odenecek": odenecek}
+        kv_donemler.append({"ad": ad, "vergi": vergi, "odenecek": odenecek, "onceki": onceki_vergi,
+                            "vade": (dt.date(year, son_ay + 2, 17) if son_ay < 12
+                                     else dt.date(year + 1, 4, 30))})
         onceki_vergi = vergi
 
     kv_tbl = (
@@ -1600,16 +1603,447 @@ def build_vergi(env):
         "düzeltmeleri genelde <b>yıl sonunda</b> işlenir; bu yüzden kurumlar vergisi rakamı "
         "<b>tahminidir</b>. Beyanname öncesi muhasebecinize doğrulatın.</div>")
 
-    body = (f"<div class='stats'>{stats}</div>{kdv_tbl}{kv_tbl}{kirilim}{v360_tbl}{duzelt}{note}")
-    return {"label": "Vergi Sayfası", "count": int(round(bu_ay["odenecek"] / 1000)),
-            "count_label": "bin ₺ · bu ay KDV",
-            "tone": "bad" if bu_ay["odenecek"] else "ok",
-            "sub": (f"{TR_MON_FULL[today.month]} KDV {tl(bu_ay['odenecek'])} ₺ · "
-                    f"{year} KDV {tl(kdv_yil)} ₺ · kurumlar v. matrahı {tl(max(0.0, y_gelir - y_indirim - y_gider + y_kkeg))} ₺"),
+    # ---- Üst kısım: vadeli takip (16.11.2026). Geçen ayın tahakkuku bu ay ödenir.
+    if gecen_ay:
+        prev_rows, kdv_prev = gecen_ay["rows"], gecen_ay["odenecek"]
+    else:                                   # Ocak: geçen ay = önceki yılın Aralık'ı
+        prev_rows = E.fetch_trial_balance(f"{year - 1}-12-01", f"{year - 1}-12-31", env=env)
+        kdv_prev = max(0.0, _acc(prev_rows, "391", "c") - _acc(prev_rows, "191", "d"))
+    takip, t_stats, t_toplam, t_acil = _vergi_takip(env, prev_rows, bu_ay["rows"], kdv_prev,
+                                                    kv_donemler)
+    yillik = kv_donemler[-1]["vergi"] if kv_donemler else 0.0
+    t_stats += stat(f"≈ {tl(yillik)} ₺", f"{year} kurumlar vergisi (tahmini, yıllık)")
+
+    body = (f"{BV_CSS}<div class='lock'>🔒 Yalnız yönetici</div><div class='stats'>{t_stats}</div>"
+            f"{takip}<h2 style='margin-top:34px'>Hesap ayrıntısı</h2>"
+            f"{kdv_tbl}{kv_tbl}{kirilim}{v360_tbl}{duzelt}{note}")
+    return {"label": "Vergiler", "count": int(round(t_toplam / 1000)),
+            "count_label": "bin ₺ · bu ay ödenecek vergi",
+            "tone": "bad" if t_acil else ("" if t_toplam else "ok"),
+            "sub": (f"{TR_MON_FULL[today.month]} ödenmemiş {tl(t_toplam)} ₺ · "
+                    f"{year} KDV {tl(kdv_yil)} ₺ · kurumlar v. ≈ {tl(yillik)} ₺"),
             "updated": now_str(),
-            "html": PAGE("Muhasebe & Vergi", "Vergi Sayfası",
-                         f"{year} · aylık KDV, konaklama vergisi ve kurumlar (geçici) vergisi",
-                         body)}
+            "html": PAGE("Muhasebe", "Vergiler",
+                         f"{year} · ödenecek vergiler vadesiyle, KDV, konaklama vergisi ve "
+                         "kurumlar (geçici) vergisi", body)}
+
+
+# --------------------------------------------------------------------------- Borçlar
+# Borçlar sayfası + Vergiler sayfasının "yaklaşan ödemeler" kısmı (16.11.2026, sahibin
+# isteği; taslak https://claude.ai/artifact/2nNe92nPPrdEcf9CuZSeYm). İkisi de YALNIZ
+# YÖNETİM (RECEPTION_SECTIONS'ta yok).
+# Kaynak TÜM ZAMANLARIN mizanı: bilanço hesaplarının (3xx/4xx) bakiyesi yıl kapanışından
+# etkilenmez — kapanış fişi bakiyeyi sıfırlar, açılış fişi aynısını geri yazar.
+# Elle girilen borç/vergiler (Elektra'da olmayan kredi, kredi kartı, emlak vergisi, MTV)
+# site_data/elle.enc.json'da YÖNETİM parolasıyla şifreli durur (depo herkese açık);
+# düzenlemek için: python3 elle_kayit.py. Yönetim parolası değişirse bu dosya da yeniden
+# şifrelenmeli (kart haftaları gibi).
+BORC_GRUPLARI = [   # (başlık, önekler) — sıra sayfadaki sıradır
+    ("Tedarikçiler", ("320", "321", "329")),
+    ("Banka kredileri", ("300", "301", "303", "304", "309", "400", "401", "405", "409")),
+    ("Ödenecek vergi ve fonlar", ("360", "368", "369")),
+    ("Ödenecek SGK primleri", ("361",)),
+    ("Dönem kârı vergi karşılığı", ("370",)),
+    ("Ortaklar ve personel", ("331", "332", "333", "335", "336")),
+]
+TR_TATIL = {(1, 1), (4, 23), (5, 1), (5, 19), (7, 15), (8, 30), (10, 29)}  # sabit tarihli
+_MIZAN_CACHE = {}
+_BILSA_CACHE = {}
+
+BV_CSS = """<style>
+.st{display:inline-block;white-space:nowrap;font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px}
+.st.bad{background:#fef2f2;color:#dc2626}.st.warn{background:#fffbeb;color:#b45309}
+.st.ok{background:#f0fdf4;color:#16a34a}.st.mut{background:var(--th-bg);color:var(--sub)}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .st.bad{background:#2a1416;color:#f87171}
+ :root:not([data-theme=light]) .st.warn{background:#2a2210;color:#fbbf24}
+ :root:not([data-theme=light]) .st.ok{background:#0f2417;color:#4ade80}}
+:root[data-theme=dark] .st.bad{background:#2a1416;color:#f87171}
+:root[data-theme=dark] .st.warn{background:#2a2210;color:#fbbf24}
+:root[data-theme=dark] .st.ok{background:#0f2417;color:#4ade80}
+.kod{display:block;font:11.5px ui-monospace,Menlo,monospace;color:var(--sub)}
+.alt{display:block;font-size:12px;color:var(--sub)}
+.scroll{overflow-x:auto}
+.scroll table{min-width:520px}
+tr.top td{font-weight:800;border-top:2px solid var(--fg)}
+.lock{display:inline-block;font-size:12px;font-weight:700;color:var(--eyebrow);background:var(--th-bg);
+  border-radius:999px;padding:3px 10px;margin:-8px 0 12px}
+</style>"""
+
+
+def _tr_up(s):
+    return (s or "").replace("i", "İ").replace("ı", "I").upper()
+
+
+def _mizan_all(env):
+    """Yıl başı-bugün değil, TÜM zamanlar: bilanço bakiyeleri. Aynı derlemede Borçlar ve
+    Vergiler ikisi de ister; tek çağrı."""
+    k = dt.date.today().isoformat()
+    if k not in _MIZAN_CACHE:
+        _MIZAN_CACHE[k] = E.fetch_trial_balance("2000-01-01", k, env=env)
+    return _MIZAN_CACHE[k]
+
+
+def _bakiye(r):
+    """Alacak bakiyesi pozitif = borcumuz."""
+    return r["cbal"] - r["dbal"]
+
+
+def _is_gunu(d):
+    """Vade tatile denk gelirse ilk iş gününe kayar (VUK 18). Dini bayramlar her yıl
+    değiştiği için listede yok — sayfada not var."""
+    while d.weekday() >= 5 or (d.month, d.day) in TR_TATIL:
+        d += dt.timedelta(days=1)
+    return d
+
+
+def _elle(key):
+    """site_data/elle.enc.json -> liste (yoksa/açılamazsa boş). Yönetim parolasıyla şifreli."""
+    p = _pathlib.Path(__file__).resolve().parent / "site_data" / "elle.enc.json"
+    cfg = E.load_env()                           # .env (yerel) + ortam değişkenleri (CI)
+    pw = (cfg.get("DASH_PW_MANAGER") or cfg.get("DASH_PASSWORD") or "").strip()
+    if not p.exists() or not pw:
+        return []
+    try:
+        import dashcrypto
+        return json.loads(dashcrypto.decrypt_multi(json.loads(p.read_text()), pw)).get(key, [])
+    except Exception as e:                       # bozuk/eski parola: sayfa yine çıksın
+        print(f"  elle.enc.json okunamadı: {e}")
+        return []
+
+
+def _bilsa(env):
+    """Bilsa carisi: yaprak hesap, ay sonu bakiyeleri (cari yıl), yıl toplamları, son
+    hareketler ve bu yılki gider (KDV hariç). Hesap bulunamazsa None."""
+    k = dt.date.today().isoformat()
+    if k in _BILSA_CACHE:
+        return _BILSA_CACHE[k]
+    hes = next((r for r in _leaves(_mizan_all(env), "320")
+                if "BİLSA" in _tr_up(r["name"]) or "BILSA" in _tr_up(r["name"])), None)
+    if not hes:
+        _BILSA_CACHE[k] = None
+        return None
+    today = dt.date.today()
+    rows = [r for r in (E.fetch_account_statement(hes["code"], env=env) or [])
+            if not any(w in _tr_up(r.get("RECEIPTNOTES")) for w in ("KAPANIŞ", "AÇILIŞ"))]
+
+    def tarih(r):
+        return str(r.get("RECEIPTDATE") or "")[:10]
+
+    def fatura_mi(r):
+        return (r.get("DOCTYPE") == "Fatura" or bool(r.get("INVOICENUMBER"))
+                or "FATURA" in _tr_up(r.get("DETAILNOTES")))
+
+    ay_sonu = []
+    for m in range(1, today.month + 1):
+        _, last = _month_bounds(today.year, m)
+        d = min(last, today).isoformat()
+        ay_sonu.append((TR_MONTHS[m], sum(num(r.get("LOCALCREDIT")) - num(r.get("LOCALDEBIT"))
+                                          for r in rows if tarih(r) <= d)))
+    yil = [r for r in rows if tarih(r)[:4] == str(today.year)]
+    fat = [r for r in yil if fatura_mi(r)]
+    diger = [r for r in yil if not fatura_mi(r)]
+    # Bu yılki gider = brüt fatura − faturadaki KDV (aynı fişin 191 satırı).
+    fis = {r.get("RECEIPTID") for r in fat}
+    kdv = sum(num(r.get("LOCALDEBIT")) - num(r.get("LOCALCREDIT"))
+              for r in (E.fetch_account_statement("191", f"{today.year}-01-01",
+                                                  today.isoformat(), env=env) or [])
+              if r.get("RECEIPTID") in fis)
+    brut = sum(num(r.get("LOCALCREDIT")) - num(r.get("LOCALDEBIT")) for r in fat)
+
+    def aciklama(r):
+        if fatura_mi(r):
+            no = r.get("INVOICENUMBER") or r.get("DOCNO") or ""
+            return ("Fatura iptali " if num(r.get("LOCALDEBIT")) else "Fatura ") + no
+        if num(r.get("LOCALDEBIT")):
+            return "Ödeme"
+        n = _tr_up(r.get("DETAILNOTES"))
+        return "Bilsa'dan gelen havale" if any(w in n for w in ("FAST", "EFT", "HAV")) \
+            else (r.get("DETAILNOTES") or "")[:60]
+
+    son = sorted(rows, key=lambda r: (tarih(r), r.get("ID") or 0), reverse=True)[:8]
+    faturalar = sorted((r for r in fat if num(r.get("LOCALCREDIT"))), key=tarih)
+    odemeler = sorted((r for r in diger if num(r.get("LOCALDEBIT"))), key=tarih)
+    out = {
+        "code": hes["code"], "name": hes["name"], "bakiye": _bakiye(hes), "ay_sonu": ay_sonu,
+        # Adet: farklı fatura numarası (iptal edilip yeniden kaydedilen fatura bir kez sayılır).
+        "fatura": brut, "kdv": kdv, "gider": brut - kdv,
+        "adet": len({r.get("INVOICENUMBER") or (r.get("DETAILNOTES") or "").split(" ")[0]
+                     for r in faturalar}),
+        "odenen": sum(num(r.get("LOCALDEBIT")) for r in diger),
+        "gelen": sum(num(r.get("LOCALCREDIT")) for r in diger),
+        "son_fatura": faturalar[-1] if faturalar else None,
+        "son_odeme": odemeler[-1] if odemeler else None,
+        "son": [(tarih(r), aciklama(r), num(r.get("LOCALCREDIT")) - num(r.get("LOCALDEBIT")))
+                for r in son],
+    }
+    _BILSA_CACHE[k] = out
+    return out
+
+
+def _tr_d(iso):
+    return f"{iso[8:10]}.{iso[5:7]}.{iso[:4]}" if iso else "—"
+
+
+def build_borclar(env):
+    """Borçlar — Elektra muhasebesindeki tüm borç hesapları + Bilsa carisi + elle girilenler."""
+    today = dt.date.today()
+    mz = _mizan_all(env)
+    gruplar, toplam = [], 0.0
+    for ad, onekler in BORC_GRUPLARI:
+        ls = [r for p in onekler for r in (_leaves(mz, p) or [x for x in mz if x["code"] == p])]
+        ls = [r for r in ls if abs(_bakiye(r)) >= 1]
+        net = sum(_bakiye(r) for r in ls)
+        if ls:
+            gruplar.append((ad, net, sorted(ls, key=lambda r: -_bakiye(r))))
+        if net > 0:
+            toplam += net
+    elle = _elle("borclar")
+    elle_top = sum(num(b.get("tutar")) for b in elle)
+    toplam += elle_top
+    bilsa = _bilsa(env)
+
+    # ---- özet kutuları
+    g = dict((ad, net) for ad, net, _ in gruplar)
+    vergi_sgk = sum(max(0.0, g.get(k, 0.0)) for k in
+                    ("Ödenecek vergi ve fonlar", "Ödenecek SGK primleri", "Dönem kârı vergi karşılığı"))
+    tedarik = g.get("Tedarikçiler", 0.0)
+    stats = stat(f"{tl(toplam)} ₺", "toplam borç")
+    if bilsa:
+        gecen = bilsa["ay_sonu"][-2][1] if len(bilsa["ay_sonu"]) > 1 else None
+        fark = f" · bu ay {'+' if bilsa['bakiye'] - gecen >= 0 else ''}{tl(bilsa['bakiye'] - gecen)}" \
+            if gecen is not None else ""
+        stats += stat(f"{tl(bilsa['bakiye'])} ₺", "Bilsa Bilgisayar Yazılım" + fark, "bad")
+        stats += stat(f"{tl(tedarik - bilsa['bakiye'])} ₺", "diğer tedarikçiler")
+    else:
+        stats += stat(f"{tl(tedarik)} ₺", "tedarikçiler")
+    stats += stat(f"{tl(vergi_sgk)} ₺", "vergi, SGK ve vergi karşılığı")
+    if g.get("Banka kredileri"):
+        stats += stat(f"{tl(g['Banka kredileri'])} ₺", "banka kredisi")
+
+    # ---- Bilsa kartı
+    bilsa_html = ""
+    if bilsa:
+        lbl = [a for a, _ in bilsa["ay_sonu"]]
+        val = [max(0.0, v) for _, v in bilsa["ay_sonu"]]
+        sf, so = bilsa["son_fatura"], bilsa["son_odeme"]
+        mini = "".join(
+            f"<div class='vrow'><span>{esc(a)}</span><span class='money'>{b}</span></div>" for a, b in (
+                (f"{today.year} faturalar ({bilsa['adet']})", f"{tl(bilsa['fatura'])} ₺"),
+                (f"{today.year} ödenen", f"{tl(bilsa['odenen'])} ₺"),
+                ("Bilsa'dan gelen", f"{tl(bilsa['gelen'])} ₺"),
+                ("Son fatura", f"{_tr_d(str(sf['RECEIPTDATE'])[:10])} · {tl(num(sf['LOCALCREDIT']))} ₺" if sf else "—"),
+                ("Son ödeme", f"{_tr_d(str(so['RECEIPTDATE'])[:10])} · {tl(num(so['LOCALDEBIT']))} ₺" if so else "—")))
+        hareket = "".join(
+            f"<tr><td>{_tr_d(t)}</td><td>{esc(a)}</td>"
+            f"<td class='r money'>{'+' if v > 0 else ''}{tl(v)}</td></tr>" for t, a, v in bilsa["son"])
+        bilsa_html = (
+            f"<h2>Bilsa — {today.year} ay sonu borç</h2>"
+            "<p class='lead'>Her ay sonundaki borç (bu ay: bugüne kadar). Faturalar borcu artırır, "
+            f"ödemeler azaltır. Elektra hesabı <b>{esc(bilsa['code'])}</b>.</p>"
+            "<div class='grid2'>"
+            f"<div class='card'>{svg_bars(lbl, val, fmt=lambda v: tl(v) + ' ₺')}{mini}</div>"
+            "<div class='card'><h3>Son hareketler</h3><div class='scroll'><table>"
+            "<tr><th>Tarih</th><th>Açıklama</th><th class='r'>Tutar</th></tr>"
+            f"{hareket}</table></div></div></div>")
+
+    # ---- grup tabloları
+    def tablo(ad, net, ls, ilk=12):
+        satir = "".join(
+            f"<tr><td>{esc(r['name'])}<span class='kod'>{esc(r['code'])}</span></td>"
+            f"<td class='r money'>{tl(_bakiye(r))}</td></tr>" for r in ls[:ilk])
+        if len(ls) > ilk:
+            kalan = sum(_bakiye(r) for r in ls[ilk:])
+            satir += (f"<tr><td>Diğer {len(ls) - ilk} hesap<span class='alt'>eksi bakiyeli "
+                      f"(fazla ödenmiş) hesaplar da dahil</span></td><td class='r money'>{tl(kalan)}</td></tr>")
+        not_ = ("<p class='lead'>Toplam eksi: bu hesaplarda fazla ödeme/avans var; borç toplamına "
+                "katılmadı.</p>" if net <= 0 else "")
+        return (f"<h2>{esc(ad)}</h2>{not_}<div class='scroll'><table><tr><th>Hesap</th>"
+                f"<th class='r'>Borç (₺)</th></tr>{satir}<tr class='top'><td>Toplam</td>"
+                f"<td class='r'>{tl(net)}</td></tr></table></div>")
+    tablolar = "".join(tablo(*x) for x in gruplar)
+
+    if elle:
+        es = "".join(f"<tr><td>{esc(b.get('ad'))}</td><td>{esc(b.get('vade') or '—')}</td>"
+                     f"<td class='r money'>{tl(b.get('tutar'))}</td></tr>" for b in elle)
+        elle_html = (f"<div class='scroll'><table><tr><th>Borç</th><th>Vade</th>"
+                     f"<th class='r'>Tutar (₺)</th></tr>{es}<tr class='top'><td colspan='2'>Toplam</td>"
+                     f"<td class='r'>{tl(elle_top)}</td></tr></table></div>")
+    else:
+        elle_html = ("<div class='card'><span class='alt'>Henüz eklenmedi. Şahsi kredi, kredi "
+                     "kartı, elden borç gibi Elektra'da olmayan borçlarınızı Claude'a yazın, buraya "
+                     "eklensin; toplam borca dahil edilir.</span></div>")
+
+    body = (BV_CSS + "<div class='lock'>🔒 Yalnız yönetici</div>"
+            f"<div class='stats'>{stats}</div>{bilsa_html}{tablolar}"
+            f"<h2>Elektra dışındaki borçlar</h2>{elle_html}"
+            "<div class='note'>Kaynak: Elektra muhasebe mizanı (tüm yıllar), yaprak hesap "
+            "bakiyeleri. Toplam borç = tedarikçiler + banka + vergi/SGK + vergi karşılığı + "
+            "elle eklenenler; toplamı eksi çıkan grup (fazla ödeme) katılmaz. Alınan avanslar "
+            "(misafir ön ödemeleri) borç sayılmadı.</div>")
+    return {"label": "Borçlar", "count": int(round(toplam / 1000)), "count_label": "bin ₺ · toplam borç",
+            "tone": "", "updated": now_str(),
+            "sub": (f"toplam {tl(toplam)} ₺" + (f" · Bilsa {tl(bilsa['bakiye'])} ₺" if bilsa else "")),
+            "html": PAGE("Muhasebe", "Borçlar",
+                         f"{today.day:02d}.{today.month:02d}.{today.year} · Elektra muhasebesindeki "
+                         "tüm borç hesapları", body)}
+
+
+def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler):
+    """Vergiler sayfasının üst kısmı: yaklaşan ödemeler (geçen ayın tahakkuku, bu ay vadeli),
+    Elektra'da kapanmamış vergi bakiyeleri, yıllık takvim, Bilsa'nın vergi etkisi.
+    Döner: (html, stats, en_yakin, bu_ay_odenecek, gecikmis_ya_da_yakin)."""
+    today = dt.date.today()
+    ay, yil = today.month, today.year
+    pm = 12 if ay == 1 else ay - 1
+    son_gun = _month_bounds(yil, ay)[1]
+
+    def leaves(rows, p):
+        return {r["code"]: r for r in _leaves(rows, p)}
+    p360, c360 = leaves(prev_rows, "360"), leaves(cur_rows, "360")
+    p361, c361 = leaves(prev_rows, "361"), leaves(cur_rows, "361")
+
+    def sec(d, *kel, haric=()):
+        return [c for c, r in d.items() if any(k in _tr_up(r["name"]) for k in kel)
+                and not any(h in _tr_up(r["name"]) for h in haric)]
+
+    def tahakkuk(d, codes):
+        return sum(d[c]["credit"] for c in codes if c in d)
+
+    def odenen(codes, d):
+        return sum(d[c]["debit"] for c in codes if c in d)
+
+    kalemler = []   # (vade, ad, alt, tutar, odendi)
+
+    def ekle(gun, ad, alt, tutar, codes, cur):
+        vade = _is_gunu(son_gun if gun == "son" else dt.date(yil, ay, gun))
+        odendi = tutar > 0 and odenen(codes, cur) >= tutar * 0.99
+        kalemler.append((vade, ad, alt, tutar, odendi, gun != "son" and vade.day != gun))
+
+    mh = sec(p360, "GELİR VERGİSİ", "DAMGA", "SERBEST MESLEK", haric=("YILLIK",))
+    ekle(26, "Muhtasar: gelir vergisi stopajı + damga", "", tahakkuk(p360, mh), mh, c360)
+    kdvc = sec(p360, "KDV", haric=("TEVKİFAT",))
+    ekle(28, "KDV-1", "hesaplanan − indirilecek − devreden", kdv_prev, kdvc, c360)
+    tv = sec(p360, "TEVKİFAT")
+    ekle(28, "KDV-2 (tevkifat, sorumlu sıfatıyla)", "", tahakkuk(p360, tv), tv, c360)
+    kon = sec(p360, "KONAKLAMA")
+    ekle(28, "Konaklama vergisi", "", tahakkuk(p360, kon), kon, c360)
+    ekle("son", "SGK + işsizlik primi", "", tahakkuk(p361, list(p361)), list(p361), c361)
+    # Geçici vergi: vadesi bu ay olan dönem (Mayıs/Ağustos/Kasım 17'si).
+    for d in kv_donemler:
+        if d["vade"].year == yil and d["vade"].month == ay:
+            kalemler.append((_is_gunu(d["vade"]), "Geçici vergi " + d["ad"],
+                             f"kümülatif {tl(d['vergi'])}, önceki dönemler {tl(d['onceki'])}",
+                             d["odenecek"], False, False))
+    for v in _elle("vergiler"):
+        try:
+            vd = dt.date.fromisoformat(str(v.get("vade")))
+        except ValueError:
+            continue
+        if vd.year == yil and vd.month == ay:
+            kalemler.append((_is_gunu(vd), v.get("ad", "—"), "elle girildi", num(v.get("tutar")),
+                             bool(v.get("odendi")), False))
+    kalemler.sort(key=lambda k: k[0])
+
+    def durum(vade, tutar, odendi):
+        if odendi:
+            return "<span class='st ok'>Ödendi</span>"
+        if not tutar:
+            return "<span class='st mut'>ödeme yok</span>"
+        kalan = (vade - today).days
+        if kalan < 0:
+            return f"<span class='st bad'>{-kalan} gün geçti</span>"
+        if kalan == 0:
+            return "<span class='st bad'>bugün</span>"
+        return f"<span class='st {'bad' if kalan <= 3 else 'warn'}'>{kalan} gün</span>"
+
+    satir, toplam, acik = [], 0.0, []
+    for vade, ad, alt, tutar, odendi, kaydi in kalemler:
+        if not odendi and tutar:
+            toplam += tutar
+            acik.append((vade, ad, tutar))
+        kayma = f"<span class='alt'>asıl gün tatile denk geldi</span>" if kaydi else ""
+        satir.append(
+            f"<tr{' class=bad' if (not odendi and tutar and (vade - today).days <= 3) else ''}>"
+            f"<td>{vade.day:02d}.{vade.month:02d} {DAY_ABBR[vade.weekday()]}{kayma}</td>"
+            f"<td>{esc(ad)}{f'<span class=alt>{esc(alt)}</span>' if alt else ''}</td>"
+            f"<td class='r money'>{tl(tutar)}</td><td>{durum(vade, tutar, odendi)}</td></tr>")
+    yaklasan = (
+        f"<h2>{TR_MON_FULL[ay]} ödemeleri ({TR_MON_FULL[pm]} dönemi)</h2>"
+        "<p class='lead'>Tutarlar geçen ayın muhasebe tahakkukundan. Vade tatile denk gelirse ilk iş "
+        "gününe kayar (dini bayramlar hariç, onları kontrol edin). Elektra'da bu ay ödeme kaydı "
+        "görülünce satır kendiliğinden <b>Ödendi</b> olur.</p>"
+        "<div class='scroll'><table><tr><th>Vade</th><th>Vergi</th><th class='r'>Tutar (₺)</th>"
+        f"<th>Durum</th></tr>{''.join(satir)}<tr class='top'><td colspan='2'>Ödenmemiş toplam</td>"
+        f"<td class='r'>{tl(toplam)}</td><td></td></tr></table></div>")
+
+    # ---- Elektra'da kapanmamış vergi bakiyeleri (beklenen = geçen ay + bu ay tahakkuku)
+    mz = _mizan_all(env)
+    kap, kap_top = [], 0.0
+    for p in ("360", "361", "370"):
+        pr, cr = leaves(prev_rows, p), leaves(cur_rows, p)
+        for r in _leaves(mz, p):
+            bak = _bakiye(r)
+            if bak < 1:
+                continue
+            bek = 0.0 if p == "370" else (pr.get(r["code"], {}).get("credit", 0.0)
+                                          + cr.get(r["code"], {}).get("credit", 0.0))
+            fark = bak - bek
+            if fark >= 1:
+                kap.append((r, bak, bek, fark))
+                if p != "370":
+                    kap_top += fark
+    kap.sort(key=lambda t: -t[3])
+    kap_html = (
+        "<h2>Elektra'da kapanmamış vergi bakiyeleri</h2>"
+        "<p class='lead'>Geçen ayın ve bu ayın tahakkukundan <b>fazla</b> duran bakiye: ya eski bir "
+        "ay ödenmemiş ya da ödemesi Elektra'ya işlenmemiş. Mali müşavirinize sorun. "
+        "Dönem kârı vergi karşılığı yıllık kurumlar vergisi ödenince kapanır.</p>"
+        "<div class='scroll'><table><tr><th>Hesap</th><th class='r'>Bakiye</th>"
+        "<th class='r'>Son 2 ay tahakkuku</th><th class='r'>Fark</th></tr>"
+        + "".join(f"<tr><td>{esc(r['name'])}<span class='kod'>{esc(r['code'])}</span></td>"
+                  f"<td class='r'>{tl(b)}</td><td class='r'>{tl(e) if e else '—'}</td>"
+                  f"<td class='r money'>{tl(f)}</td></tr>" for r, b, e, f in kap)
+        + (f"<tr class='top'><td colspan='3'>Toplam (vergi karşılığı hariç)</td>"
+           f"<td class='r'>{tl(kap_top)}</td></tr>" if kap else
+           "<tr><td colspan='4'>Kapanmamış eski bakiye yok ✓</td></tr>")
+        + "</table></div>")
+
+    # ---- yıllık takvim + Bilsa etkisi
+    yillik = next((d for d in kv_donemler if d["ad"] == "Yıllık beyan"), None)
+    gecici_odenen = max((d["vergi"] for d in kv_donemler if d["ad"] != "Yıllık beyan"
+                         and d["vade"] < today), default=0.0)
+    takvim = (
+        "<h2>Yıllık takvim</h2><div class='scroll'><table><tr><th>Ne zaman</th><th>Ne</th></tr>"
+        "<tr><td>Her ay 26'sı</td><td>Muhtasar ve prim hizmet beyannamesi</td></tr>"
+        "<tr><td>Her ay 28'i</td><td>KDV-1, KDV-2, konaklama vergisi</td></tr>"
+        "<tr><td>Her ay sonu</td><td>SGK primi ödemesi</td></tr>"
+        "<tr><td>17 Mayıs · 17 Ağustos · 17 Kasım</td><td>Geçici vergi (3 dönem)</td></tr>"
+        f"<tr><td>30 Nisan {yil + 1}</td><td>{yil} kurumlar vergisi"
+        + (f"<span class='alt'>bugünkü tahmin {tl(yillik['vergi'])} − geçici vergide ödenen "
+           f"{tl(gecici_odenen)} = ≈ {tl(max(0.0, yillik['vergi'] - gecici_odenen))}</span>"
+           if yillik else "") + "</td></tr>"
+        "<tr><td>Ocak · Temmuz sonu</td><td>Motorlu taşıtlar vergisi (Elektra'da yok, elle)</td></tr>"
+        "<tr><td>Mayıs · Kasım sonu</td><td>Emlak vergisi (Elektra'da yok, elle)</td></tr>"
+        "<tr><td>Teyit edilecek</td><td>Turizm payı</td></tr></table></div>")
+    bilsa = _bilsa(env)
+    bilsa_html = ""
+    if bilsa and bilsa["gider"] > 0:
+        etki = bilsa["gider"] * KV_RATE
+        bilsa_html = (
+            f"<h2>Bilsa faturalarının {yil} kurumlar vergisine etkisi</h2>"
+            f"<p class='lead'>Bu yıl Bilsa'dan {bilsa['adet']} fatura: brüt {tl(bilsa['fatura'])} ₺, "
+            f"KDV {tl(bilsa['kdv'])} ₺, gider <b>{tl(bilsa['gider'])} ₺</b>. Kâr bu tutardan büyük "
+            f"kaldıkça vergiyi %{int(KV_RATE * 100)} oranında, yani yaklaşık <b>{tl(etki)} ₺</b> "
+            "azaltır. Hizmetin gerçek, sözleşmeyle belgeli ve piyasa fiyatında olması şarttır.</p>")
+
+    en_yakin = min(acik, default=None)
+    stats = (stat(f"{en_yakin[0].day:02d}.{en_yakin[0].month:02d}" if en_yakin else "—",
+                  f"en yakın vade · {en_yakin[1]}" if en_yakin else "bu ay ödenmemiş vergi yok",
+                  "bad" if en_yakin and (en_yakin[0] - today).days <= 3 else "")
+             + stat(f"{tl(toplam)} ₺", f"{TR_MON_FULL[ay]} ödenmemiş", "bad" if toplam else "ok")
+             + stat(f"{tl(kap_top)} ₺", "Elektra'da kapanmamış eski bakiye", "bad" if kap_top else "ok"))
+    acil = any((v - today).days <= 3 for v, _, _ in acik)
+    return (yaklasan + kap_html + takvim + bilsa_html, stats, toplam, acil)
 
 
 # Tarayıcı-içi düzeltme kartı: yıl başı devreden KDV + Elektra'ya HENÜZ girilmemiş

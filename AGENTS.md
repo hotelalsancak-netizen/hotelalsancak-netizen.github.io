@@ -137,6 +137,32 @@ Folio `TOTAL` **her zaman TL** (ana para); `CTOTAL` = **orijinal para birimi** (
 - Sayfada **tarayıcı-içi düzeltme** kartı var (`VERGI_ADJUST_HTML`): yıl başı devreden KDV +
   Elektra'ya henüz girilmemiş fişler; localStorage (`riva_vergi_v1`), sunucuya hiçbir şey gitmez.
 
+## Borçlar + Vergiler (vadeli takip) — özel notlar (16.11.2026)
+- **İkisi de YALNIZ YÖNETİM** (`RECEPTION_SECTIONS`'ta yok; sahibin şartı). Menüde Muhasebe =
+  Bakiye, Borçlar, Vergiler. Vergi bölümünün anahtarı hâlâ `vergi`, etiketi "Vergiler".
+- **Borçlar (`checks.build_borclar`)**: TÜM ZAMANLARIN mizanı (`_mizan_all`, 2000-01-01→bugün) —
+  bilanço bakiyesi yıl kapanışından etkilenmez. Gruplar `BORC_GRUPLARI` (320/321/329 tedarikçi,
+  30x/40x banka, 360/368/369 vergi, 361 SGK, 370 vergi karşılığı, 33x ortak/personel); toplamı
+  eksi çıkan grup (fazla ödeme/avans) toplama katılmaz. 340 alınan avanslar borç sayılmaz.
+- **Bilsa carisi (`_bilsa`)**: 320 altında adı BİLSA olan yaprak hesap; `elektra_api.fetch_account_statement`
+  ile ekstre. **Kapanış/Açılış fişlerini atla** (yoksa ocakta bakiye sıçrar). 2025 kapanışına
+  hareketlerden 155.000 ₺ FAZLA devredilmiş (5.161.622 vs 5.006.622) — sayfa hareket toplamını
+  kullanır (7,95 mn), yalnız 2026 ekstresi 8,10 mn gösterir; YMM'ye soruldu. Bir fatura iptal
+  edilip yeniden kaydedildiyse (BLA2026000000002) adet farklı fatura numarasıyla sayılır.
+  Bu yılki gider = brüt fatura − aynı fişteki 191 KDV; TPA serisi faturalarda KDV yok.
+- **Vergiler üst kısmı (`_vergi_takip`)**: bu ay ödenecekler = GEÇEN AYIN tahakkuku: muhtasar
+  (360 gelir v. stopajı + damga + serbest meslek, YILLIK hariç) 26'sı; KDV-1 (KDV tablosundaki
+  geçen ay "ödenecek"), KDV-2 (360 "tevkifat"), konaklama 28'i; SGK (361) ay sonu; geçici vergi
+  17 May/Ağu/Kas. Vade hafta sonu/sabit tatile denk gelirse ilk iş gününe kayar (dini bayramlar
+  YOK). **"Ödendi"** = aynı 360/361 yaprağında BU AY tahakkuk kadar borç kaydı. Türkçe büyük
+  harf için `_tr_up` (Python `upper()` "tevkifat"ı "TEVKIFAT" yapar, eşleşmez).
+- **Kapanmamış bakiyeler**: 360/361/370 yaprak bakiyesi − (geçen ay + bu ay alacak tahakkuku).
+  16.11.2026: ~1,59 mn fark (Ödenecek KDV 758 bin'in tamamı dâhil) — YMM'ye sorulacak.
+- **Elle kalemler**: `site_data/elle.enc.json` (YÖNETİM parolasıyla şifreli; depo public, düz
+  metin ASLA). `python3 elle_kayit.py goster|yaz kayit.json`. Borçlar toplama eklenir; vergiler
+  (vade YYYY-AA-GG) o ayın ödemeler tablosuna girer. **Yönetim parolası değişirse bu dosya da
+  yeniden şifrelenmeli** (kart haftaları gibi). Emlak vergisi ve MTV tutarlarını sahibi verecek.
+
 ## Kart (haftalık) — özel notlar
 - Kapı kilidi dökümleri **~2 aylık geçmiş** tutar; hafta veriden değil **export tarihinden** belirlenir.
 - `build_report.build(cards, changes, occ, lo, hi)` haftaya göre **parametreli**.
