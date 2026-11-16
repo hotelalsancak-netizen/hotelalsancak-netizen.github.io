@@ -48,10 +48,6 @@ jobs:
           ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
           ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
         run: python ets_duzelt.py
-      - name: Trip.com ve obilet son dakika duzeltmesi (gece_duzelt.py)
-        continue-on-error: true
-        env:
-          ELEKTRA_HOTELID: ${{ secrets.ELEKTRA_HOTELID }}
-          ELEKTRA_USER: ${{ secrets.ELEKTRA_USER }}
-          ELEKTRA_PASS: ${{ secrets.ELEKTRA_PASS }}
-        run: python gece_duzelt.py
+      # gece_duzelt.py (Trip/obilet) 16.11.2026'da DURDURULDU: obilet fiyat değişikliğini saatlerce
+      # yansıtmıyor, program her saat biraz daha indirip −%14'e kadar gitti; Trip yakın gece okumaları
+      # (oda dolunca başka oda) Suit'i +%25'e itti. Satırlar güvenli değere çekildi. Yeniden açmadan önce bak.
