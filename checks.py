@@ -2184,9 +2184,10 @@ def build_fiyat(env):
     # Özet: önümüzdeki günlerde hedeften UCUZ görülen kanal (en son gözleme göre) +
     # Elektra ayarı yüzünden beklenen fiyatı sapan kanal.
     ucuz = set()
+    taze = (dt.datetime.now() - dt.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M")   # eski okuma (eski liste) sayılmaz
     for (t, k, rk), o in obs.items():
         d = pdate(t)
-        if d and d >= today and o.get("fiyat"):
+        if d and d >= today and o.get("fiyat") and o.get("zaman", "") >= taze and rk != "eko":
             hedef = dict((r[0], gece_taban(r, d, today)) for r in FIYAT_ODALAR)[rk]
             if o["fiyat"] < hedef - FIYAT_TOLERANS:
                 ucuz.add(FIYAT_KANALLAR.get(k, (k,))[0])
@@ -2196,32 +2197,8 @@ def build_fiyat(env):
         if v and abs(v[0] - hedef) > FIYAT_TOLERANS:
             ucuz.add(FIYAT_KANALLAR[key][0] + " (Elektra ayarı)")
 
-    ETS_DOLULUK.clear()
-    ETS_DOLULUK.update(dol)
-    e_sorun, e_bilgi = etstur_kontrol(factors, obs, today)
-    if e_sorun:
-        ucuz.add("Etstur ≠ hedef")
-    etstur_html = ("<div class='fk-fix' style='box-shadow:inset 4px 0 " + ("var(--statbad)" if e_sorun else "var(--statok)")
-                   + "'><b>Etstur kuralı</b> <span class='fk-diff " + ("fk-low'>FARK VAR" if e_sorun else "fk-ok'>hedefte")
-                   + "</span><div class='fk-small' style='margin-top:4px'>"
-                   + "".join(f"<div style='color:var(--statbad);font-weight:700'>• {esc(x)}</div>" for x in e_sorun)
-                   + " · ".join(esc(x) for x in e_bilgi)
-                   + " · ±%3 ufak fark sayılır · ets_duzelt.py yarım saatte bir oda çarpanını düzeltir</div></div>")
-    for anahtar, baslik in OKUMA_KURAL:
-        o_sorun, o_bilgi = okuma_kontrol(anahtar, obs, today)
-        if o_sorun:
-            ucuz.add(baslik.split(" ")[0] + " ≠ hedef")
-        etstur_html += kural_kutusu(baslik, o_sorun, o_bilgi,
-                                    "±%3 ufak fark sayılır · gece_duzelt.py yarım saatte bir kanal çarpanını düzeltir")
-    p_sorun, p_bilgi = booking_expedia_parite(factors, obs, today)
-    if p_sorun:
-        ucuz.add("Booking ≠ Expedia")
-    parite_html = ("<div class='fk-fix' style='box-shadow:inset 4px 0 " + ("var(--statbad)" if p_sorun else "var(--statok)")
-                   + "'><b>Booking = Expedia kuralı</b> <span class='fk-diff " + ("fk-low'>FARK VAR" if p_sorun else "fk-ok'>aynı fiyat")
-                   + "</span><div class='fk-small' style='margin-top:4px'>"
-                   + "".join(f"<div style='color:var(--statbad);font-weight:700'>• {esc(x)}</div>" for x in p_sorun)
-                   + " · ".join(esc(x) for x in p_bilgi)
-                   + " · üye fiyatıyla kıyas, ±" + str(PARITE_TL) + " TL ufak fark sayılır</div></div>")
+    # Kural kutuları (Booking = Expedia, Etstur, Trip, obilet) 16.11.2026'da panelden kaldırıldı — sahibi:
+    # "buraya yazmanın amacı yok, senin görevin fark olmamasını sağlamak". Eşitleme kanal_duzelt.py'de.
 
     # Kapı fiyatları (resepsiyon): bugünün TABAN fiyatı büyük — indirim yok (27.10.2026); yanında basamak
     # tablosu, hangi gecenin hangi basamakta olduğu ve önümüzdeki 14 gece.
@@ -2282,7 +2259,7 @@ def build_fiyat(env):
     else:
         duz_html = ""
 
-    body = (FIYAT_HTML.replace("__DUZ__", parite_html + etstur_html + duz_html)
+    body = (FIYAT_HTML.replace("__DUZ__", duz_html)
             .replace("__KAPI__", kapi).replace("__HAFTA__", hafta)
             .replace("__BANT__", esc(bant(today)[0].upper() + bant(today)[1:]))
             .replace("__BUGUN__", esc(f"{today.day} {TR_MONTHS[today.month]} {GUN_ADI[today.weekday()]}"))
