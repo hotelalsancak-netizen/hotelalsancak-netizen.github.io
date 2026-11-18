@@ -215,3 +215,43 @@ YENIDEN DERLEME
 
 ONEMLI: Once (1) sonra (2) calistirilmalidir; aksi halde ana
 program eski okuma motorunu tasimaya devam eder.
+
+SONUC EKRANI  (18.11.2026'dan itibaren)
+---------------------------------------
+Program bitince EKRANIN TAMAMINI kaplayan bir pencere acar:
+
+  YESIL    "GONDERILDI"          -> her sey tamam, kac oda, hangi hafta
+  TURUNCU  "GONDERILDI"          -> gonderildi ama okumada hata vardi
+  KIRMIZI  "GONDERILEMEDI"       -> eksik oda var, HICBIR SEY gonderilmedi
+  KIRMIZI  "YUKLEME BASARISIZ"   -> okundu ama sunucuya ulasmadi
+                                    (internet / GitHub izin anahtari)
+
+Kirmizi pencerede NE OLDU, NEDEN ve NE YAPMALI yazar; yalnizca
+"OKUDUM - KAPAT" dugmesiyle kapanir. KIRMIZI GORURSENIZ FOTOGRAFINI
+CEKIP YONETICIYE GONDERIN. Her sonuc ayrica su dosyaya yazilir:
+    C:\OdaKartOku\log\sonuc.txt
+
+(Neden: 16.11.2026 okumasi sunucuya hic gitmedi; program bunu siyah
+pencerede kucuk bir satirla yaziyordu ve kimse fark etmedi.)
+
+
+KURULUM TESTI
+-------------
+    C:\OdaKartOku\KartKayitGonder.exe /test
+
+Kart OKUMAZ, bir sey GONDERMEZ. Oda listesini, gizli degerleri,
+interneti ve GitHub izin anahtarini dener; sonucu tam ekranda gosterir.
+YESIL "TEST TAMAM" gorunmeli.
+
+
+GUNCELLEME (resepsiyon bilgisayari)
+-----------------------------------
+GUNCELLE.bat dosyasini resepsiyon bilgisayarina indirip cift tiklayin.
+  - kart_kayit_gonder.py ve sonuc_ekrani.py'yi GitHub'dan indirir
+  - cardreads_upload.py'ye (gizli anahtarlar) DOKUNMAZ
+  - derle.bat ile KartKayitGonder.exe'yi yeniden derler
+  - derleme bozulursa eski programi geri koyar
+  - sonunda /test calistirir
+
+Kacirilmis bir gunu sonradan gondermek (okuma yapmadan):
+    C:\OdaKartOku\KartKayitGonder.exe /klasor:"C:\Users\OTEL\Desktop\16.11.2026"

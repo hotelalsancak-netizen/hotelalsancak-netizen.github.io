@@ -88,6 +88,68 @@ def build_gunsonu(env) -> dict:
 # open-balances panel (res-guest-balance-list). Still uses paycheck.classify per day.
 
 
+def kart_uyarisi(weeks: list, incoming_dir: Path, sources: dict, simdi=None):
+    """Haftalık kart okuması GELMEDİYSE panoda gösterilecek uyarı (yoksa None).
+
+    18.11.2026: 16 Kasım okuması sunucuya hiç gelmedi; pano son haftayı (2–8 Kas)
+    göstermeye devam etti ve kimse fark etmedi. Kural: resepsiyon her PAZARTESİ biten
+    haftanın (Pzt–Paz) kilitlerini okutup gönderir. SALI 00:00'dan (TR) itibaren biten
+    hafta panoda yoksa uyarı verilir. Gelen ama analiz edilemeyen dosya ayrıca söylenir.
+    """
+    simdi = simdi or (dt.datetime.utcnow() + dt.timedelta(hours=3))     # Türkiye saati
+    bugun = simdi.date()
+    bu_pzt = bugun - dt.timedelta(days=bugun.weekday())
+    beklenen = bu_pzt - dt.timedelta(days=7 if bugun.weekday() >= 1 else 14)
+    var = {w["lo"] for w in weeks}
+    if not var:
+        return None
+    en_son = max(dt.date.fromisoformat(x) for x in var)
+    eksik, d = [], beklenen
+    while d > en_son and len(eksik) < 8:
+        eksik.append(d)
+        d -= dt.timedelta(days=7)
+    if not eksik:
+        return None
+    eksik.reverse()
+
+    def etiket(pzt):
+        paz = pzt + dt.timedelta(days=6)
+        if pzt.month == paz.month:
+            return f"{pzt.day}–{paz.day} {TR_MONTHS[paz.month]} {paz.year}"
+        return f"{pzt.day} {TR_MONTHS[pzt.month]} – {paz.day} {TR_MONTHS[paz.month]} {paz.year}"
+
+    # Gelmiş ama analizi olmayan döküm var mı? (dosya adı = okuma tarihi; hafta =
+    # okumadan önceki son Pzt–Paz — kart_yukle.week_of ile aynı kural)
+    gelmis = {}
+    for f in sorted(incoming_dir.glob("*.zip.enc")) if incoming_dir.is_dir() else []:
+        ad = f.name.split(".")[0]
+        try:
+            okuma = dt.date(int(ad[:4]), int(ad[4:6]), int(ad[6:8]))
+        except ValueError:
+            continue
+        paz = okuma - dt.timedelta(days=okuma.weekday() + 1)
+        gelmis[paz - dt.timedelta(days=6)] = (f.name, f.name in sources)
+
+    satirlar = []
+    for pzt in eksik:
+        g = gelmis.get(pzt)
+        if g and not g[1]:
+            satirlar.append(f"{etiket(pzt)}: kart dosyası GELDİ ({g[0]}) ama analizi panoda yok — "
+                            "birkaç saat içinde düzelmezse analiz başarısız olmuştur (dosya yarım/eksik olabilir).")
+        else:
+            satirlar.append(f"{etiket(pzt)}: kart okuması sunucuya GELMEDİ.")
+    return {
+        "hafta_sayisi": len(eksik),
+        "haftalar": [etiket(p) for p in eksik],
+        "kisa": (f"{etiket(eksik[-1])} kart okuması gelmedi — bu hafta kontrol YAPILMADI"
+                 if len(eksik) == 1 else
+                 f"{len(eksik)} haftanın kart okuması gelmedi ({etiket(eksik[0])} → "
+                 f"{etiket(eksik[-1])}) — kontrol YAPILMADI"),
+        "satirlar": satirlar,
+        "son_analiz": next((w["label"] for w in weeks if w["lo"] == en_son.isoformat()), ""),
+    }
+
+
 def build_kart() -> dict:
     """Local-only: needs cards.json (door-lock PDFs), room_changes.json, occupancy.json."""
     import build_report
@@ -229,11 +291,19 @@ def build_cloud():
             if src.exists():
                 shutil.copyfile(src, PUBLIC / "data" / w["file"])
                 n += 1
+        srcs_path = kart_dir / "sources.json"
+        srcs = json.loads(srcs_path.read_text()) if srcs_path.exists() else {}
+        uyari = kart_uyarisi(weeks, SITE_DATA / "cardreads-incoming", srcs)
+        idx_out = {"weeks": weeks}
+        if uyari:
+            idx_out["uyari"] = uyari
         (PUBLIC / "data" / "kart-index.json").write_text(
-            json.dumps({"weeks": weeks}, ensure_ascii=False), encoding="utf-8")
+            json.dumps(idx_out, ensure_ascii=False), encoding="utf-8")
         if n:
             built.append("kart")
             print(f"  kart: {n} hafta kopyalandı [yönetim] ✓")
+        if uyari:
+            print(f"  kart: ⚠️  {uyari['kisa']} ({uyari['hafta_sayisi']} hafta eksik)")
     elif (SITE_DATA / "kart.enc.json").exists():  # eski tek-blok (geçiş)
         (PUBLIC / "data").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(SITE_DATA / "kart.enc.json", PUBLIC / "data" / "kart.enc.json")

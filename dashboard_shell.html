@@ -319,6 +319,16 @@ async function doLogin(ev){
         if(!s) continue;
         s.key = "kart"; s.weeks = idx.weeks; s.cache = {}; s.curWeek = latest.id;
         s.cache[latest.id] = {html: s.html, sub: s.sub, updated: s.updated};
+        // 18.11.2026: haftalik kart okumasi GELMEDIYSE (dashboard.kart_uyarisi) kutucuk
+        // kirmizi olur ve her haftanin raporunun basinda buyuk uyari gorunur — eski
+        // haftanin "0 supheli"si bu haftanin temiz oldugu sanilmasin.
+        if(idx.uyari){
+          s.uyari = idx.uyari;
+          s.tone = "bad";
+          s.count = idx.uyari.hafta_sayisi;
+          s.count_label = "hafta okuma GELMEDİ";
+          s.sub = idx.uyari.kisa;
+        }
         out.push(s);
         continue;
       }
@@ -474,7 +484,25 @@ async function loadWeek(key, id){
   const c = s.cache[id];
   $("pageSub").textContent = c.sub || "";
   $("pageUpd").textContent = c.updated ? "son güncelleme: " + c.updated : "";
-  $("frame").srcdoc = c.html;
+  $("frame").srcdoc = kartUyariHtml(s) + c.html;
+}
+
+// Kart okumasi gelmeyen hafta(lar) icin raporun EN USTUNE konan buyuk kirmizi kutu.
+function kartUyariHtml(s){
+  const u = s && s.uyari;
+  if(!u) return "";
+  return '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#B71C1C;color:#fff;'+
+    'padding:22px 26px;border-radius:14px;margin:16px;line-height:1.45">'+
+    '<div style="font-size:30px;font-weight:800;letter-spacing:.3px">⚠️ KART OKUMASI GELMEDİ</div>'+
+    '<div style="font-size:19px;font-weight:700;margin:6px 0 12px">'+esc(u.kisa)+'</div>'+
+    '<ul style="margin:0 0 12px 20px;padding:0;font-size:16px">'+
+      (u.satirlar || []).map(x => '<li>'+esc(x)+'</li>').join("")+'</ul>'+
+    '<div style="font-size:15px;background:rgba(255,255,255,.14);padding:10px 12px;border-radius:9px">'+
+      'Bu hafta(lar) için <b>“satılmadan kullanılan oda”</b> kontrolü <b>YAPILMADI</b>. '+
+      'Aşağıda görünen rapor <b>'+esc(u.son_analiz || "son gelen hafta")+'</b> haftasına aittir — '+
+      'bugünün durumunu göstermez.<br><b>Ne yapmalı:</b> Resepsiyonda masaüstündeki '+
+      '<b>KART KAYITLARINI AL VE GÖNDER</b> programını çalıştırın ve sonunda çıkan ekranın '+
+      'fotoğrafını isteyin (yeşil = gönderildi, kırmızı = gönderilemedi).</div></div>';
 }
 
 function esc(x){ return String(x==null?"":x).replace(/[&<>"]/g, c => (
