@@ -163,8 +163,12 @@ class Elektra:
             raise ElektraError(f"no API_URL for tenant {self.tenant}: {d}")
         if not self.base.endswith("/"):
             self.base += "/"
-        if d.get("USE_IDP"):
-            raise ElektraError("tenant uses SSO; usercode/password login won't work.")
+        # 18.11.2026 ~08:55 TR: GetEndpoint bu otel için USE_IDP=True döndürmeye başladı
+        # ve buradaki eski `raise` panonun TÜM bölümlerini durdurdu (her yayın iptal).
+        # Oysa kullanıcı adı/parola ile Login aynı gün hâlâ çalışıyordu. Bayrak tek
+        # başına girişin imkânsız olduğunu göstermiyor: girişi dene, reddedilirse
+        # login() hatası SSO'yu ayrıca anar.
+        self.uses_idp = bool(d.get("USE_IDP"))
         return self.base
 
     def echo(self, data="ping"):
@@ -181,7 +185,9 @@ class Elektra:
                 f"login needs two-factor auth (Code {code}). Pass --auth-code, or "
                 "create a dedicated API user without 2FA for unattended cron runs.")
         if not d.get("LoginToken"):
-            raise ElektraError(f"login rejected: {json.dumps(d, ensure_ascii=False)[:300]}")
+            sso = (" — bu otel Elektra'da SSO (USE_IDP) olarak işaretli; parola girişi "
+                   "kapatılmış olabilir") if getattr(self, "uses_idp", False) else ""
+            raise ElektraError(f"login rejected{sso}: {json.dumps(d, ensure_ascii=False)[:300]}")
         self.token = d["LoginToken"]
         return d
 
