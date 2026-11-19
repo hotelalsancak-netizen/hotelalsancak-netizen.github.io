@@ -2884,7 +2884,8 @@ GUNLUK_JS = r"""<script>
 (function(){
   var D = window.__GUNLUK__ || {days:{},openbal:[],cari:[],today:''};
   var alldays = Object.keys(D.days).sort();
-  var cur = (D.today && D.days[D.today]) ? D.today : (alldays[alldays.length-1] || D.today);
+  // Sabah açılınca DÜN (sahibi 19.11.2026: "rapor açılınca dün ne olmuş görmek istiyorum")
+  var cur = (D.dun && D.days[D.dun]) ? D.dun : ((D.today && D.days[D.today]) ? D.today : (alldays[alldays.length-1] || D.today));
   var curTab = 'bal';      // ilk sekme açık gelir (sekme sırası sahibin, 28.10.2026)
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function money(n){return (Math.round((+n||0)*100)/100).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});}
@@ -3104,7 +3105,7 @@ GUNLUK_JS = r"""<script>
   function renderDay(){
     var el=document.getElementById('curday');
     if(scope!=='day'){ var LBL={week:'son 1 hafta',month:'son 1 ay',year:'son 1 yıl'}; el.innerHTML=esc(scopeLabel())+"<small>"+(LBL[scope]||'')+"</small>"; }
-    else { el.innerHTML=esc(fday(cur))+"<small>"+esc(dow(cur))+"</small>"; }
+    else { el.innerHTML=esc(fday(cur))+"<small>"+esc(dow(cur))+(cur===D.dun?' · DÜN':(cur===D.today?' · BUGÜN':''))+"</small>"; }
     var i=alldays.indexOf(cur);
     document.getElementById('dprev').disabled=(i<=0);
     document.getElementById('dnext').disabled=(i>=alldays.length-1);
@@ -3368,6 +3369,160 @@ def build_yorumkart(env=None):
             "html": PAGE("Pazarlama", "Google Yorum Kartları",
                          "Çıkışta her misafire: QR'ı okutan doğrudan Google'da yorum yazar", body)}
 
+# ---------------------------------------------------------------- Günlük Rapor: Dünün özeti
+# Sahibi (19.11.2026): "sabah otele geldim, dün ne olmuş, kim ödememiş, cariler, oda satış fiyatları —
+# rapor açılınca bunu göreyim". Özet sayfanın en üstünde; ödemeyenler kaç gün geçerse geçsin HER ZAMAN
+# görünür (tahsil edilene kadar); tahsilat ve cari (açık cariler + cari tahsilatı) hep görünür.
+OZET_CSS = """<style>
+.oz{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 22px;margin:4px 0 16px;display:grid;gap:16px}
+.oz h2{margin:0;font-size:20px}.oz h3{margin:0 0 6px;font-size:14.5px}
+.oz .hd{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px}
+.oz .t{color:var(--sub);font-size:12px}
+.oz .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.oz .tile{background:var(--th-bg);border-radius:12px;padding:12px 14px;display:grid;gap:2px}
+.oz .tile b{font-size:22px}.oz .tile span{font-size:12px;color:var(--sub)}
+.oz .tile.ok{background:#ecfdf3}.oz .tile.ok b,.oz .tile.ok span{color:#166534}
+.oz .tile.bad{background:#fef2f2}.oz .tile.bad b,.oz .tile.bad span{color:#991b1b}
+.oz .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.oz .box{border:1px solid var(--border);border-radius:12px;padding:12px 14px;font-size:13.5px}
+.oz .box div{padding:2px 0}
+.oz .pill{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:800;margin-left:4px;background:var(--th-bg);color:var(--fg)}
+.oz .pill.bad{background:#fee2e2;color:#991b1b}.oz .pill.warn{background:#ffedd5;color:#9a3412}.oz .pill.ok{background:#dcfce7;color:#166534}
+.oz table{width:100%;border-collapse:collapse;font-size:13.5px}
+.oz td,.oz th{padding:7px 9px;text-align:left;border-bottom:1px solid var(--border)}
+.oz th{color:var(--sub);font-size:11.5px;text-transform:uppercase}
+.oz td.r,.oz th.r{text-align:right}
+.oz tr.bad td{background:#fef2f2;color:#991b1b;font-weight:700}
+.oz tr.warn td{background:#fff7ed;color:#9a3412;font-weight:700}
+.oz .ok{color:#166534}.oz .neg{color:#b91c1c;font-weight:800}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .oz .tile.ok,:root:not([data-theme=light]) .oz tr.warn td,:root:not([data-theme=light]) .oz tr.bad td,:root:not([data-theme=light]) .oz .tile.bad{background:transparent}}
+</style>"""
+
+
+def gunluk_ozet(env, dun, bugun, gun, owed, cari, fol):
+    """'Dünün özeti' kutusu (HTML). gun = build_gunluk'un o günkü kaydı {rc, dep, sales}."""
+    import paycheck
+    D = dun.isoformat()
+    try:
+        arr = E.fetch_arrivals(D, env=env)
+        unpaid = paycheck.classify(arr)["unpaid"]
+    except Exception:
+        arr, unpaid = None, []
+    try:
+        dolu = gece_doluluk(env, dun, dun).get(dun, 0)
+    except Exception:
+        dolu = None
+    tah = defaultdict(float)
+    iade = []
+    for r in fol:
+        if str(r.get("FOLIODATE") or "")[:10] != D:
+            continue
+        if r.get("DEPTTYPENAME") == "PAYMENT":
+            tah[(r.get("DEPNAME") or "Diğer").strip()] += abs(num(r.get("TOTAL")))
+        if r.get("TYPE") in ("Discount", "Rebate"):
+            iade.append(r)
+    try:   # cari tahsilatı: 120 alıcılar hesabına alacak kaydı (fatura/iade faturası hariç), son 7 gün
+        st = E.fetch_account_statement("120", (dun - dt.timedelta(days=6)).isoformat(), D, env=env)
+        ctah = [r for r in st if num(r.get("LOCALCREDIT")) > 0 and str(r.get("DOCTYPE") or "") != "Fatura"]
+    except Exception:
+        ctah = None
+    gun = gun or {"rc": [], "dep": [], "sales": []}
+    sales = [x for x in gun["sales"]]
+    low = [x for x in sales if x.get("low")]
+    sifir = [x for x in sales if not x.get("avg") and not _is_direct_agency(x.get("agency"))]
+
+    tahsum = sum(tah.values())
+    tiles = (f"<div class='tile'><span>Doluluk</span><b>{dolu if dolu is not None else '—'} / 55 oda</b>"
+             f"<span>{'%' + str(round(dolu * 100 / 55)) if dolu else ''}</span></div>"
+             f"<div class='tile'><span>Giriş · Çıkış</span><b>{len(arr) if arr is not None else '—'} · {len(gun['dep'])}</b>"
+             f"<span>{len(gun['rc'])} oda değişimi (giriş sonrası)</span></div>"
+             f"<div class='tile'><span>Tahsilat</span><b>{tl(tahsum)} ₺</b><span>"
+             + esc(" · ".join(f"{k} {tl(v)}" for k, v in sorted(tah.items(), key=lambda t: -t[1])) or "tahsilat yok")
+             + "</span></div>")
+    if arr is None:
+        tiles += "<div class='tile'><span>Dün girenlerin ödemesi</span><b>—</b><span>alınamadı</span></div>"
+    elif unpaid:
+        tiles += (f"<div class='tile bad'><span>Dün girenlerin ödemesi</span><b>{len(unpaid)} ödemedi</b>"
+                  f"<span>{len(arr) - len(unpaid)} / {len(arr)} ödedi</span></div>")
+    else:
+        tiles += (f"<div class='tile ok'><span>Dün girenlerin ödemesi</span><b>{len(arr)} / {len(arr)} ödedi</b>"
+                  "<span>ödenmemiş giriş yok</span></div>")
+
+    # Ödemeyenler: açık bakiyesi olan HERKES (tahsil edilene kadar her gün)
+    def sira(r):
+        co = pdate(r.get("CHECKOUTDATE"))
+        return (0 if r.get("_left") else 1 if co and co <= bugun else 2, -fbal(r))
+    rows = ""
+    for r in sorted(owed, key=sira):
+        co = pdate(r.get("CHECKOUTDATE"))
+        if r.get("_left"):
+            g = (bugun - co).days if co else None
+            cls, durum = "bad", ("Çıktı, borçlu" + (f" · {g} gün" if g else " · bugün"))
+        elif co and co <= bugun:
+            cls, durum = "warn", "Bugün çıkıyor"
+        else:
+            cls, durum = "", "Konaklıyor"
+        rows += (f"<tr class='{cls}'><td>{esc(r.get('ROOMNO') or '—')}</td><td>{esc((r.get('GUESTNAMES') or '')[:30])}</td>"
+                 f"<td>{esc((r.get('AGENCY') or '')[:16])}</td>"
+                 f"<td>{esc(str(r.get('CHECKINDATE') or '')[5:10])} → {esc(str(r.get('CHECKOUTDATE') or '')[5:10])}</td>"
+                 f"<td>{esc(durum)}</td><td class='r'>{tl(fbal(r))} ₺</td></tr>")
+    odemeyen = ("<div><h3>Ödemeyenler <span class='t'>— tahsil edilene kadar her gün burada; kırmızı = çıkıp gitmiş, "
+                "turuncu = bugün çıkıyor</span></h3>"
+                + (f"<div style='overflow-x:auto'><table><tr><th>Oda</th><th>Misafir</th><th>Kanal</th><th>Giriş → Çıkış</th>"
+                   f"<th>Durum</th><th class='r'>Borç</th></tr>{rows}</table></div>"
+                   f"<div class='t'>Toplam açık: <b>{tl(sum(fbal(r) for r in owed))} ₺</b></div>"
+                   if owed else "<div class='ok'>Açık bakiye yok — herkes ödemiş.</div>")
+                + "</div>")
+
+    low_html = ("".join(f"<div><b>{esc(x['room'])}</b> · {esc(x['agency'] or 'acentasız')} · {esc(x['night'])} gece"
+                        f"{' · NAKİT' if x.get('cash') else ''} — <b>{tl(x['avg'])}</b> (liste {tl(x['liste'] or 0)}, "
+                        f"<span class='neg'>{tl((x['avg'] or 0) - (x['liste'] or 0))}</span>)</div>" for x in low)
+                or "<div class='ok'>Liste altı satış yok.</div>")
+    iade_html = ("".join(f"<div><b>{esc(r.get('ROOMNO') or '—')}</b> · {esc((r.get('GUESTNAMES') or '')[:24])} · "
+                         f"{esc(r.get('TYPE'))} <b>{tl(num(r.get('TOTAL')))} ₺</b> · {esc(r.get('USERFULLNAME') or '—')}</div>"
+                         for r in sorted(iade, key=lambda r: num(r.get("TOTAL"))))
+                 or "<div class='ok'>İndirim / iade yok.</div>")
+    # "MUHTELİF ALICILAR" toplu muhasebe hesabı (milyonlar); toplamı anlamsızlaştırmasın diye en alta, ayrı
+    muh = [r for r in cari if "MUHTEL" in str(r.get("NAME") or "").upper()]
+    adl = [r for r in cari if r not in muh]
+    cari_html = ("".join(f"<div>{esc((r.get('NAME') or '')[:34])} <b style='float:right'>{tl(num(r.get('LOCALBALANCE')))} ₺</b></div>"
+                         for r in adl)
+                 + f"<div style='border-top:1px solid var(--border);margin-top:4px;padding-top:4px'><b>Toplam</b> "
+                   f"<b style='float:right'>{tl(sum(num(r.get('LOCALBALANCE')) for r in adl))} ₺</b></div>"
+                 + "".join(f"<div class='t'>{esc(r.get('NAME') or '')} (toplu muhasebe hesabı, toplama katılmadı) "
+                           f"<span style='float:right'>{tl(num(r.get('LOCALBALANCE')))} ₺</span></div>" for r in muh)
+                 if cari else "<div class='ok'>Açık cari yok.</div>")
+    if ctah is None:
+        ctah_html = "<div class='t'>Cari tahsilatı alınamadı.</div>"
+    else:
+        dunku = [r for r in ctah if str(r.get("RECEIPTDATE") or "")[:10] == D]
+        ctah_html = ("".join(f"<div>{esc((r.get('ACCOUNTNAME') or '').strip()[:26])} · {esc((r.get('DETAILNOTES') or r.get('RECEIPTNOTES') or '')[:34])}"
+                             f" <b style='float:right'>{tl(num(r.get('LOCALCREDIT')))} ₺</b></div>" for r in dunku)
+                     or "<div class='t'>Dün cariye tahsilat kaydı yok.</div>")
+        ctah_html += (f"<div class='t' style='margin-top:4px'>Son 7 gün cari tahsilatı: <b>{tl(sum(num(r.get('LOCALCREDIT')) for r in ctah))} ₺</b>"
+                      f" ({len(ctah)} kayıt)</div>")
+    kontrol = []
+    if sifir:
+        kontrol.append(f"{len(sifir)} şirket/acenta odasında rezervasyon fiyatı 0 — cariye yansıdı mı? "
+                       f"({', '.join(esc(x['room']) for x in sifir[:8])})")
+    gece = [c for c in gun["rc"] if c["when"][11:16] >= "21:00" or c["when"][11:16] < "07:00"]
+    if gece:
+        kontrol.append(f"Gece oda değişimi: " + "; ".join(f"{esc(c['when'][11:16])} {esc(c['from'])}→{esc(c['to'])} ({esc(c['user'])})" for c in gece[:5]))
+    kontrol_html = "".join(f"<div>{k}</div>" for k in kontrol) or "<div class='ok'>Ek kontrol gerektiren bir şey yok.</div>"
+
+    return (OZET_CSS + "<section class='oz'>"
+            f"<div class='hd'><h2>Dünün özeti — {dun.day} {TR_MONTHS[dun.month]} {GUN_ADI[dun.weekday()]}</h2>"
+            f"<span class='t'>Elektra · {now_str()} itibarıyla</span></div>"
+            f"<div class='tiles'>{tiles}</div>{odemeyen}<div class='grid2'>"
+            f"<div class='box'><h3>Liste altı satışlar <span class='pill {'bad' if low else 'ok'}'>{len(low)}</span></h3>{low_html}</div>"
+            f"<div class='box'><h3>İndirim / iade <span class='pill {'warn' if iade else 'ok'}'>{len(iade)}"
+            f"{' · ' + tl(sum(abs(num(r.get('TOTAL'))) for r in iade)) + ' ₺' if iade else ''}</span></h3>{iade_html}</div>"
+            f"<div class='box'><h3>Açık cariler <span class='pill'>{len(adl)}</span></h3>{cari_html}</div>"
+            f"<div class='box'><h3>Cari tahsilatı</h3>{ctah_html}</div>"
+            f"<div class='box'><h3>Kontrol edilecek</h3>{kontrol_html}</div>"
+            "</div></section>")
+
+
 def build_gunluk(env):
     today = dt.date.today()
     start = today - dt.timedelta(days=30)          # son 31 gün (gün/hafta/ay kapsamı için)
@@ -3495,7 +3650,12 @@ def build_gunluk(env):
     except Exception:
         eksik = None
 
-    data = {"today": today.isoformat(), "days": days, "openbal": ob, "cari": cr,
+    dun = tr_bugun() - dt.timedelta(days=1)      # sabah açılınca DÜN (sahibi 19.11.2026)
+    try:
+        ozet = gunluk_ozet(env, dun, tr_bugun(), days.get(dun.isoformat()), owed, cari, fol)
+    except Exception as ex:
+        ozet = f"<div class='ph'>Dünün özeti hazırlanamadı ({esc(type(ex).__name__)}) — aşağıdaki sekmeler geçerli.</div>"
+    data = {"today": today.isoformat(), "dun": dun.isoformat(), "days": days, "openbal": ob, "cari": cr,
             "rooms": rooms, "pricemin": SATIS_MIN_FIYAT, "eksik": eksik}
     skeleton = (
         "<div class='topbar'><div class='daynav'>"
@@ -3512,7 +3672,7 @@ def build_gunluk(env):
         "listeler (oda değişimi/çıkış/satış) yüklü pencere kadar (son ~1 ay) gösterir.</div>"
         "<div class='tabs' id='tabs'></div>"
         "<div id='panels'></div>")
-    body = (GUNLUK_CSS + skeleton + "<script>window.__GUNLUK__="
+    body = (GUNLUK_CSS + ozet + skeleton + "<script>window.__GUNLUK__="
             + json.dumps(data, ensure_ascii=False, default=str) + ";</script>" + GUNLUK_JS)
     n_open = len(ob)
     left = sum(1 for r in ob if r["left"])
