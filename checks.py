@@ -3155,27 +3155,32 @@ GUNLUK_JS = r"""<script>
     var opA=op.filter(function(x){return !x.r.done;}), tpA=tp.filter(function(x){return !x.r.done;});
     if(scope!=='day'){ t.innerHTML="<p style='color:var(--sub);margin:0'>Sabah notu tek gün seçiliyken yazılır. Aşağıdaki sekmeler seçilen aralığı gösterir.</p>"; }
     else {
-      // DÜZENLİ (sahibi 20.11: "daha düzenli yaz, çok karmaşık"): her konu tek satır — etiket + kısa bilgi
-      function row(cls,tab,lab,txt){return "<button class='sb-row "+cls+"' data-go='"+tab+"'><i></i><b>"+lab+"</b><span>"+txt+"</span></button>";}
+      // DÜZENLİ (sahibi 20.11): konu başına tek satır; GRUPLU (cari, satış kontrolü, problemler tek satır) ve
+      // RENGE GÖRE SIRALI: yeşil önce, turuncu sonra, kırmızı en son. Grubun rengi en kötü parçasının rengi.
+      var LV={'':0,warn:1,bad:2}, CL=['','warn','bad'], rows=[];
+      function row(cls,tab,lab,txt){rows.push({lv:LV[cls]||0,h:"<button class='sb-row "+cls+"' data-go='"+tab+"'><i></i><b>"+lab+"</b><span>"+txt+"</span></button>"});}
+      function worst(){var m=0;for(var a=0;a<arguments.length;a++)m=Math.max(m,LV[arguments[a]]||0);return CL[m];}
       function oda(r){var a=String(r.agency||'');return String(r.room).length>6?(esc(a.charAt(0)+a.slice(1).toLowerCase())+' folyosu'):esc(r.room);}
-      var R="";
-      R+=row('', 'sales', 'Doluluk', (gv.dolu!=null?gv.dolu:'—')+"/55 oda"+(gv.dolu?" (%"+Math.round(gv.dolu*100/55)+")":"")+" · "+sales.length+" giriş · "+deps.length+" çıkış");
-      R+=row(odesiz.length?'bad':'', 'sales', 'Giriş ödemesi', !sales.length?"giriş yok":(odesiz.length?odesiz.length+" ödemesiz — oda "+odesiz.slice(0,4).map(oda).join(', '):"hepsi ödedi"));
-      R+=row('', 'sales', 'Tahsilat', tsum?(tl0(tsum)+" ₺ — "+esc(parts.join(' · '))):"kayıt yok");
-      if(aktar) R+=row('', 'cari', 'Cariye aktarılan', tl0(aktar)+" ₺ (acente hesabına geçti, tahsilat değil)");
-      R+=row(gitti.length?'bad':(ob.length?'warn':''), 'bal', 'Borçlu misafir', !ob.length?"yok, herkes ödemiş":(ob.length+" kişi · "+tl0(obsum)+" ₺"
+      row('', 'sales', 'Doluluk', (gv.dolu!=null?gv.dolu:'—')+"/55 oda"+(gv.dolu?" (%"+Math.round(gv.dolu*100/55)+")":"")+" · "+sales.length+" giriş · "+deps.length+" çıkış");
+      row(odesiz.length?'bad':'', 'sales', 'Giriş ödemesi', !sales.length?"giriş yok":(odesiz.length?odesiz.length+" ödemesiz — oda "+odesiz.slice(0,4).map(oda).join(', '):"hepsi ödedi"));
+      row('', 'sales', 'Tahsilat', tsum?(tl0(tsum)+" ₺ — "+esc(parts.join(' · '))):"kayıt yok");
+      row(gitti.length?'bad':(ob.length?'warn':''), 'bal', 'Borçlu misafir', !ob.length?"yok, herkes ödemiş":(ob.length+" kişi · "+tl0(obsum)+" ₺"
           +(gitti.length?" · çıkıp giden: "+gitti.map(function(r){return oda(r)+" "+tl0(r.borc);}).join(', '):"")
           +(bugunCik.length?" · bugün çıkacak: "+bugunCik.map(function(r){return oda(r)+" "+tl0(r.borc);}).join(', '):"")));
-      R+=row('', 'cari', 'Açık cari', tl0(csum)+" ₺ · "+adl.length+" cari"+(adl[0]?" · en büyük "+esc(adl[0].name)+" "+tl0(adl[0].alacak):""));
-      R+=row(gv.ctah>0?'':'', 'cari', 'Cari tahsilatı', g+" "+(gv.ctah==null?"alınamadı":(gv.ctah>0?tl0(gv.ctah)+" ₺":"yok"))+" · son 7 gün "+tl0(c7)+" ₺");
-      R+=row(low.length?'bad':'', 'sales', 'Liste altı satış', low.length?(low.length+" oda — "+low.slice(0,4).map(function(r){return esc(r.room)+" "+tl0((+r.avg||0)-(+r.liste||0));}).join(' · ')+" ₺"):"yok");
-      if(cash.length) R+=row('warn', 'sales', 'Nakit satış', cash.length+" oda — "+cash.slice(0,4).map(function(r){return esc(r.room);}).join(', '));
-      R+=row(iade.length?'warn':'', 'sales', 'İndirim / iade', iade.length?(iade.length+" kayıt · "+tl0(iSum)+" ₺ · "+esc(kim.join(', '))):"yok");
-      R+=row(eksIn.length?'bad':(eks.length?'warn':''), 'eksik', 'Eksik bilgi', eks.length?(eks.length+" kayıt · otelde olan "+eksIn.length):"yok");
-      R+=row(rcNo.length?'warn':'', 'rc', 'Oda değişimi', rc.length?(rc.length+" · notu yazılmamış "+rcNo.length):"olmadı");
-      R+=row(deps.length&&!yIst?'warn':'', 'yorum', 'Yorum', !deps.length?"çıkış yok":(yIst?(deps.length+" çıkıştan "+yIst+" misafirden istendi"):("hiç istenmedi ("+deps.length+" çıkış)")));
-      R+=row(opA.length?'warn':'', 'odap', 'Oda problemi', op.length?(op.length+(opA.length?" · açık "+opA.length:" · hepsi yapıldı")):"yoktu");
-      R+=row(tpA.length?'warn':'', 'temp', 'Temizlik', tp.length?(tp.length+(tpA.length?" · açık "+tpA.length:" · hepsi yapıldı")):"problem yoktu");
+      row('', 'cari', 'Cari', "açık "+tl0(csum)+" ₺ ("+adl.length+")"
+          +" · tahsilat "+g+" "+(gv.ctah==null?"?":(gv.ctah>0?tl0(gv.ctah)+" ₺":"yok"))+", 7 gün "+tl0(c7)+" ₺"
+          +(aktar?" · cariye aktarılan "+tl0(aktar)+" ₺":""));
+      var sk=[]; if(low.length) sk.push("liste altı "+low.length+" ("+low.slice(0,3).map(function(r){return esc(r.room)+" "+tl0((+r.avg||0)-(+r.liste||0));}).join(', ')+")");
+      if(cash.length) sk.push("nakit "+cash.length+" ("+cash.slice(0,3).map(function(r){return esc(r.room);}).join(', ')+")");
+      row(worst(low.length?'bad':'', cash.length?'warn':''), 'sales', 'Satış kontrolü', sk.length?sk.join(' · '):"liste altı ve nakit satış yok");
+      row(iade.length?'warn':'', 'sales', 'İndirim / iade', iade.length?(iade.length+" kayıt · "+tl0(iSum)+" ₺ · "+esc(kim.join(', '))):"yok");
+      row(eksIn.length?'bad':(eks.length?'warn':''), 'eksik', 'Eksik bilgi', eks.length?(eks.length+" kayıt · otelde olan "+eksIn.length):"yok");
+      row(rcNo.length?'warn':'', 'rc', 'Oda değişimi', rc.length?(rc.length+" · notu yazılmamış "+rcNo.length):"olmadı");
+      row(deps.length&&!yIst?'warn':'', 'yorum', 'Yorum', !deps.length?"çıkış yok":(yIst?(deps.length+" çıkıştan "+yIst+" misafirden istendi"):("hiç istenmedi ("+deps.length+" çıkış)")));
+      row(worst(opA.length?'warn':'', tpA.length?'warn':''), opA.length||!tpA.length?'odap':'temp', 'Problemler',
+          "oda "+(op.length?op.length+(opA.length?" (açık "+opA.length+")":" (yapıldı)"):"yok")+" · temizlik "+(tp.length?tp.length+(tpA.length?" (açık "+tpA.length+")":" (yapıldı)"):"yok"));
+      rows.sort(function(a,b){return a.lv-b.lv;});   // Array.sort kararlı: aynı renkte asıl sıra korunur
+      var R=rows.map(function(x){return x.h;}).join('');
       t.innerHTML="<div class='sb-rows'>"+R+"</div>";
     }
     document.getElementById('sbBoxes').innerHTML=
