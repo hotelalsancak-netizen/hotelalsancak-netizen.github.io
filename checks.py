@@ -2179,10 +2179,7 @@ YENI_LISTE = dt.date(2026, 11, 11)     # bu tarihten önce satılanlar eski (30/
 GECE_INDIRIM = {dt.date(2026, 10, 31): 300}
 ELLE_FIYAT = {  # sahibinin elle girdiği kısa süreli fiyat: (gece, oda) → misafirin gördüğü TL; fiyat_bandi.py bu gecelere dokunmaz
     # 9–10.11 Stüdyo 40 € kaldırıldı: sahibi 09.11 sabah Elektra'da listeye döndürdü (33 oda dolu → 3.500)
-    # 23–24.11 Stüdyo 40 € (sahibi 17.11: "özel indirim yapıyorum, elleme; 1–2 gün böyle kalsın, sonra
-    # eski haline ben getireceğim"). 40 € × ~55,4 kur. Sahibi geri alınca bu iki satır silinmeli.
-    (dt.date(2026, 11, 23), "stu"): 2216,
-    (dt.date(2026, 11, 24), "stu"): 2216,
+    # 23–24.11 Stüdyo 40 € kaldırıldı: sahibi 18.11 12:35'te Elektra'da listeye döndürdü (GetLog)
 }
 # Sahibinin elle fiyat girdiği BÜTÜN gece (yılbaşı gibi): her oda tipi korunur; değer, girdiği günün
 # Elektra fiyatının TL karşılığı (panel hedefi). Sahibi "fiyat güncellemesinde bunlara dokunma" (09.11.2026).
