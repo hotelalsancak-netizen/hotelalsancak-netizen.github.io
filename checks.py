@@ -151,7 +151,7 @@ label{font-size:12px;color:var(--sub);display:block;margin:8px 0 3px}
 def PAGE(eyebrow, title, sub, body):
     return (f"<!doctype html><html lang='tr'><head><meta charset='utf-8'>"
             f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            f"<title>{esc(title)}</title><style>{PAGE_CSS}</style></head><body><div class='wrap'>"
+            f"<title>{esc(title)}</title><style>{PAGE_CSS}</style>{CHART_CSS}</head><body><div class='wrap'>"
             + (f"<div class='eyebrow'>{esc(eyebrow)}</div><h1>{esc(title)}</h1><div class='sub'>{esc(sub)}</div>"
                if eyebrow is not None else "")
             + f"{body}</div></body></html>")
@@ -169,51 +169,169 @@ def empty_ok(msg):
 INK = "#0e7490"
 
 
-def svg_bars(labels, values, unit="", height=150, fmt=None):
-    """Vertical bar chart, self-contained SVG (theme-aware via currentColor tints)."""
+# 20.11.2026: grafikler küçük ve sabit yükseklikte (sahibinin isteği). Eskiden SVG
+# viewBox ile genişliğe göre ölçekleniyordu; geniş ekranda tek grafik ekranı
+# kaplıyordu. Şimdi HTML/CSS: yükseklik piksel olarak sabit, eksende 0 + 3 ara çizgi,
+# çubuk üstünde kısa değer ("3,8 mn"), üzerine gelince tam değer (title).
+CHART_CSS = """<style>
+.ch{--h:150px;--bar:#0e7490;--bar2:#9fd3dc;position:relative}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .ch{--bar:#22b8cf;--bar2:#1e4f5c}}
+:root[data-theme=dark] .ch{--bar:#22b8cf;--bar2:#1e4f5c}
+.ch-plot{position:relative;height:var(--h);margin:14px 0 0 48px}
+.ch-gl{position:absolute;left:0;right:0;border-top:1px dashed var(--border);height:0}
+.ch-gl.z{border-top:1px solid var(--border)}
+.ch-gl span{position:absolute;right:calc(100% + 7px);top:-7px;font-size:10px;line-height:1;color:var(--sub);white-space:nowrap}
+.ch-cols{position:absolute;inset:0;display:flex;align-items:stretch;gap:var(--gap,6px)}
+.ch-c{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;position:relative}
+.ch-c b{display:block;width:100%;max-width:42px;background:var(--bar);border-radius:3px 3px 0 0;min-height:1px}
+.ch-c.cur b{background:var(--bar2);outline:1px dashed var(--bar);outline-offset:-1px}
+.ch-c:hover b{filter:brightness(1.15)}
+.ch-v{font-style:normal;font-size:10px;font-weight:700;color:var(--sub);white-space:nowrap;margin-bottom:3px;line-height:1}
+.ch.dense .ch-v{position:absolute;bottom:calc(var(--y) + 4px);opacity:0;background:var(--fg);color:var(--bg);
+  padding:3px 6px;border-radius:5px;z-index:2;pointer-events:none}
+.ch.dense .ch-c:hover .ch-v{opacity:1}
+.ch-x{display:flex;gap:var(--gap,6px);margin:5px 0 0 48px}
+.ch-x span{flex:1 1 0;min-width:0;text-align:center;font-size:10px;color:var(--sub);white-space:nowrap;overflow:visible}
+.ch svg.ln{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.ch-p{position:absolute;width:7px;height:7px;margin:0 0 -3.5px -3.5px;border-radius:50%;background:var(--card);
+  border:2px solid var(--bar);box-sizing:border-box}
+.ch-hit{position:absolute;top:0;bottom:0}
+.ch-hit:hover{background:rgba(14,116,144,.07)}
+.ch-hit:hover + .ch-p{transform:scale(1.5)}
+.ch-x em{font-style:normal}
+@media (max-width:600px){.ch-x em{display:none}.ch-v{font-size:8.5px}.ch-x span{font-size:9px}}
+.ch-leg{font-size:11px;color:var(--sub);margin-top:6px}
+.ch-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:-1px;margin-right:4px}
+</style>"""
+
+
+def kisa(v, unit=""):
+    """Eksen/çubuk etiketi için kısa sayı: 4711383 -> '4,7 mn', 985000 -> '985 bin'."""
+    u = unit.strip()
+    if u == "%":
+        return f"%{v:.0f}"
+    a = abs(v)
+    if a >= 1e6:
+        s = f"{v / 1e6:.1f}".replace(".", ",").replace(",0", "") + " mn"
+    elif a >= 1e4:
+        s = f"{v / 1e3:.0f} bin"
+    elif a >= 1e3:
+        s = f"{v / 1e3:.1f}".replace(".", ",").replace(",0", "") + " bin"
+    else:
+        s = f"{v:.0f}"
+    return s + (f" {u}" if u else "")
+
+
+def _nice(x):
+    """x'i 1-2-2,5-5 ×10^k'ya yukarı yuvarla (eksen üst sınırı)."""
+    import math
+    if x <= 0:
+        return 1
+    e = 10 ** math.floor(math.log10(x))
+    for f in (1, 2, 2.5, 5, 10):
+        if x <= f * e + 1e-9:
+            return f * e
+    return 10 * e
+
+
+def _grid(lo, hi, unit, steps=4):
+    out = []
+    for i in range(steps + 1):
+        v = lo + (hi - lo) * i / steps
+        p = (v - lo) / (hi - lo) * 100 if hi > lo else 0
+        out.append(f"<div class='ch-gl{' z' if i == 0 else ''}' style='bottom:{p:.2f}%'>"
+                   f"<span>{esc(kisa(v, unit))}</span></div>")
+    return "".join(out)
+
+
+def _xlabels(labels, every):
+    return "<div class='ch-x'>" + "".join(
+        f"<span>{_xl(l) if (i % every == 0) else ''}</span>" for i, l in enumerate(labels)) + "</div>"
+
+
+def _xl(l):
+    """'Ara 25' -> 'Ara<em> 25</em>': telefonda yıl gizlenir, etiketler üst üste binmesin."""
+    a, _, b = str(l).partition(" ")
+    return esc(a) + (f"<em> {esc(b)}</em>" if b else "")
+
+
+def svg_bars(labels, values, unit="", height=150, fmt=None, partial_last=False):
+    """Dikey çubuk grafik (HTML/CSS, sabit yükseklik). partial_last: son çubuk henüz
+    bitmemiş dönem (bu ay) — açık renk + kesikli çerçeve."""
     fmt = fmt or (lambda v: f"{v:.0f}")
-    n = len(values) or 1
-    w = max(320, n * 26)
-    mx = max(values) or 1
-    bw = w / n * 0.62
-    gap = w / n
-    bars = []
+    n = len(values)
+    if not n:
+        return "<div class='lead'>veri yok</div>"
+    hi = _nice(max(values + [0]) * 1.08)
+    dense = n > 13
+    cols = []
     for i, v in enumerate(values):
-        bh = (v / mx) * (height - 26)
-        x = i * gap + (gap - bw) / 2
-        y = height - 20 - bh
-        show = (n <= 16) or (i % max(1, n // 12) == 0)
-        bars.append(f"<rect x='{x:.1f}' y='{y:.1f}' width='{bw:.1f}' height='{bh:.1f}' rx='2' fill='{INK}' opacity='.85'/>")
-        if show:
-            bars.append(f"<text x='{x+bw/2:.1f}' y='{height-6}' font-size='9' text-anchor='middle' fill='#94a3b8'>{esc(labels[i])}</text>")
-    top = f"<text x='0' y='11' font-size='10' fill='#94a3b8'>en yüksek: {esc(fmt(mx))}{esc(unit)}</text>"
-    return (f"<svg viewBox='0 0 {w} {height}' style='width:100%;height:auto;overflow:visible'>"
-            f"{top}{''.join(bars)}</svg>")
+        p = max(0.0, v) / hi * 100
+        cur = " cur" if (partial_last and i == n - 1) else ""
+        cols.append(f"<div class='ch-c{cur}' style='--y:{p:.2f}%' title='{esc(labels[i])}: "
+                    f"{esc(fmt(v))}{esc(unit if unit.strip() != '%' else '%')}'>"
+                    f"<i class='ch-v'>{esc(kisa(v, '%' if unit.strip() == '%' else ''))}</i><b style='height:{p:.2f}%'></b></div>")
+    gap = 6 if n <= 13 else (3 if n <= 31 else 1)
+    every = 1 if n <= 16 else max(1, round(n / 10))
+    return (f"<div class='ch{' dense' if dense else ''}' style='--h:{height}px;--gap:{gap}px'>"
+            f"<div class='ch-plot'>{_grid(0, hi, unit)}<div class='ch-cols'>{''.join(cols)}</div></div>"
+            f"{_xlabels(labels, every)}</div>")
+
+
+def ch_bars2(labels, a, b, height=150, renk=("#16a34a", "#dc2626")):
+    """İki serili (yan yana) çubuk grafik — ör. bankaya giren / çıkan."""
+    n = len(labels)
+    if not n:
+        return "<div class='lead'>veri yok</div>"
+    hi = _nice(max(list(a) + list(b) + [0]) * 1.08)
+    cols = []
+    for i in range(n):
+        pa, pb = max(0.0, a[i]) / hi * 100, max(0.0, b[i]) / hi * 100
+        cols.append(
+            f"<div class='ch-c' style='flex-direction:row;align-items:flex-end;gap:2px'>"
+            f"<b style='height:{pa:.2f}%;background:{renk[0]};max-width:22px' title='{esc(labels[i])}: {tl(a[i])}'></b>"
+            f"<b style='height:{pb:.2f}%;background:{renk[1]};max-width:22px' title='{esc(labels[i])}: {tl(b[i])}'></b></div>")
+    return (f"<div class='ch' style='--h:{height}px;--gap:10px'>"
+            f"<div class='ch-plot'>{_grid(0, hi, '')}<div class='ch-cols'>{''.join(cols)}</div></div>"
+            f"{_xlabels(labels, 1)}</div>")
 
 
 def svg_line(labels, values, unit="", height=150, fmt=None):
+    """Çizgi grafik: sabit yükseklik; eksen veriye göre (0'dan değil) — fiyat gibi
+    seriler için. Noktalar HTML (bozulmasın diye), çizgi SVG (non-scaling-stroke)."""
     fmt = fmt or (lambda v: f"{v:.0f}")
-    n = len(values) or 1
-    w = max(320, n * 26)
-    mx = max(values) or 1
-    mn = min(values + [0])
-    span = (mx - mn) or 1
-    pts = []
+    n = len(values)
+    if not n:
+        return "<div class='lead'>veri yok</div>"
+    pos = [v for v in values if v] or [0]
+    mn, mx = min(pos), max(pos)
+    span = _nice(((mx - mn) or mx or 1) * 1.25 / 4) * 4
+    lo = max(0.0, (mn // (span / 4)) * (span / 4))
+    hi = lo + span
+    while hi < mx:
+        hi += span / 4
+    def xy(i, v):
+        return ((i + .5) / n * 100, (v - lo) / (hi - lo) * 100 if hi > lo else 0)
+    pts = [xy(i, v) for i, v in enumerate(values) if v]
+    poly = " ".join(f"{x * 10:.1f},{1000 - y * 10:.1f}" for x, y in pts)
+    area = (f"{pts[0][0] * 10:.1f},1000 {poly} {pts[-1][0] * 10:.1f},1000" if pts else "")
+    hits, dots = [], []
+    w = 100 / n
     for i, v in enumerate(values):
-        x = (i / max(1, n - 1)) * (w - 10) + 5
-        y = height - 20 - ((v - mn) / span) * (height - 30)
-        pts.append((x, y))
-    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
-    dots = "".join(f"<circle cx='{x:.1f}' cy='{y:.1f}' r='2.4' fill='{INK}'/>" for x, y in pts)
-    labs = []
-    step = max(1, n // 10)
-    for i in range(0, n, step):
-        x = (i / max(1, n - 1)) * (w - 10) + 5
-        labs.append(f"<text x='{x:.1f}' y='{height-5}' font-size='9' text-anchor='middle' fill='#94a3b8'>{esc(labels[i])}</text>")
-    top = f"<text x='0' y='11' font-size='10' fill='#94a3b8'>en yüksek: {esc(fmt(mx))}{esc(unit)}</text>"
-    return (f"<svg viewBox='0 0 {w} {height}' style='width:100%;height:auto;overflow:visible'>"
-            f"{top}<polyline points='{poly}' fill='none' stroke='{INK}' stroke-width='2'/>"
-            f"{dots}{''.join(labs)}</svg>")
+        if not v:
+            continue
+        x, y = xy(i, v)
+        t = f"{esc(labels[i])}: {esc(fmt(v))}{esc(unit)}"
+        hits.append(f"<div class='ch-hit' style='left:{x - w / 2:.2f}%;width:{w:.2f}%' title='{t}'></div>")
+        dots.append(f"<div class='ch-p' style='left:{x:.2f}%;bottom:{y:.2f}%' title='{t}'></div>")
+    svg = (f"<svg class='ln' viewBox='0 0 1000 1000' preserveAspectRatio='none'>"
+           f"<polygon points='{area}' fill='var(--bar)' opacity='.08'/>"
+           f"<polyline points='{poly}' fill='none' stroke='var(--bar)' stroke-width='2' "
+           f"vector-effect='non-scaling-stroke' stroke-linejoin='round'/></svg>")
+    every = 1 if n <= 16 else max(1, round(n / 10))
+    return (f"<div class='ch' style='--h:{height}px;--gap:0px'><div class='ch-plot'>"
+            f"{_grid(lo, hi, unit)}{svg}{''.join(h + d for h, d in zip(hits, dots))}</div>"
+            f"{_xlabels(labels, every)}</div>")
 
 
 def svg_donut(value, total, center_label):
@@ -221,7 +339,7 @@ def svg_donut(value, total, center_label):
     r, c = 52, 60
     circ = 2 * 3.14159 * r
     off = circ * (1 - pct)
-    return (f"<svg viewBox='0 0 120 120' style='width:150px;height:150px'>"
+    return (f"<svg viewBox='0 0 120 120' style='width:124px;height:124px'>"
             f"<circle cx='{c}' cy='{c}' r='{r}' fill='none' stroke='#e2e8f0' stroke-width='14'/>"
             f"<circle cx='{c}' cy='{c}' r='{r}' fill='none' stroke='{INK}' stroke-width='14'"
             f" stroke-linecap='round' stroke-dasharray='{circ:.1f}' stroke-dashoffset='{off:.1f}'"
@@ -239,7 +357,7 @@ def svg_hbars(pairs, unit="₺"):
         rows.append(
             f"<div style='margin:7px 0'><div style='display:flex;justify-content:space-between;font-size:12px'>"
             f"<span>{esc(lab)}</span><span class='money'>{tl(v)} {esc(unit)}</span></div>"
-            f"<div style='height:8px;background:#eef2f7;border-radius:5px;margin-top:3px'>"
+            f"<div style='height:8px;background:var(--th-bg);border-radius:5px;margin-top:3px'>"
             f"<div style='height:8px;width:{pct:.1f}%;background:{INK};border-radius:5px'></div></div></div>")
     return "".join(rows)
 
@@ -1231,10 +1349,71 @@ def mlabel(key, short=True):
 
 
 # --------------------------------------------------------------------------- 5) İstatistikler
+# 20.11.2026 yeniden düzen (sahibinin isteği: "grafikler çok büyük, profesyonel olsun"):
+# iç başlık yok (kabuk zaten gösteriyor), üstte KPI kutuları, grafikler ikişer yan yana
+# ve sabit yükseklikte, tablo en altta.
+SALES_CSS = """<style>
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:12px;margin:2px 0 16px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:13px;padding:13px 16px}
+.kpi .l{color:var(--sub);font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.kpi .n{font-size:22px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpi .d{font-size:11.5px;color:var(--sub);margin-top:3px}
+.up{color:var(--statok);font-weight:700}.dn{color:var(--statbad);font-weight:700}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:14px;margin-bottom:14px}
+.g2>*,.g3>*{min-width:0}
+.g3{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px}
+@media (max-width:900px){.g3{grid-template-columns:1fr}}
+.card h3{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:13px;margin:0 0 2px}
+.card h3 small{font-weight:600;color:var(--sub);font-size:11.5px}
+.sec{font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--eyebrow);margin:22px 0 10px}
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:12px}
+.tw table{margin:0;border-radius:0;min-width:560px}
+tr.now td{background:var(--th-bg)}
+@media (max-width:600px){.kpis{grid-template-columns:1fr 1fr;gap:8px}.kpi{padding:10px 12px}
+  .kpi .n{font-size:16px;white-space:normal}.kpi .d{font-size:10.5px}}
+</style>"""
+
+
+def _delta(cur, prev, suffix=""):
+    """'▲ %12 geçen aya göre' — prev 0 ise boş."""
+    if not prev:
+        return ""
+    p = (cur - prev) / prev * 100
+    cls, ok = ("up", "▲") if p >= 0 else ("dn", "▼")
+    return f"<span class='{cls}'>{ok} %{abs(p):.0f}</span> {esc(suffix)}"
+
+
+def kpi(n, label, d=""):
+    return (f"<div class='kpi'><div class='l'>{esc(label)}</div><div class='n'>{n}</div>"
+            + (f"<div class='d'>{d}</div>" if d else "") + "</div>")
+
+
+def _pm_split(env, frm, to):
+    fol = E.fetch_folio(frm.isoformat(), to.isoformat(), env=env)
+    pm = defaultdict(float)
+    for r in fol:
+        if r.get("DEPTTYPENAME") == "PAYMENT":
+            pm[METHOD_TR.get(r.get("DEPNAME"), r.get("DEPNAME") or "Diğer")] += abs(num(r.get("TOTAL")))
+    return sorted(pm.items(), key=lambda t: -t[1])
+
+
+def _veri_aylari(monthly):
+    """Elektra'ya geçiş Aralık 2025 sonunda: öncesi boş, ilk ay yarım. Baştaki doluluğu
+    %15'in altındaki aylar grafikte/tabloda gösterilmez (yoksa Ocak '%800 artış' görünür)."""
+    ks = list(monthly.keys())
+    while len(ks) > 1 and monthly[ks[0]]["occ"] < 15:
+        ks.pop(0)
+    return ks
+
+
+def _ay(monthly, key, gecerli):
+    """Geçerli (veri olan) ayın kaydı, yoksa None."""
+    return monthly[key] if key in gecerli else None
+
+
 def build_stats(env):
     today = dt.date.today()
-    # One 12-month fetch powers both the daily (last 30) and the monthly views.
-    start = month_start(today, 11)
+    start = month_start(today, 12)                 # 13 ay: geçen yılın aynı ayı da var
     active = active_reservations(env, start, today)
     daily = daily_occupancy(active, start, today)
     day_keys = list(daily.keys())
@@ -1243,120 +1422,167 @@ def build_stats(env):
     occ = [len(daily[d]) for d in last30]
     adr = [(sum(daily[d].values()) / len(daily[d]) if daily[d] else 0.0) for d in last30]
     occ_pct = [min(100, round(c / ROOMS_TOTAL * 100)) for c in occ]
-    labels = [f"{d.day:02d}" for d in last30]
+    labels = [f"{d.day:02d}.{d.month:02d}" for d in last30]
+    prev30 = day_keys[-60:-30]
+    p_occ = [len(daily[d]) for d in prev30]
 
     today_occ = len(daily[today])
     today_pct = min(100, round(today_occ / ROOMS_TOTAL * 100))
     today_adr = (sum(daily[today].values()) / today_occ) if today_occ else 0.0
     revpar = today_adr * today_occ / ROOMS_TOTAL if ROOMS_TOTAL else 0
     avg_pct = round(sum(occ_pct) / len(occ_pct)) if occ_pct else 0
-    avg_adr = (sum(a for a in adr if a) / len([a for a in adr if a])) if any(adr) else 0
+    p_avg = round(sum(p_occ) / len(p_occ) / ROOMS_TOTAL * 100) if p_occ else 0
+    nz = [a for a in adr if a]
+    avg_adr = sum(nz) / len(nz) if nz else 0
+    rev30 = sum(sum(daily[d].values()) for d in last30)
 
-    stats = (stat(f"%{today_pct}", "bugün doluluk", "")
-             + stat(f"{today_occ}/{ROOMS_TOTAL}", "dolu oda")
-             + stat(f"{tl(today_adr)} ₺", "bugün ADR")
-             + stat(f"{tl(revpar)} ₺", "RevPAR"))
+    kpis = (kpi(f"%{today_pct}", "Bugün doluluk", f"{today_occ} / {ROOMS_TOTAL} oda dolu")
+            + kpi(f"{tl(today_adr)} ₺", "Bugün ADR", "dolu oda başı ortalama gecelik")
+            + kpi(f"{tl(revpar)} ₺", "Bugün RevPAR", "toplam oda başı gelir")
+            + kpi(f"%{avg_pct}", "30 gün ort. doluluk",
+                  _delta(avg_pct, p_avg, "önceki 30 güne göre"))
+            + kpi(f"{tl(avg_adr)} ₺", "30 gün ort. ADR")
+            + kpi(f"{kisa(rev30)} ₺", "30 gün oda geliri"))
 
-    # Payment method split (last 7 days) for a nice breakdown chart.
-    fol = E.fetch_folio((today - dt.timedelta(days=7)).isoformat(), today.isoformat(), env=env)
-    pm = defaultdict(float)
-    for r in fol:
-        if r.get("DEPTTYPENAME") == "PAYMENT":
-            pm[METHOD_TR.get(r.get("DEPNAME"), r.get("DEPNAME") or "Diğer")] += abs(num(r.get("TOTAL")))
-
+    pm = _pm_split(env, today - dt.timedelta(days=7), today)
     donut = svg_donut(today_occ, ROOMS_TOTAL, f"/ {ROOMS_TOTAL} oda")
-    charts = f"""
-    <div class='grid2'>
-      <div class='card'><h3>Bugün doluluk</h3><div style='display:flex;justify-content:center'>{donut}</div>
-        <div style='text-align:center;color:#94a3b8;font-size:12px'>%{today_pct} dolu · 30 gün ort. %{avg_pct}</div></div>
-      <div class='card'><h3>Ödeme türü dağılımı (7 gün)</h3>{svg_hbars(sorted(pm.items(), key=lambda t:-t[1])) or "<div class='lead'>veri yok</div>"}</div>
-    </div>
-    <div class='card' style='margin-top:16px'><h3>Doluluk % — son 30 gün</h3>{svg_bars(labels, occ_pct, unit='%')}</div>
-    <div class='card' style='margin-top:16px'><h3>Ortalama oda fiyatı (ADR ₺) — son 30 gün</h3>{svg_line(labels, adr, unit=' ₺', fmt=lambda v: tl(v))}</div>
-    """
-    # ---- monthly summary (last 12 months) ----
+    gun30 = (
+        "<div class='g2'>"
+        f"<div class='card'><h3>Doluluk — son 30 gün <small>ort. %{avg_pct}</small></h3>"
+        f"{svg_bars(labels, occ_pct, unit='%', height=140)}</div>"
+        f"<div class='card'><h3>Ortalama oda fiyatı (ADR) — son 30 gün <small>ort. {tl(avg_adr)} ₺</small></h3>"
+        f"{svg_line(labels, adr, unit=' ₺', fmt=lambda v: tl(v), height=140)}</div></div>"
+        "<div class='g3'>"
+        f"<div class='card'><h3>Ödeme türü dağılımı <small>son 7 gün</small></h3>"
+        f"{svg_hbars(pm) or '<div class=lead>veri yok</div>'}</div>"
+        f"<div class='card'><h3>Bugün doluluk <small>%{today_pct}</small></h3>"
+        f"<div style='display:flex;justify-content:center;padding:6px 0'>{donut}</div></div></div>")
+
+    # ---- aylık (son 12 ay + geçen yılın aynı ayı için 13. ay)
     monthly = monthly_aggregate(daily)
-    mkeys = list(monthly.keys())
+    mk_all = _veri_aylari(monthly)
+    mkeys = mk_all[-12:]
     mlabels = [mlabel(k) for k in mkeys]
-    m_occ = [monthly[k]["occ"] for k in mkeys]
-    m_adr = [monthly[k]["adr"] for k in mkeys]
+    ly = _ay(monthly, (today.year - 1, today.month), mk_all)
+    cur = monthly[mkeys[-1]]
+    aylik = (
+        f"<div class='sec'>Aylık — son {len(mkeys)} ay</div><div class='g2'>"
+        f"<div class='card'><h3>Aylık doluluk <small>bu ay %{cur['occ']}"
+        + (f" · geçen yıl %{ly['occ']}" if ly else "") + "</small></h3>"
+        f"{svg_bars(mlabels, [monthly[k]['occ'] for k in mkeys], unit='%', height=140, partial_last=True)}</div>"
+        f"<div class='card'><h3>Aylık ADR <small>bu ay {tl(cur['adr'])} ₺</small></h3>"
+        f"{svg_line(mlabels, [monthly[k]['adr'] for k in mkeys], unit=' ₺', fmt=lambda v: tl(v), height=140)}"
+        "</div></div>")
     mrows = "".join(
-        f"<tr><td>{esc(mlabel(k, False))}</td><td class='r'>%{monthly[k]['occ']}</td>"
+        f"<tr{' class=now' if k == mkeys[-1] else ''}><td>{esc(mlabel(k, False))}"
+        f"{' <span class=who>bugüne kadar</span>' if k == mkeys[-1] else ''}</td>"
+        f"<td class='r'>%{monthly[k]['occ']}</td>"
         f"<td class='r money'>{tl(monthly[k]['adr'])}</td>"
-        f"<td class='r money'>{tl(monthly[k]['revpar'])}</td>"
+        f"<td class='r'>{tl(monthly[k]['revpar'])}</td>"
         f"<td class='r'>{monthly[k]['rooms']}</td>"
         f"<td class='r money'>{tl(monthly[k]['rev'])} ₺</td></tr>"
         for k in reversed(mkeys))
-    monthly_html = (
-        "<h2>Aylık özet (son 12 ay)</h2>"
-        f"<div class='card'><h3>Aylık doluluk %</h3>{svg_bars(mlabels, m_occ, unit='%')}</div>"
-        f"<div class='card' style='margin-top:16px'><h3>Aylık ADR (₺)</h3>"
-        f"{svg_line(mlabels, m_adr, unit=' ₺', fmt=lambda v: tl(v))}</div>"
-        "<table><tr><th>Ay</th><th class='r'>Doluluk</th><th class='r'>ADR</th>"
-        "<th class='r'>RevPAR</th><th class='r'>Oda-gecesi</th><th class='r'>Oda geliri</th></tr>"
-        + mrows + "</table>"
-        "<p class='note'>Bu ay kısmidir (bugüne kadar). Oda geliri = konaklanan oda-gecelerinin TL gecelik toplamı (ekstralar hariç).</p>")
-
-    note = (f"<div class='note'>Doluluk = dolu oda / {ROOMS_TOTAL}. ADR = dolu odaların ortalama gecelik fiyatı (TL). "
-            f"30 gün ort.: doluluk %{avg_pct}, ADR {tl(avg_adr)} ₺. Kaynak: QA_HOTEL_RESERVATION.</div>")
-    body = f"<div class='stats'>{stats}</div>{charts}{monthly_html}{note}"
+    table = ("<div class='tw'><table><tr><th>Ay</th><th class='r'>Doluluk</th><th class='r'>ADR ₺</th>"
+             "<th class='r'>RevPAR ₺</th><th class='r'>Oda-gecesi</th><th class='r'>Oda geliri</th></tr>"
+             + mrows + "</table></div>")
+    note = (f"<div class='note'>Doluluk = dolu oda / {ROOMS_TOTAL}. ADR = dolu odaların ortalama gecelik "
+            "fiyatı (TL). RevPAR = oda geliri / toplam oda. Oda geliri = konaklanan oda-gecelerinin TL "
+            "gecelik toplamı (ekstralar hariç). Bu ay kısmidir (bugüne kadar). Kaynak: Elektra "
+            "rezervasyonları + folio ödemeleri.</div>")
+    body = f"{SALES_CSS}<div class='kpis'>{kpis}</div>{gun30}{aylik}{table}{note}"
     return {"label": "İstatistikler & Grafikler", "count": today_pct,
             "count_label": "% bugün doluluk", "tone": "ok",
             "sub": f"bugün %{today_pct} · ADR {tl(today_adr)} ₺ · 30 gün ort. %{avg_pct}",
-            "updated": now_str(), "html": PAGE("Doluluk & Gelir",
-            "İstatistikler & Grafikler", "son 30 gün + aylık", body)}
+            "updated": now_str(), "html": PAGE(None, "İstatistikler & Grafikler", "", body)}
 
 
 # --------------------------------------------------------------------------- 6) Aylık Satışlar
 def build_satis(env):
     today = dt.date.today()
-    start = month_start(today, 11)
+    start = month_start(today, 23)                 # 24 ay: her ayı geçen yılın aynı ayıyla kıyas
     active = active_reservations(env, start, today)
     daily = daily_occupancy(active, start, today)
     monthly = monthly_aggregate(daily)
-    mkeys = list(monthly.keys())
+    mk_all = _veri_aylari(monthly)
+    mkeys = mk_all[-12:]
     mlabels = [mlabel(k) for k in mkeys]
-    m_rev = [monthly[k]["rev"] for k in mkeys]
 
-    cur = monthly[mkeys[-1]] if mkeys else {"rev": 0, "rooms": 0, "adr": 0}
-    prev = monthly[mkeys[-2]] if len(mkeys) > 1 else {"rev": 0}
+    cur = monthly[mkeys[-1]]
+    prev = monthly[mkeys[-2]] if len(mkeys) > 1 else {"rev": 0, "rooms": 0, "adr": 0, "occ": 0}
+    ly = _ay(monthly, (today.year - 1, today.month), mk_all)
     ytd = sum(v["rev"] for k, v in monthly.items() if k[0] == today.year)
 
-    stats = (stat(f"{tl(cur['rev'])} ₺", f"{TR_MON_FULL[today.month]} oda geliri")
-             + stat(f"{tl(prev['rev'])} ₺", "geçen ay")
-             + stat(f"{tl(ytd)} ₺", f"{today.year} yıl toplamı")
-             + stat(f"{cur['rooms']}", "bu ay oda-gecesi"))
+    # Geçen ayın AYNI günleri (1..bugün) — yarım ayı tam ayla kıyaslamamak için.
+    pm_first = month_start(today, 1)
+    same = [d for d in daily if d.year == pm_first.year and d.month == pm_first.month
+            and d.day <= today.day]
+    same_rev = sum(sum(daily[d].values()) for d in same)
+    days_in = (month_start(today, -1) - month_start(today)).days
+    proj = cur["rev"] / today.day * days_in if today.day else 0
 
-    revbar = (f"<div class='card'><h3>Aylık oda geliri (₺)</h3>"
-              f"{svg_bars(mlabels, m_rev, unit=' ₺', fmt=lambda v: tl(v))}</div>")
+    kpis = (kpi(f"{tl(cur['rev'])} ₺", f"{TR_MON_FULL[today.month]} oda geliri",
+                _delta(cur["rev"], same_rev, f"geçen ayın ilk {today.day} gününe göre"))
+            + kpi(f"≈ {kisa(proj)} ₺", "Ay sonu tahmini",
+                  f"bu hızla · {TR_MON_FULL[pm_first.month]} {kisa(prev['rev'])} ₺")
+            + kpi(f"{tl(prev['rev'])} ₺", f"{TR_MON_FULL[pm_first.month]} (geçen ay)",
+                  (_delta(prev["rev"], (_ay(monthly, (pm_first.year - 1, pm_first.month), mk_all)
+                                        or {}).get("rev", 0), "geçen yılın aynı ayına göre")))
+            + kpi(f"{tl(ytd)} ₺", f"{today.year} toplamı", "yıl başından bugüne")
+            + kpi(f"{cur['rooms']}", "Bu ay oda-gecesi", f"doluluk %{cur['occ']} · ADR {tl(cur['adr'])} ₺"))
 
-    # This-month collections by payment method (folio) — how the money came in.
-    fol = E.fetch_folio(month_start(today).isoformat(), today.isoformat(), env=env)
-    pm = defaultdict(float)
-    for r in fol:
-        if r.get("DEPTTYPENAME") == "PAYMENT":
-            pm[METHOD_TR.get(r.get("DEPNAME"), r.get("DEPNAME") or "Diğer")] += abs(num(r.get("TOTAL")))
-    pm_card = (f"<div class='card'><h3>Bu ay tahsilat — ödeme türü</h3>"
-               f"{svg_hbars(sorted(pm.items(), key=lambda t: -t[1])) or '<div class=lead>veri yok</div>'}</div>")
+    # Bu ayın günlük oda geliri
+    tm = [d for d in daily if d.year == today.year and d.month == today.month]
+    gunluk = svg_bars([f"{d.day}" for d in tm], [sum(daily[d].values()) for d in tm],
+                      unit="₺", fmt=lambda v: tl(v) + " ", height=140)
+    pm = _pm_split(env, month_start(today), today)
+    pm_top = sum(v for _, v in pm)
 
-    mrows = "".join(
-        f"<tr><td>{esc(mlabel(k, False))}</td><td class='r money'>{tl(monthly[k]['rev'])} ₺</td>"
-        f"<td class='r'>{monthly[k]['rooms']}</td><td class='r'>%{monthly[k]['occ']}</td>"
-        f"<td class='r money'>{tl(monthly[k]['adr'])}</td></tr>"
-        for k in reversed(mkeys))
-    table = ("<h2>Aylık satış tablosu</h2><table><tr><th>Ay</th><th class='r'>Oda geliri</th>"
-             "<th class='r'>Oda-gecesi</th><th class='r'>Doluluk</th><th class='r'>ADR</th></tr>"
-             + mrows + "</table>")
+    charts = (
+        "<div class='g3'>"
+        f"<div class='card'><h3>Aylık oda geliri <small>son 12 ay · açık renk = bu ay (bugüne kadar)</small></h3>"
+        f"{svg_bars(mlabels, [monthly[k]['rev'] for k in mkeys], unit='₺', fmt=lambda v: tl(v) + ' ', height=150, partial_last=True)}</div>"
+        f"<div class='card'><h3>Bu ay tahsilat <small>{tl(pm_top)} ₺</small></h3>"
+        f"{svg_hbars(pm) or '<div class=lead>veri yok</div>'}</div></div>"
+        "<div class='g2'>"
+        f"<div class='card'><h3>{TR_MON_FULL[today.month]} — günlük oda geliri <small>ort. "
+        f"{tl(cur['rev'] / len(tm) if tm else 0)} ₺/gün</small></h3>{gunluk}</div>"
+        f"<div class='card'><h3>Aylık ADR <small>bu ay {tl(cur['adr'])} ₺"
+        + (f" · geçen yıl {tl(ly['adr'])} ₺" if ly else "") + "</small></h3>"
+        f"{svg_line(mlabels, [monthly[k]['adr'] for k in mkeys], unit=' ₺', fmt=lambda v: tl(v), height=140)}</div>"
+        "</div>")
 
-    body = (f"<div class='stats'>{stats}</div>{revbar}"
-            f"<div class='grid2' style='margin-top:16px'>{pm_card}</div>{table}"
-            "<div class='note'>Oda geliri = konaklanan oda-gecelerinin TL gecelik toplamı (tahakkuk; ekstralar/minibar hariç). "
-            "Tahsilat = bu ay folioya girilen ödemeler (TL). Kaynak: QA_HOTEL_RESERVATION + QA_HOTEL_FOLIO.</div>")
+    # Elektra'da geçen yılın verisi olan ay yoksa (Ara 2026'ya kadar) sütun hiç çıkmaz.
+    yoy = any(_ay(monthly, (k[0] - 1, k[1]), mk_all) for k in mkeys[:-1])
+    rows = []
+    for i, k in enumerate(reversed(mkeys)):
+        v = monthly[k]
+        lyv = _ay(monthly, (k[0] - 1, k[1]), mk_all)
+        pv = monthly[mkeys[-2 - i]] if (len(mkeys) - 2 - i) >= 0 else None
+        now = k == mkeys[-1]
+        rows.append(
+            f"<tr{' class=now' if now else ''}><td>{esc(mlabel(k, False))}"
+            f"{' <span class=who>bugüne kadar</span>' if now else ''}</td>"
+            f"<td class='r money'>{tl(v['rev'])} ₺</td>"
+            f"<td class='r'>{'' if now or not pv else _delta(v['rev'], pv['rev'])}</td>"
+            + (f"<td class='r'>{_delta(v['rev'], lyv['rev']) if (lyv and not now) else ''}</td>"
+               if yoy else "") +
+            f"<td class='r'>{v['rooms']}</td><td class='r'>%{v['occ']}</td>"
+            f"<td class='r'>{tl(v['adr'])}</td></tr>")
+    table = ("<div class='sec'>Aylık satış tablosu</div><div class='tw'><table><tr><th>Ay</th>"
+             "<th class='r'>Oda geliri</th><th class='r'>Önceki aya göre</th>"
+             + ("<th class='r'>Geçen yıla göre</th>" if yoy else "")
+             + "<th class='r'>Oda-gecesi</th><th class='r'>Doluluk</th>"
+             "<th class='r'>ADR ₺</th></tr>" + "".join(rows) + "</table></div>")
+
+    body = (f"{SALES_CSS}<div class='kpis'>{kpis}</div>{charts}{table}"
+            "<div class='note'>Oda geliri = konaklanan oda-gecelerinin TL gecelik toplamı (tahakkuk; "
+            "ekstralar/minibar hariç). Tahsilat = bu ay folioya girilen ödemeler (TL). Ay sonu tahmini = "
+            "bu ayın günlük ortalaması × ayın gün sayısı. “Geçen yıla göre” yalnızca Elektra'da geçen "
+            "yılın verisi olan aylarda görünür. Kaynak: Elektra rezervasyonları + folio.</div>")
     return {"label": "Aylık Satışlar", "count": int(round(cur["rev"] / 1000)),
             "count_label": "bin ₺ · bu ay", "tone": "ok",
             "sub": f"{TR_MON_FULL[today.month]}: {tl(cur['rev'])} ₺ · {today.year} toplam {tl(ytd)} ₺",
-            "updated": now_str(), "html": PAGE("Aylık Gelir & Satış",
-            "Aylık Satışlar", "son 12 ay oda geliri", body)}
+            "updated": now_str(), "html": PAGE(None, "Aylık Satışlar", "", body)}
 
 
 
@@ -3940,3 +4166,408 @@ def build_eksik(env):
                          "Elektra'ya girilmemiş misafir bilgileri · telefon + kimlik",
                          f"<div class='stats'>{stats}</div>{fresh}{tel_html}{kim_html}{tally_html}"
                          f"{left_html}{note}{REZ_COPY_JS}")}
+
+
+# --------------------------------------------------------------------------- Gelir-Gider
+# 20.11.2026 (sahibin isteği): "satışlardan bu ay bankaya ne girmiş, neye para harcanmış".
+# KAYNAK: Elektra MUHASEBE — 102 Bankalar altındaki her fiş satırı (hesap ekstresi proc'u).
+# Muhasebeci banka hareketlerini her gün "DD.MM.YYYY Günlük Banka İşlemleri" fişiyle
+# işliyor; her satırın KARŞI HESABI (CROSSACCOUNT) paranın nereden geldiğini / nereye
+# gittiğini söyler (108 POS, 120 acenta, 335 maaş, 361 SGK, 320 tedarikçi …).
+# Tuzaklar (canlı veride görüldü):
+#  • Proc tek çağrıda EN FAZLA 1000 satır döner → 10 günlük parçalar, dolarsa ikiye böl.
+#  • Kendi hesaplarımız arası virman (Akbank → Ziraat vergi için) iki bacaklıdır: ATLA.
+#  • "Para Yatırma" (kasadan bankaya nakit) muhasebede Akbank EURO hesabı karşılık
+#    gösterilerek işleniyor; "Para Çekme" (ATM) Akbank DOLAR karşılığıyla. Bunlarda yalnız
+#    TL hesabındaki bacağı say (EUR/USD bacağı aynı paranın öbür yüzü).
+#  • 195 "İş avansı" = sahibin banka kartıyla yapılan harcamalar (Google Ads, yakıt,
+#    market…) — açıklamadan kalemlendirilir.
+#  • Ters işlem (TERS İŞLEM) aynı kalemde netleşir; kalem toplamları NET'tir.
+GG_AY = 6                                    # sayfada kaç ay
+
+
+def _banka_satirlari(env, frm, to):
+    """102 altındaki fiş satırları [frm, to]. 1000 satır sınırına takılmasın diye böler."""
+    out, d = [], frm
+    while d <= to:
+        e = min(to, d + dt.timedelta(days=9))
+        rows = E.fetch_account_statement("102", d.isoformat(), e.isoformat(), env=env) or []
+        if len(rows) >= 1000 and e > d:          # sınır doldu: aralığı küçült
+            mid = d + (e - d) // 2
+            out += _banka_satirlari(env, d, mid) + _banka_satirlari(env, mid + dt.timedelta(days=1), e)
+        else:
+            out += rows
+        d = e + dt.timedelta(days=1)
+    return out
+
+
+# (anahtar kelimeler, kalem) — ilk eşleşen kazanır. Açıklamalar banka ekstresinden
+# geldiği için kısaltmalı/ASCII olabilir; _tr_has büyük harf + Türkçe İ/I ile karşılaştırır.
+GG_TEDARIK = [  # 320/329 tedarikçi adı ya da açıklaması
+    (("BOOKING", "EXPEDIA", "AGODA", "HOTELBEDS", "TRIVAGO", "TRIP.COM", "TRIPADVISOR"), "OTA komisyonları"),
+    (("GEDİZ", "GEDIZ", "ELKT. PERK"), "Elektrik"),
+    (("DOĞALGAZ", "DOGALGAZ", "İZMİRGAZ", "IZMIRGAZ"), "Doğalgaz"),
+    (("İZSU", "IZSU"), "Su"),
+    (("TTNET", "TURKCELL", "TELEKOM", "VODAFONE", "TELSAM", "SUPERONLINE"), "Telefon & internet"),
+    (("BİLSA", "BILSA"), "Bilsa"),
+    (("ÇAMAŞIR", "CAMASIR", "YIKAMA", "ÜTÜLEME"), "Çamaşırhane"),
+    (("SİGORTA", "SIGORTA"), "Sigorta"),
+    (("TAMİR", "TAMIR", "TADİLAT", "TADILAT", "KLİMA", "KLIMA", "KOMBİ", "KOMBI", "KAZAN", "SERAMİK",
+      "SERAMIK", "YAPI", "BOYA", "TESİSAT", "TESISAT", "ASANSÖR", "ASANSOR", "ELEKTRİK ELEKTRONİK",
+      "ELEKTRIK ELEKTRONIK", "UYDU", "REMOTE", "İLAÇLAMA", "ILACLAMA", "BAKIM", "KİLİT", "KILIT",
+      "HIRDAVAT", "NALBUR", "YANGIN", "ARITMA", "REÇİNE", "JENERATÖR", "JENERATOR"), "Bakım & onarım"),
+    (("İŞ SAĞLIĞI", "IS SAGLIGI", "DESTEK HİZMET", "DESTEK HIZMET", "DANIŞMANLIK", "DANISMANLIK",
+      "MÜŞAVİR", "MUSAVIR", "HUKUK", "AVUKAT", "NOTER", "PROJE BEDEL", "NAKLİYE", "NAKLIYE", "HAMAL",
+      "İŞLETME DESTEK", "ISLETME DESTEK", "LOJİSTİK", "KARGO"),
+     "Hizmet alımı (İSG, danışman…)"),
+    (("TEKSTİL", "TEKSTIL", "HOTELLIFE", "MOBİLYA", "MOBILYA", "AVANSAS", "OFİS", "OFIS"),
+     "Otel malzemesi & demirbaş"),
+    (("MÜZİK", "MUZIK", "MESAM", "MSG", "BİRLİĞİ", "BIRLIGI", "ODASI", "ÜYELİK", "UYELIK", "DERNEĞİ"),
+     "Aidat, lisans & üyelik"),
+    (("METRO", "GIDA", "NESTLE", "MARKET", "MANDIRA", "KASAP", "FIRIN", "MANAV", "SÜT ", "BALIK",
+      "ŞARKÜTERİ", "SARKUTERI", "YUMURTA", "KAHVALTI", "KAHVATILIK", "KAHVATLIK", "KAHVE", "PEYNİR"),
+     "Gıda & market"),
+    (("TEMZ", "TEMİZLİK", "TEMIZLIK", "AMBALAJ", "KİMYA", "KIMYA", "KALIPSO"), "Temizlik malzemesi"),
+]
+# 195 İş avansı = sahibin banka kartı / avans hesabı. İşletme gideri olduğu açık olanlar
+# (reklam, yazılım, bakım-onarım faturası…) kendi kalemine; geri kalanı tek kalemde,
+# alt kırılımla ("Sahip kartı & iş avansı").
+GG_KART_ISLETME = [
+    (("GOOGLE*ADS", "GOOGLE ADS", "FACEBK", "FACEBOOK", "META PLATF", "INSTAGRAM"), "Reklam"),
+    (("ANTHROPIC", "GOOGLE CLOUD", "GOOGLE*ONE", "GOOGLE *GOOGLE", "LOKIPROXY", "OPENAI", "MICROSOFT",
+      "ADOBE", "GITHUB", "CANVA", "ZOHO", "NATRO", "CLOUDFLARE", "DEFREITAS"), "Yazılım & abonelik"),
+]
+GG_KART_ALT = [
+    (("PARA ÇEKME", "PARA CEKME"), "nakit çekim"),
+    (("VERGI-", "VERGİ", "HARÇ", "HARC"), "vergi & harç (şahsi)"),
+    (("TANKAR", "OPET", "SHELL", "PETROL", "AKARYAKIT", "TOTALENERGIES", "AYTEMIZ", "OTOYOL", "HGS"),
+     "araç & yakıt"),
+    (("MIGROS", "MİGROS", "CARREFOUR", "MARKET", "MANDIRA", "MANAV", "KASAP", "BALIK", "GIDA", "FIRIN"),
+     "market & gıda"),
+    (("HEPSIPAY", "HEPSİPAY", "TRENDYOL", "N11", "IDEFIX", "AMAZON", "PAYTR", "BOYNER", "GANT", "MASSIMO",
+      "ZARA", "MACFIT", "TURNA", "OBILET", "OBİLET", "PEGASUS", "THY"), "alışveriş & seyahat"),
+    (("RESIDENCE", "RESİDENCE", "AİDAT", "AIDAT"), "konut aidatı"),
+    (("HAV.", "/KİŞ-", "/KIS-", "/MBL-", "FAST", "EFT"), "havale / EFT"),
+]
+
+
+_FOLD = str.maketrans("İŞĞÜÖÇ", "ISGUOC")
+
+
+def _fold(text):
+    """Karşılaştırma için: büyük harf + Türkçe harfler ASCII'ye ('Booking'/'BOOKİNG' aynı)."""
+    return _tr_up(text).translate(_FOLD)
+
+
+def _tr_has(text, keys):
+    t = _fold(text)
+    return any(_fold(k) in t for k in keys)
+
+
+def _ilk(text, kurallar):
+    for keys, kalem in kurallar:
+        if _tr_has(text, keys):
+            return kalem
+    return None
+
+
+def _gg_kalem(r):
+    """Bir banka satırı -> (kalem, alt kalem|None) ya da None (sayılmaz: iç virman /
+    döviz hesabındaki öbür bacak). Kalemin giren mi çıkan mı olduğu ayın NET tutarının
+    işaretinden çıkar (borç − alacak > 0 = bankaya giren)."""
+    cross = str(r.get("CROSSACCOUNT") or "")
+    kod = cross.split(" ")[0]
+    ad = cross[len(kod):].strip()
+    notu = r.get("DETAILNOTES") or ""
+    tl_bacak = (r.get("CURRENCYCODE") or "TRY").upper() in ("TRY", "TL")
+    if not kod:                                       # çok satırlı fiş: açıklamadan
+        if r.get("_ic"):
+            return None
+        if _tr_has(notu, ("AKPOS", "POS PES ODE")):
+            return ("Kredi kartı (POS)", None)
+        if _tr_has(notu, ("PARA YATIRMA",)):
+            return ("Nakit yatırılan (kasadan)", None)
+        if _tr_has(notu, ("MASRAF", "UFTM", "KOMİSYON", "KOMISYON")):
+            return ("Banka masraf & komisyon", None)
+        k = _ilk(notu, GG_TEDARIK)
+        if k:
+            return (k, None)
+        return ("Diğer", None)
+    if notu.upper().startswith("VERGI-") and not kod.startswith("195"):
+        return ("Vergiler", None)       # çok satırlı fişte karşı hesap 102 görünse de dış ödeme
+    if _tr_has(notu, ("SGK(", "SGK (")) and not kod.startswith("195"):
+        return ("SGK primleri", None)
+    if kod.startswith("102"):
+        borc = num(r.get("LOCALDEBIT")) > 0
+        if _tr_has(notu, ("PARA YATIRMA",)) and tl_bacak and borc:
+            return ("Nakit yatırılan (kasadan)", None)     # TL hesabına giren nakit
+        if _tr_has(notu, ("ATM",)) and tl_bacak and not borc:
+            return ("Nakit çekilen (ATM)", None)           # TL hesabından çekilen nakit
+        return None        # kendi hesaplarımız arası virman / döviz bozdurma (iki bacak)
+    if notu.upper().startswith("VERGI-") and not kod.startswith("195") or kod.startswith(("360", "193")):
+        return ("Vergiler", None)
+    if kod.startswith("108"):
+        return ("Kredi kartı (POS)", None)
+    if kod.startswith(("120", "126", "127", "136")):
+        return ("Misafir havale / EFT" if "MUHTELIF" in _fold(ad) else "Acenta ödemeleri",
+                None if "MUHTELIF" in _fold(ad) else ad.title()[:40])
+    if kod.startswith("100"):
+        return ("Nakit yatırılan (kasadan)", None)
+    if kod.startswith(("131", "231", "331", "431")):
+        return ("Ortaklar", ad.title()[:40])
+    if kod.startswith("335"):
+        return ("Personel maaşları" if "MAAS" in _fold(ad) else "Hakkı huzur / ücret", None)
+    if kod.startswith("361"):
+        return ("SGK primleri", None)
+    if kod.startswith("195"):
+        k = _ilk(notu, GG_KART_ISLETME) or _ilk(notu, [x for x in GG_TEDARIK if x[1] in (
+            "Bakım & onarım", "Elektrik", "Doğalgaz", "Su", "Çamaşırhane", "Hizmet alımı (İSG, danışman…)")])
+        if k:
+            return (k, None)
+        return ("Sahip kartı & iş avansı", _ilk(notu, GG_KART_ALT) or "diğer kart harcamaları")
+    if kod.startswith(("320", "329", "340", "336")):
+        k = _ilk(ad, GG_TEDARIK) or ("MUHTELIF" in _fold(ad) and _ilk(notu, GG_TEDARIK))
+        return (k or "Diğer tedarikçiler", None if k else ad.title()[:40])
+    if kod.startswith(("300", "301", "303", "400", "401")):
+        return ("Kredi ödemeleri", ad.title()[:40])
+    if kod.startswith(("770", "780", "653", "656")):
+        return ("Banka masraf & komisyon", None)
+    if kod.startswith("689"):
+        return ("Diğer", ad.title()[:40])
+    if kod.startswith(("60", "64", "67")):
+        return ("Diğer gelirler (faiz vb.)", ad.title()[:40])
+    if kod.startswith("7"):
+        if _tr_has(ad, ("TURİZM", "VERGİ", "HARÇ", "KATKI PAY")):
+            return ("Vergiler", None)
+        return ((ad or "Diğer giderler")[:40].title(), None)
+    return ("Diğer", (ad or kod).title()[:40])
+
+
+def _ic_virman_isaretle(rows):
+    """Karşı hesabı boş satırlarda: aynı fişte BAŞKA bir 102 hesabında aynı tutarın ters
+    bacağı varsa bu kendi hesaplarımız arası virmandır (ör. 'NKT Para ÇEKME ZİRAAT
+    BANKASINA YATAN' / 'NKT Para Yatırma ZİRAAT BANKASI')."""
+    idx = defaultdict(list)
+    for r in rows:
+        v = round(num(r.get("LOCALDEBIT")) - num(r.get("LOCALCREDIT")), 2)
+        idx[(r.get("RECEIPTID"), v)].append(r)
+    for r in rows:
+        if r.get("CROSSACCOUNT"):
+            continue
+        v = round(num(r.get("LOCALDEBIT")) - num(r.get("LOCALCREDIT")), 2)
+        if any(o is not r and o.get("ACCOUNTCODE") != r.get("ACCOUNTCODE")
+               for o in idx.get((r.get("RECEIPTID"), -v), [])):
+            r["_ic"] = True
+    return rows
+
+
+def _gg_aciklama(notu):
+    """Banka açıklamasını sadeleştir: işlem kodları, kart no, uzun numaralar (TC, VKN,
+    tahakkuk no) çıkar."""
+    import re
+    t = str(notu or "")
+    t = re.sub(r"^\s*\d{2,5}/(KİŞ|KIS|MBL|ATM)-(\d+-)?", "", t)
+    t = re.sub(r"^\s*0?\d{2,3}\s+", "", t)
+    t = re.sub(r"XXXX\s*\d{4}", "", t)
+    t = re.sub(r"\b(TC|VN|VKN|İM|IM|THN|VD|ID|ŞU|SU):\s*[\w]+", "", t)
+    t = re.sub(r"\d{8,}", "…", t)
+    t = re.sub(r"\s{2,}", " ", t).strip(" -/|")
+    return t[:90] or "—"
+
+
+GG_CSS = """<style>
+.mtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.mtabs button{font:inherit;font-size:13px;font-weight:700;padding:7px 14px;border-radius:999px;cursor:pointer;
+  border:1px solid var(--border);background:var(--card);color:var(--sub)}
+.mtabs button.on{background:var(--eyebrow);border-color:var(--eyebrow);color:#fff}
+.gg-m{display:none}.gg-m.on{display:block}
+.fresh{border-radius:11px;padding:10px 14px;font-size:13px;margin:0 0 14px;background:var(--th-bg);color:var(--sub)}
+.fresh.old{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .fresh.old{background:#2a2210;color:#fbbf24;border-color:#4a3a10}}
+:root[data-theme=dark] .fresh.old{background:#2a2210;color:#fbbf24;border-color:#4a3a10}
+.kl details{border-top:1px solid var(--td-line)}
+.kl details:first-of-type{border-top:0}
+.kl summary{list-style:none;cursor:pointer;padding:8px 2px}
+.kl summary::-webkit-details-marker{display:none}
+.kl .r1{display:flex;justify-content:space-between;gap:10px;font-size:13px}
+.kl .r1>span:first-child::before{content:"▸";display:inline-block;width:14px;color:var(--sub);transition:transform .15s}
+.kl details[open] .r1>span:first-child::before{transform:rotate(90deg)}
+.gg-m .g2{align-items:start}
+.kl .pc{color:var(--sub);font-weight:600;font-size:11.5px;margin-left:6px}
+.kl .tr{height:6px;background:var(--th-bg);border-radius:4px;margin:5px 0 0 14px}
+.kl .tr i{display:block;height:6px;border-radius:4px}
+.kl .in i{background:#16a34a}.kl .out i{background:#dc2626}
+.kl table{font-size:12px;margin:4px 0 10px 14px;width:calc(100% - 14px)}
+.kl td{padding:5px 8px}
+.kl .alt{font-size:11.5px;color:var(--sub);margin:2px 0 6px 14px}
+.tot{display:flex;justify-content:space-between;font-weight:800;border-top:2px solid var(--border);
+  padding-top:8px;margin-top:6px;font-size:14px}
+.pos{color:var(--statok)}.neg{color:var(--statbad)}
+.mx td,.mx th{white-space:nowrap}
+.mx td:first-child{position:sticky;left:0;background:var(--tbl)}
+</style>"""
+
+GG_JS = """<script>
+document.querySelectorAll('.mtabs button').forEach(function(b){b.addEventListener('click',function(){
+  document.querySelectorAll('.mtabs button').forEach(function(x){x.classList.toggle('on',x===b)});
+  document.querySelectorAll('.gg-m').forEach(function(m){m.classList.toggle('on',m.id===b.dataset.m)});
+});});
+</script>"""
+
+
+def build_gelirgider(env):
+    """Gelir-Gider — bankaya giren / bankadan çıkan para, Elektra muhasebesinden."""
+    today = dt.date.today()
+    bas = month_start(today, GG_AY - 1)
+    rows = [r for r in _banka_satirlari(env, bas, today)
+            if not _tr_has(r.get("RECEIPTNOTES"), ("KAPANIŞ", "AÇILIŞ", "KAPANIS", "ACILIS"))]
+    _ic_virman_isaretle(rows)
+    son_gun = max((str(r.get("RECEIPTDATE"))[:10] for r in rows), default="")
+
+    aylar = [month_start(today, GG_AY - 1 - i) for i in range(GG_AY)]
+    akey = lambda d: (d.year, d.month)
+    veri = {akey(a): defaultdict(lambda: {"net": 0.0, "n": 0, "rows": [], "alt": defaultdict(float)})
+            for a in aylar}
+    for r in rows:
+        k = _gg_kalem(r)
+        if not k:
+            continue
+        d = pdate(r.get("RECEIPTDATE"))
+        if not d or akey(d) not in veri:
+            continue
+        v = num(r.get("LOCALDEBIT")) - num(r.get("LOCALCREDIT"))
+        c = veri[akey(d)][k[0]]
+        c["net"] += v
+        c["n"] += 1
+        c["rows"].append((d, _gg_aciklama(r.get("DETAILNOTES")), v, k[1]))
+        if k[1]:
+            c["alt"][k[1]] += v
+
+    # Aynı ayların oda satışı (tahakkuk) — "satışın ne kadarı bankaya girdi" kıyası için.
+    try:
+        act = active_reservations(env, bas, today)
+        satis = monthly_aggregate(daily_occupancy(act, bas, today))
+    except Exception as e:                      # satış alınamazsa sayfa yine çıksın
+        print(f"  gelirgider: oda satışı alınamadı: {e}")
+        satis = {}
+
+    def ozet(a):
+        v = veri[akey(a)]
+        g = sum(c["net"] for c in v.values() if c["net"] > 0)
+        c_ = -sum(c["net"] for c in v.values() if c["net"] < 0)
+        return g, c_
+
+    def liste(v, giren):
+        its = sorted(((ad, c) for ad, c in v.items() if (c["net"] > 0) == giren and abs(c["net"]) >= 1),
+                     key=lambda t: -abs(t[1]["net"]))
+        top = sum(abs(c["net"]) for _, c in its) or 1
+        mx = max([abs(c["net"]) for _, c in its] + [1])
+        out = []
+        for ad, c in its:
+            val = abs(c["net"])
+            alt = ""
+            if c["alt"]:
+                alt = "<div class='alt'>" + " · ".join(
+                    f"{esc(k)} {tl(abs(x))}" for k, x in sorted(c["alt"].items(), key=lambda t: t[1] if not giren else -t[1])
+                    if abs(x) >= 1) + "</div>"
+            satir = "".join(
+                f"<tr><td>{d.day:02d}.{d.month:02d}</td><td>{esc(a)}"
+                + (f" <span class='who'>{esc(al)}</span>" if al and ad != 'Acenta ödemeleri' else "")
+                + f"</td><td class='r money {'pos' if x > 0 else 'neg'}'>{'+' if x > 0 else '−'}{tl(abs(x))}</td></tr>"
+                for d, a, x, al in sorted(c["rows"], key=lambda t: -abs(t[2]))[:80])
+            fazla = (f"<tr><td colspan='3' class='lead'>… ve {len(c['rows']) - 80} küçük işlem daha</td></tr>"
+                     if len(c["rows"]) > 80 else "")
+            out.append(
+                f"<details><summary><div class='r1'><span>{esc(ad)}<span class='pc'>%{val / top * 100:.0f}"
+                f" · {c['n']} işlem</span></span><span class='money'>{tl(val)} ₺</span></div>"
+                f"<div class='tr {'in' if giren else 'out'}'><i style='width:{val / mx * 100:.1f}%'></i></div>"
+                f"</summary>{alt}<div class='scroll'><table>{satir}{fazla}</table></div></details>")
+        return "".join(out) or "<div class='lead'>kayıt yok</div>", sum(abs(c["net"]) for _, c in its)
+
+    tabs, bolumler = [], []
+    for i, a in enumerate(reversed(aylar)):
+        k = akey(a)
+        mid = f"m{a.year}{a.month:02d}"
+        on = " on" if i == 0 else ""
+        tabs.append(f"<button class='{on.strip()}' data-m='{mid}'>{TR_MON_FULL[a.month]}"
+                    f"{'' if a.year == today.year else ' ' + str(a.year)}</button>")
+        v = veri[k]
+        gl, gt = liste(v, True)
+        cl, ct = liste(v, False)
+        fark = gt - ct
+        oda = satis.get(k, {}).get("rev", 0.0)
+        bu = (a.year, a.month) == (today.year, today.month)
+        kpis = (kpi(f"{tl(gt)} ₺", "Bankaya giren", "satış tahsilatı + yatırılan nakit + diğer")
+                + kpi(f"{tl(ct)} ₺", "Bankadan çıkan", "giderler, maaş, vergi, ödemeler")
+                + kpi(f"<span class='{'pos' if fark >= 0 else 'neg'}'>{'+' if fark >= 0 else '−'}{tl(abs(fark))} ₺</span>",
+                      "Fark", "giren − çıkan")
+                + kpi(f"{tl(oda)} ₺", "Aynı ay oda satışı",
+                      "Elektra rezervasyonları" + (" · bugüne kadar" if bu else "")))
+        bolumler.append(
+            f"<div class='gg-m{on}' id='{mid}'><div class='kpis'>{kpis}</div><div class='g2'>"
+            f"<div class='card kl'><h3>Para nereden geldi <small>tıklayın: işlemler</small></h3>{gl}"
+            f"<div class='tot'><span>Toplam giren</span><span class='pos'>{tl(gt)} ₺</span></div></div>"
+            f"<div class='card kl'><h3>Para nereye gitti <small>tıklayın: işlemler</small></h3>{cl}"
+            f"<div class='tot'><span>Toplam çıkan</span><span class='neg'>{tl(ct)} ₺</span></div></div>"
+            "</div></div>")
+
+    # ---- 6 aylık eğilim + kalem × ay tablosu
+    lbl = [mlabel(akey(a)) for a in aylar]
+    oz = [ozet(a) for a in aylar]
+    trend = (f"<div class='sec'>Son {GG_AY} ay</div><div class='g2'>"
+             "<div class='card'><h3>Bankaya giren / çıkan <small><span class='pos'>■</span> giren · "
+             "<span class='neg'>■</span> çıkan</small></h3>"
+             f"{ch_bars2(lbl, [g for g, _ in oz], [c for _, c in oz], height=150)}</div>"
+             "<div class='card'><h3>Oda satışı ve bankaya giren <small>■ satış · ■ giren</small></h3>"
+             f"{ch_bars2(lbl, [satis.get(akey(a), {}).get('rev', 0.0) for a in aylar], [g for g, _ in oz], height=150, renk=('var(--bar)', '#16a34a'))}"
+             "</div></div>")
+    kalemler = defaultdict(lambda: [0.0] * len(aylar))
+    for j, a in enumerate(aylar):
+        for ad, c in veri[akey(a)].items():
+            kalemler[ad][j] += c["net"]
+    sira = sorted(kalemler.items(), key=lambda t: sum(t[1]))           # en büyük gider üstte
+    gid = [(ad, xs) for ad, xs in sira if sum(xs) < 0]
+    gir = [(ad, xs) for ad, xs in reversed(sira) if sum(xs) >= 0]
+
+    def satirlar(ls, isaret):
+        return "".join(
+            f"<tr><td>{esc(ad)}</td>" + "".join(
+                f"<td class='r'>{tl(x * isaret) if abs(x) >= 1 else '—'}</td>" for x in xs) + "</tr>"
+            for ad, xs in ls)
+    bas_ = "".join(f"<th class='r'>{esc(l)}</th>" for l in lbl)
+    matris = (
+        "<div class='sec'>Kalem kalem, ay ay</div><div class='tw mx'><table>"
+        f"<tr><th>Bankaya giren</th>{bas_}</tr>{satirlar(gir, 1)}"
+        "<tr class='top'><td>Toplam giren</td>" + "".join(f"<td class='r money'>{tl(g)}</td>" for g, _ in oz) + "</tr>"
+        f"<tr><th>Bankadan çıkan</th>{bas_}</tr>{satirlar(gid, -1)}"
+        "<tr class='top'><td>Toplam çıkan</td>" + "".join(f"<td class='r money'>{tl(c)}</td>" for _, c in oz) + "</tr>"
+        "<tr class='top'><td>Fark</td>" + "".join(
+            f"<td class='r money {'pos' if g - c >= 0 else 'neg'}'>{tl(g - c)}</td>" for g, c in oz) + "</tr>"
+        "</table></div>")
+
+    try:
+        gecik = (today - dt.date.fromisoformat(son_gun)).days if son_gun else 99
+    except ValueError:
+        gecik = 99
+    fresh = (f"<div class='fresh{' old' if gecik > 4 else ''}'>📒 Muhasebeci banka hareketlerini en son "
+             f"<b>{_tr_d(son_gun)}</b> tarihine kadar Elektra'ya işlemiş"
+             + (f" ({gecik} gün önce). Sonraki günlerin hareketleri burada henüz yok." if gecik > 1 else ".")
+             + "</div>")
+    note = ("<div class='note'><b>Nasıl hesaplanıyor?</b> Elektra muhasebesindeki tüm banka hesaplarının "
+            "(102) hareketleri; her hareketin karşı hesabına ve açıklamasına göre kaleme ayrılır. "
+            "<b>Kredi kartı (POS)</b> = bankanın yatırdığı POS tutarı (komisyon düşülmüş). "
+            "<b>Nakit yatırılan</b> = kasadan bankaya yatırılan para. Kendi hesaplarınız arası virman ve "
+            "döviz bozdurma sayılmaz. <b>Sahip kartı & iş avansı</b> = muhasebede “İş avansı” hesabına "
+            "işlenen banka kartı harcamaları ve havaleler; işletme gideri olduğu açık olanlar (Google reklamı, "
+            "yazılım, bakım-onarım) kendi kalemine alındı. Oda satışı ile bankaya giren aynı olmaz: POS ertesi "
+            "gün, acentalar haftalar sonra öder; nakit kasada bekleyebilir. Kalemlerin içindeki işlem listesi "
+            "muhasebecinin girdiği banka açıklamasıdır.</div>")
+    body = (f"{SALES_CSS}{GG_CSS}<div class='lock'>🔒 Yalnız yönetici</div>{fresh}"
+            f"<div class='mtabs'>{''.join(tabs)}</div>{''.join(bolumler)}{trend}{matris}{note}{GG_JS}")
+    g0, c0 = oz[-1]
+    return {"label": "Gelir-Gider", "count": int(round(g0 / 1000)),
+            "count_label": "bin ₺ · bu ay bankaya giren", "tone": "ok",
+            "sub": (f"{TR_MON_FULL[today.month]}: giren {tl(g0)} ₺ · çıkan {tl(c0)} ₺ · "
+                    f"son muhasebe kaydı {_tr_d(son_gun)}"),
+            "updated": now_str(),
+            "html": PAGE(None, "Gelir-Gider", "", BV_CSS + body)}

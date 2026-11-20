@@ -163,6 +163,28 @@ Folio `TOTAL` **her zaman TL** (ana para); `CTOTAL` = **orijinal para birimi** (
   (vade YYYY-AA-GG) o ayın ödemeler tablosuna girer. **Yönetim parolası değişirse bu dosya da
   yeniden şifrelenmeli** (kart haftaları gibi). Emlak vergisi ve MTV tutarlarını sahibi verecek.
 
+## Gelir-Gider + Satış grafikleri — özel notlar (20.11.2026)
+- **Gelir-Gider (`gelirgider`, `checks.build_gelirgider`) YALNIZ YÖNETİM.** Menüde Muhasebe'nin başında.
+  Kaynak: Elektra muhasebe, 102 Bankalar altındaki fiş satırları (`fetch_account_statement("102", …)`).
+  Muhasebeci banka hareketlerini birkaç gün geriden işler; sayfa "son muhasebe kaydı"nı gösterir.
+  Her satır **karşı hesabına** (CROSSACCOUNT) ve açıklamasına göre kaleme ayrılır (`_gg_kalem`,
+  kurallar `GG_TEDARIK` / `GG_KART_*`). Kalemin giren mi çıkan mı olduğunu ayın NET tutarının işareti belirler.
+  Tuzaklar:
+  - Proc en fazla 1000 satır döner, bu yüzden 10 günlük parçalarla okunur.
+  - Kendi hesaplar arası virman atlanır.
+  - "Para Yatırma" Akbank EURO karşılıklı işleniyor: yalnız TL bacağı (borç) sayılır.
+  - ATM "Para Çekme" için yalnız TL bacağı (alacak) sayılır.
+  - 195 iş avansı = sahibin kartı ve avansı. Reklam, yazılım ve bakım-onarım kendi kalemine gider,
+    kalanı "Sahip kartı & iş avansı" altında kırılımlı durur.
+  - Açılış ve kapanış fişleri atlanır.
+  - Eşleştirme `_fold` ile yapılır (İ/I, Ş/S… ASCII); yoksa "Booking" ≠ "BOOKİNG".
+- **Grafikler (`svg_bars` / `svg_line` / `ch_bars2`)** artık HTML/CSS ile, sabit piksel yükseklikte
+  çiziliyor (eskiden SVG genişlikle büyüyüp ekranı kaplıyordu; sahibi "küçük ve profesyonel" istedi).
+  CSS `CHART_CSS` her sayfaya `PAGE` ile eklenir.
+- Satışlar ve İstatistikler: iç başlık yok (`PAGE(None, …)`), KPI kutuları (`kpi`, `SALES_CSS`),
+  grafikler ikişer yan yana. Elektra verisi Ara 2025'te başlıyor: `_veri_aylari` doluluğu %15'in
+  altındaki ilk ayları atar. "Geçen yıla göre" sütunu veri olunca (Ara 2026'dan itibaren) kendiliğinden çıkar.
+
 ## Kart (haftalık) — özel notlar
 - Kapı kilidi dökümleri **~2 aylık geçmiş** tutar; hafta veriden değil **export tarihinden** belirlenir.
 - `build_report.build(cards, changes, occ, lo, hi)` haftaya göre **parametreli**.
