@@ -3374,8 +3374,16 @@ def build_yorumkart(env=None):
 # rapor açılınca bunu göreyim". Özet sayfanın en üstünde; ödemeyenler kaç gün geçerse geçsin HER ZAMAN
 # görünür (tahsil edilene kadar); tahsilat ve cari (açık cariler + cari tahsilatı) hep görünür.
 OZET_CSS = """<style>
-.oz{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 22px;margin:4px 0 16px;display:grid;gap:16px}
-.oz h2{margin:0;font-size:20px}.oz h3{margin:0 0 6px;font-size:14.5px}
+.oz{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin:2px 0 10px;display:grid;gap:8px}
+.oz h2{margin:0;font-size:16px}.oz h3{margin:0 0 6px;font-size:14px}
+.oz .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.oz .ch{display:inline-flex;align-items:baseline;gap:4px;background:var(--th-bg);border-radius:9px;padding:5px 10px;font-size:13px}
+.oz .ch b{font-size:14px}.oz .ch .l,.oz .l{color:var(--sub);font-size:12px}
+.oz .ch.ok{background:#ecfdf3}.oz .ch.ok b,.oz .ch.ok .l{color:#166534}
+.oz .ch.bad{background:#fee2e2}.oz .ch.bad b,.oz .ch.bad .l{color:#991b1b}
+.oz .ch.warn{background:#ffedd5}.oz .ch.warn b,.oz .ch.warn .l{color:#9a3412}
+.oz details summary{cursor:pointer;color:var(--eyebrow);font-size:12.5px;font-weight:700;padding:2px 0}
+.oz details .grid2{margin-top:8px}
 .oz .hd{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:6px}
 .oz .t{color:var(--sub);font-size:12px}
 .oz .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
@@ -3510,17 +3518,55 @@ def gunluk_ozet(env, dun, bugun, gun, owed, cari, fol):
         kontrol.append(f"Gece oda değişimi: " + "; ".join(f"{esc(c['when'][11:16])} {esc(c['from'])}→{esc(c['to'])} ({esc(c['user'])})" for c in gece[:5]))
     kontrol_html = "".join(f"<div>{k}</div>" for k in kontrol) or "<div class='ok'>Ek kontrol gerektiren bir şey yok.</div>"
 
+    # KOMPAKT (sahibi 20.11: "çok yer kaplıyor, liste daha üstte çıksın"): üç satır özet, ayrıntı katlanır.
+    def chip(etiket, deger, ton="", alt=""):
+        return (f"<span class='ch {ton}'><span class='l'>{esc(etiket)}</span> <b>{deger}</b>"
+                + (f" <span class='l'>{alt}</span>" if alt else "") + "</span>")
+    tah_alt = esc(" · ".join(f"{k.replace('Credit Card', 'Kart').replace('Cash', 'Nakit')} {tl(v)}"
+                             for k, v in sorted(tah.items(), key=lambda t: -t[1])))
+    satir1 = (chip("Doluluk", f"{dolu if dolu is not None else '—'}/55")
+              + chip("Giriş · Çıkış", f"{len(arr) if arr is not None else '—'} · {len(gun['dep'])}")
+              + chip("Tahsilat", f"{tl(tahsum)} ₺", "", tah_alt)
+              + (chip("Dün girenler", "alınamadı") if arr is None else
+                 chip("Dün girenler", f"{len(unpaid)} ödemedi", "bad") if unpaid else
+                 chip("Dün girenler", f"{len(arr)}/{len(arr)} ödedi", "ok")))
+    if owed:
+        parca = []
+        for r in sorted(owed, key=sira):
+            co = pdate(r.get("CHECKOUTDATE"))
+            if r.get("_left"):
+                g = (bugun - co).days if co else 0
+                ton, ne = "bad", f"çıktı, borçlu{' · ' + str(g) + ' gün' if g else ''}"
+            elif co and co <= bugun:
+                ton, ne = "warn", "bugün çıkıyor"
+            else:
+                ton, ne = "", "konaklıyor"
+            parca.append(chip(f"{r.get('ROOMNO') or '—'} {(r.get('AGENCY') or '')[:10]}", f"{tl(fbal(r))} ₺", ton, esc(ne)))
+        satir2 = ("<span class='l' style='font-weight:700'>Ödemeyenler</span> " + "".join(parca)
+                  + f" <span class='l'>toplam <b>{tl(sum(fbal(r) for r in owed))} ₺</b></span>")
+    else:
+        satir2 = "<span class='l' style='font-weight:700'>Ödemeyenler</span> " + chip("", "herkes ödemiş", "ok")
+    ctah_dun = None if ctah is None else sum(num(r.get("LOCALCREDIT")) for r in ctah if str(r.get("RECEIPTDATE") or "")[:10] == D)
+    ctah_7 = None if ctah is None else sum(num(r.get("LOCALCREDIT")) for r in ctah)
+    satir3 = (chip("Liste altı satış", str(len(low)), "bad" if low else "ok",
+                   esc(" · ".join(f"{x['room']} {tl((x['avg'] or 0) - (x['liste'] or 0))}" for x in low[:3])))
+              + chip("İndirim/iade", f"{len(iade)}" + (f" · {tl(sum(abs(num(r.get('TOTAL'))) for r in iade))} ₺" if iade else ""),
+                     "warn" if iade else "ok")
+              + chip("Açık cari", f"{len(adl)} · {tl(sum(num(r.get('LOCALBALANCE')) for r in adl))} ₺")
+              + chip("Cari tahsilatı", "—" if ctah is None else f"dün {tl(ctah_dun)} ₺", "",
+                     "" if ctah is None else f"7 gün {tl(ctah_7)} ₺")
+              + (chip("Kontrol", str(len(kontrol)), "warn") if kontrol else ""))
     return (OZET_CSS + "<section class='oz'>"
             f"<div class='hd'><h2>Dünün özeti — {dun.day} {TR_MONTHS[dun.month]} {GUN_ADI[dun.weekday()]}</h2>"
             f"<span class='t'>Elektra · {now_str()} itibarıyla</span></div>"
-            f"<div class='tiles'>{tiles}</div>{odemeyen}<div class='grid2'>"
-            f"<div class='box'><h3>Liste altı satışlar <span class='pill {'bad' if low else 'ok'}'>{len(low)}</span></h3>{low_html}</div>"
-            f"<div class='box'><h3>İndirim / iade <span class='pill {'warn' if iade else 'ok'}'>{len(iade)}"
-            f"{' · ' + tl(sum(abs(num(r.get('TOTAL'))) for r in iade)) + ' ₺' if iade else ''}</span></h3>{iade_html}</div>"
-            f"<div class='box'><h3>Açık cariler <span class='pill'>{len(adl)}</span></h3>{cari_html}</div>"
+            f"<div class='row'>{satir1}</div><div class='row'>{satir2}</div><div class='row'>{satir3}</div>"
+            "<details><summary>Ayrıntılar (satışlar, iadeler, cariler, kontrol)</summary><div class='grid2'>"
+            f"<div class='box'><h3>Liste altı satışlar</h3>{low_html}</div>"
+            f"<div class='box'><h3>İndirim / iade</h3>{iade_html}</div>"
+            f"<div class='box'><h3>Açık cariler</h3>{cari_html}</div>"
             f"<div class='box'><h3>Cari tahsilatı</h3>{ctah_html}</div>"
             f"<div class='box'><h3>Kontrol edilecek</h3>{kontrol_html}</div>"
-            "</div></section>")
+            "</div></details></section>")
 
 
 def build_gunluk(env):
