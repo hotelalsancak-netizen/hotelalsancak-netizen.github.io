@@ -2857,8 +2857,16 @@ GUNLUK_CSS = """<style>
 .sb h2{margin:2px 0 0;font-family:Georgia,'Source Serif 4',serif;font-size:24px;font-weight:600}
 .sb .topbar{margin:0;gap:8px}
 .sb #scopeSel{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:inherit}
-.sb-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:22px;align-items:start}
-@media (max-width:900px){.sb-grid{grid-template-columns:minmax(0,1fr)}}
+.sb-grid{display:flex;flex-direction:column-reverse;gap:12px}
+.sb-rows{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px}
+@media (max-width:900px){.sb-rows{grid-template-columns:minmax(0,1fr)}}
+.sb-row{display:grid;grid-template-columns:10px 132px minmax(0,1fr);gap:8px;align-items:baseline;text-align:left;border:0;
+  border-bottom:1px solid var(--border);background:none;font:inherit;font-size:13.5px;color:var(--fg);padding:7px 2px;cursor:pointer}
+.sb-row:hover{background:var(--th-bg)}
+.sb-row i{width:8px;height:8px;border-radius:50%;background:#16a34a;transform:translateY(-1px)}
+.sb-row.warn i{background:#ea580c}.sb-row.bad i{background:#dc2626}
+.sb-row b{font-weight:700;color:var(--sub);font-size:12.5px}
+.sb-row.bad span{color:#991b1b;font-weight:600}.sb-row.warn span{color:#9a3412}
 #sbText p{margin:0 0 8px;font-size:15.5px;line-height:1.6}
 #sbText .lines{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:2px 14px;margin-top:4px}
 .sb-li{display:flex;gap:8px;align-items:baseline;text-align:left;border:0;background:none;font:inherit;font-size:13.5px;
@@ -2866,7 +2874,8 @@ GUNLUK_CSS = """<style>
 .sb-li:hover{color:var(--eyebrow)}
 .sb-li i{flex:none;width:8px;height:8px;border-radius:50%;background:#16a34a;transform:translateY(-1px)}
 .sb-li.warn i{background:#ea580c}.sb-li.bad i{background:#dc2626}
-.sb-boxes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.sb-boxes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+@media (max-width:900px){.sb-boxes{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .sb-box{border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:grid;gap:1px;text-align:left;
   background:var(--card);font:inherit;color:inherit;cursor:pointer}
 .sb-box span{font-size:12px;color:var(--sub)}.sb-box b{font-size:20px}
@@ -3144,30 +3153,30 @@ GUNLUK_JS = r"""<script>
     var rcNo=rc.filter(function(r){return !r.reason;});
     var yIst=yorumSay(true), op=scopeProblems('odap'), tp=scopeProblems('temp');
     var opA=op.filter(function(x){return !x.r.done;}), tpA=tp.filter(function(x){return !x.r.done;});
-    if(scope!=='day'){ t.innerHTML="<p style='color:var(--sub)'>Sabah notu tek gün seçiliyken yazılır. Aşağıdaki sekmeler seçilen aralığı gösterir.</p>"; }
+    if(scope!=='day'){ t.innerHTML="<p style='color:var(--sub);margin:0'>Sabah notu tek gün seçiliyken yazılır. Aşağıdaki sekmeler seçilen aralığı gösterir.</p>"; }
     else {
-      var p1="Otel <b>"+(gv.dolu!=null?gv.dolu:'—')+"/55 oda</b> dolu"+(gv.dolu?" (%"+Math.round(gv.dolu*100/55)+")":"")+". "
-        +"<b>"+sales.length+" giriş</b>, <b>"+deps.length+" çıkış</b> oldu; "
-        +(sales.length?(odesiz.length?"<b class='r'>"+odesiz.length+" giriş ödemesiz</b> ("+odesiz.slice(0,4).map(function(r){return esc(r.room);}).join(', ')+")":"girenlerin <b class='g'>hepsi ödedi</b>"):"giriş yok")+". "
-        +(tsum?"Gün içinde <b>"+tl0(tsum)+" ₺</b> tahsil edildi ("+esc(parts.join(' · '))+")":"Tahsilat kaydı yok")
-        +(aktar?"; ayrıca "+tl0(aktar)+" ₺ acente carisine aktarıldı":"")+".";
-      var p2=(ob.length?("Şu an <b class='o'>"+ob.length+" misafirin "+tl0(obsum)+" ₺ borcu</b> var"
-          +(gitti.length?"; <b class='r'>"+gitti.length+" kişi çıkıp gitti</b> ("+gitti.map(function(r){return esc(r.room)+' '+tl0(r.borc)+' ₺';}).join(', ')+")":"")
-          +(bugunCik.length?"; bugün çıkacaklar: <b>"+bugunCik.map(function(r){return esc(String(r.room).length>6?(r.agency+' (folyo)'):r.room)+' '+tl0(r.borc)+' ₺';}).join(', ')+"</b>, çıkışta alınmalı":"")+". ")
-          :"Açık bakiye yok, <b class='g'>herkes ödemiş</b>. ")
-        +"Açık cari <b>"+tl0(csum)+" ₺</b> ("+adl.length+" cari"+(muh.length?", Muhtelif hariç":"")+(adl[0]?", en büyük "+esc(adl[0].name)+" "+tl0(adl[0].alacak)+" ₺":"")+"); "
-        +"carilerden "+g+" "+(gv.ctah==null?"tahsilat bilgisi alınamadı":(gv.ctah>0?"<b class='g'>"+tl0(gv.ctah)+" ₺</b> tahsil edildi":"tahsilat yok"))
-        +", son 7 günde "+tl0(c7)+" ₺.";
-      var L="";
-      L+=li(low.length?'bad':'', 'sales', low.length?("<b>"+low.length+" oda liste altında</b> satıldı ("+low.slice(0,3).map(function(r){return esc(r.room)+' '+tl0((+r.avg||0)-(+r.liste||0));}).join(', ')+" ₺)"):"Liste altı satış yok"
-        +(cash.length?" · nakit ödenen "+cash.length+" oda ("+cash.slice(0,3).map(function(r){return esc(r.room);}).join(', ')+")":""));
-      L+=li(iade.length?'warn':'', 'sales', iade.length?("<b>"+iade.length+" indirim/iade</b> girildi ("+tl0(iSum)+" ₺"+(kim.length?" · "+esc(kim.join(', ')):"")+")"):"İndirim / iade yok");
-      L+=li(eksIn.length?'bad':(eks.length?'warn':''), 'eksik', eks.length?("<b>"+eks.length+" kayıtta</b> telefon/kimlik eksik"+(eksIn.length?" · hâlâ otelde: "+eksIn.length:"")):"Eksik bilgi yok");
-      L+=li(rcNo.length?'warn':'', 'rc', rc.length?("<b>"+rc.length+" oda değişimi</b>"+(rcNo.length?" · notu yazılmamış: "+rcNo.length:" · hepsinin notu var")):(G+" oda değişimi olmadı"));
-      L+=li(deps.length&&!yIst?'warn':'', 'yorum', !deps.length?"Çıkış yok, yorum istenecek misafir yoktu":(yIst?("<b>"+deps.length+" çıkıştan "+yIst+"</b> misafirden yorum istendi"):(G+" hiç yorum istenmedi ("+deps.length+" çıkış)")));
-      L+=li(opA.length?'warn':'', 'odap', op.length?("<b>"+op.length+" oda problemi</b>"+(opA.length?" · açık: "+opA.length:" · hepsi yapıldı")):(G+" hiçbir oda problemi yoktu"));
-      L+=li(tpA.length?'warn':'', 'temp', tp.length?("<b>"+tp.length+" temizlik problemi</b>"+(tpA.length?" · açık: "+tpA.length:" · hepsi yapıldı")):(G+" temizlik problemi yoktu"));
-      t.innerHTML="<p>"+p1+"</p><p>"+p2+"</p><div class='lines'>"+L+"</div>";
+      // DÜZENLİ (sahibi 20.11: "daha düzenli yaz, çok karmaşık"): her konu tek satır — etiket + kısa bilgi
+      function row(cls,tab,lab,txt){return "<button class='sb-row "+cls+"' data-go='"+tab+"'><i></i><b>"+lab+"</b><span>"+txt+"</span></button>";}
+      function oda(r){var a=String(r.agency||'');return String(r.room).length>6?(esc(a.charAt(0)+a.slice(1).toLowerCase())+' folyosu'):esc(r.room);}
+      var R="";
+      R+=row('', 'sales', 'Doluluk', (gv.dolu!=null?gv.dolu:'—')+"/55 oda"+(gv.dolu?" (%"+Math.round(gv.dolu*100/55)+")":"")+" · "+sales.length+" giriş · "+deps.length+" çıkış");
+      R+=row(odesiz.length?'bad':'', 'sales', 'Giriş ödemesi', !sales.length?"giriş yok":(odesiz.length?odesiz.length+" ödemesiz — oda "+odesiz.slice(0,4).map(oda).join(', '):"hepsi ödedi"));
+      R+=row('', 'sales', 'Tahsilat', tsum?(tl0(tsum)+" ₺ — "+esc(parts.join(' · '))):"kayıt yok");
+      if(aktar) R+=row('', 'cari', 'Cariye aktarılan', tl0(aktar)+" ₺ (acente hesabına geçti, tahsilat değil)");
+      R+=row(gitti.length?'bad':(ob.length?'warn':''), 'bal', 'Borçlu misafir', !ob.length?"yok, herkes ödemiş":(ob.length+" kişi · "+tl0(obsum)+" ₺"
+          +(gitti.length?" · çıkıp giden: "+gitti.map(function(r){return oda(r)+" "+tl0(r.borc);}).join(', '):"")
+          +(bugunCik.length?" · bugün çıkacak: "+bugunCik.map(function(r){return oda(r)+" "+tl0(r.borc);}).join(', '):"")));
+      R+=row('', 'cari', 'Açık cari', tl0(csum)+" ₺ · "+adl.length+" cari"+(adl[0]?" · en büyük "+esc(adl[0].name)+" "+tl0(adl[0].alacak):""));
+      R+=row(gv.ctah>0?'':'', 'cari', 'Cari tahsilatı', g+" "+(gv.ctah==null?"alınamadı":(gv.ctah>0?tl0(gv.ctah)+" ₺":"yok"))+" · son 7 gün "+tl0(c7)+" ₺");
+      R+=row(low.length?'bad':'', 'sales', 'Liste altı satış', low.length?(low.length+" oda — "+low.slice(0,4).map(function(r){return esc(r.room)+" "+tl0((+r.avg||0)-(+r.liste||0));}).join(' · ')+" ₺"):"yok");
+      if(cash.length) R+=row('warn', 'sales', 'Nakit satış', cash.length+" oda — "+cash.slice(0,4).map(function(r){return esc(r.room);}).join(', '));
+      R+=row(iade.length?'warn':'', 'sales', 'İndirim / iade', iade.length?(iade.length+" kayıt · "+tl0(iSum)+" ₺ · "+esc(kim.join(', '))):"yok");
+      R+=row(eksIn.length?'bad':(eks.length?'warn':''), 'eksik', 'Eksik bilgi', eks.length?(eks.length+" kayıt · otelde olan "+eksIn.length):"yok");
+      R+=row(rcNo.length?'warn':'', 'rc', 'Oda değişimi', rc.length?(rc.length+" · notu yazılmamış "+rcNo.length):"olmadı");
+      R+=row(deps.length&&!yIst?'warn':'', 'yorum', 'Yorum', !deps.length?"çıkış yok":(yIst?(deps.length+" çıkıştan "+yIst+" misafirden istendi"):("hiç istenmedi ("+deps.length+" çıkış)")));
+      R+=row(opA.length?'warn':'', 'odap', 'Oda problemi', op.length?(op.length+(opA.length?" · açık "+opA.length:" · hepsi yapıldı")):"yoktu");
+      R+=row(tpA.length?'warn':'', 'temp', 'Temizlik', tp.length?(tp.length+(tpA.length?" · açık "+tpA.length:" · hepsi yapıldı")):"problem yoktu");
+      t.innerHTML="<div class='sb-rows'>"+R+"</div>";
     }
     document.getElementById('sbBoxes').innerHTML=
       box('', 'sales', 'Tahsilat · '+g, tl0(tsum)+' ₺', esc(parts.slice(0,3).join(' · ')||'kayıt yok'))
