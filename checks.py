@@ -3048,9 +3048,10 @@ __DUZ__
       if(selRoom==='eko'&&k!=='site'&&o)lines+='<div class="meta" style="color:var(--statbad);font-weight:700">Ekonomik oda burada satılmamalı</div>';
       lines+='<div class="meta">'+(gor?('görüldü: '+esc(o.src)+' · '+esc(kisa(o.t))):'<b>hesaplanan</b> · gerçek fiyat henüz okunmadı')+'</div>';
       var rank=eski?4:gor?({low:0,high:1,ok:2}[s]):3;
-      var chip=eski?'<span class="fk-diff fk-none">eski okuma</span>':gor?'<span class="fk-diff fk-'+s+'">'+(diff>0?'+':'')+fmt(diff)+'</span>':'<span class="fk-diff fk-none">hesap</span>';
-      if(eski)lines+='<div class="meta">6 saatten eski · yeni okuma bekleniyor, ucuz sayılmadı</div>';
-      cards.push({rank:rank,diff:diff,html:'<div class="fk-card'+(gor&&!eski?'':' bek')+'"><div class="top"><span class="name">'+esc(meta.ad)+'</span>'+chip+'</div><div class="price">'+(gor?'':'≈ ')+fmt(p)+' ₺</div>'+lines+'</div>'});
+      var chip=eski?'<span class="fk-diff fk-none">güncel değil</span>':gor?'<span class="fk-diff fk-'+s+'">'+(diff>0?'+':'')+fmt(diff)+'</span>':'<span class="fk-diff fk-none">hesap</span>';
+      // sahibi (21.11): "panelde bir fiyat güncel değilse bu fiyatın aktif olmadığını belirtelim"
+      if(eski)lines='<div class="meta" style="font-weight:700">Bu fiyat güncel değil — son okuma '+esc(kisa(o.t))+'. Şu an bu fiyattan satılmıyor olabilir; yeni okuma bekleniyor.</div>'+lines;
+      cards.push({rank:rank,diff:diff,html:'<div class="fk-card'+(gor&&!eski?'':' bek')+'"><div class="top"><span class="name">'+esc(meta.ad)+'</span>'+chip+'</div><div class="price"'+(eski?' style="text-decoration:line-through;opacity:.45"':'')+'>'+(gor?'':'≈ ')+fmt(p)+' ₺</div>'+lines+'</div>'});
     });
     cards.sort(function(a,b){return a.rank-b.rank||(a.diff||0)-(b.diff||0)});
     document.getElementById('fkCards').innerHTML=cards.map(function(c){return c.html}).join('')||'<div class="empty">Bu oda ve tarih için veri yok.</div>';
