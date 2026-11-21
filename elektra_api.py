@@ -53,7 +53,7 @@ GUESTBALANCE, AGENCYBALANCE, GENERALBALANCE, AVERAGENIGHTPRICE, CURRENCYRATE,
 CURRENCYCODE, RESSTATE, RESID.
 GENERALBALANCE is the "Genel Bakiye" the whole check turns on.
 """
-import argparse, datetime as dt, json, os, pathlib, re, sys
+import argparse, base64, datetime as dt, hashlib, hmac, json, os, pathlib, re, struct, sys, time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -256,11 +256,25 @@ def normalise(rec):
     return {FIELD_MAP[k.upper()]: v for k, v in rec.items() if k.upper() in FIELD_MAP}
 
 
+def totp(secret, now=None):
+    """6 haneli TOTP kodu (RFC 6238, 30 sn, SHA1) — telefondaki doğrulama uygulamasının
+    ürettiğinin aynısı. 21.11.2026'dan beri Elektra API kullanıcısında 2FA zorunlu
+    (Login → Code 20 "2FA setup must be completed"); cron'un kodsuz girebilmesi için
+    kurulum anahtarı ELEKTRA_TOTP_SECRET olarak .env / GitHub Secrets'ta durur."""
+    key = base64.b32decode(secret.replace(" ", "").upper() + "=" * (-len(secret) % 8))
+    h = hmac.new(key, struct.pack(">Q", int((now or time.time()) // 30)), hashlib.sha1).digest()
+    o = h[-1] & 15
+    return "%06d" % ((struct.unpack(">I", h[o:o + 4])[0] & 0x7FFFFFFF) % 1000000)
+
+
 def connect(env=None):
     env = env or load_env()
     e = Elektra(env.get("ELEKTRA_HOTELID", DEFAULT_TENANT))
     e.resolve_endpoint()
-    e.login(env["ELEKTRA_USER"], env["ELEKTRA_PASS"], env.get("ELEKTRA_AUTHCODE"))
+    code = env.get("ELEKTRA_AUTHCODE")
+    if not code and env.get("ELEKTRA_TOTP_SECRET"):
+        code = totp(env["ELEKTRA_TOTP_SECRET"])
+    e.login(env["ELEKTRA_USER"], env["ELEKTRA_PASS"], code)
     return e, env
 
 
