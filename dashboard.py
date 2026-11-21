@@ -64,7 +64,8 @@ def now_str() -> str:
 def elektra_env() -> dict:
     return {"ELEKTRA_HOTELID": os.environ.get("ELEKTRA_HOTELID", "29481"),
             "ELEKTRA_USER": os.environ.get("ELEKTRA_USER", ""),
-            "ELEKTRA_PASS": os.environ.get("ELEKTRA_PASS", "")}
+            "ELEKTRA_PASS": os.environ.get("ELEKTRA_PASS", ""),
+            "ELEKTRA_TOTP_SECRET": os.environ.get("ELEKTRA_TOTP_SECRET", "")}   # 2FA kodu (21.11.2026)
 
 
 # ---------------------------------------------------------------------------
