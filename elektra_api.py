@@ -182,8 +182,9 @@ class Elektra:
         code = d.get("Code")
         if code is not None and str(code).isdigit() and int(code) in (20, 30, 31):
             raise ElektraError(
-                f"login needs two-factor auth (Code {code}). Pass --auth-code, or "
-                "create a dedicated API user without 2FA for unattended cron runs.")
+                f"login needs two-factor auth (Code {code}: {d.get('Message')}; AuthCode "
+                f"{'gönderildi' if auth_code else 'gönderilmedi'}). Pass --auth-code, or "
+                "set ELEKTRA_TOTP_SECRET for unattended cron runs.")
         if not d.get("LoginToken"):
             sso = (" — bu otel Elektra'da SSO (USE_IDP) olarak işaretli; parola girişi "
                    "kapatılmış olabilir") if getattr(self, "uses_idp", False) else ""
