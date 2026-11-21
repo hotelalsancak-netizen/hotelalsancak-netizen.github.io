@@ -132,7 +132,8 @@ def calistir(e, hid, anahtar, bugun, simdi, fiyat, gozlem, kuru):
             continue
         p = fiyat.get((d, FB.ODA_TIPLERI[k][0][0]))
         if p:
-            kat = okuma_kat if "trivago" in str(g.get("kaynak", "")) else 1.0
+            # Trip'in kendi sayfası da bilgisayar fiyatını gösterir; uygulamadaki %10 orada da yok (21.11)
+            kat = okuma_kat if ("trivago" in str(g.get("kaynak", "")) or anahtar == "trip") else 1.0
             okuma.setdefault(k, []).append((z, d, f * kat / (p * FB.KUR)))
     sinir = (simdi - dt.timedelta(hours=TAZE_SAAT)).strftime("%Y-%m-%d %H:%M")
     degisen = []

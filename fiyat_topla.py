@@ -107,6 +107,12 @@ def parse_trip(text):
                     acik = round(max(prev) * t / min(base))
                 tops.append((t, acik))
                 prev = []
+            elif l.startswith("vergiler ve ücretler dahil") and prev:
+                # 21.11.2026'dan beri Trip "Toplam fiyat:" yazmıyor: '3.480 TL' (indirimli) '3.947 TL'
+                # (üstü çizili) 'vergiler ve ücretler dahil'. Okuma 20.11'den beri boştu.
+                son = prev[-2:]
+                tops.append((min(son), max(son) if len(son) == 2 else None))
+                prev = []
             elif (m2 := TL_SATIR.match(l)):
                 prev.append(tl(m2.group(1)))
         for t, acik in tops:
@@ -208,7 +214,7 @@ def urls(d):
                     % (a.isoformat(), b.isoformat())),
         "etstur": ("https://www.etstur.com/Riva-Hotel-Alsancak?check_in=%s&check_out=%s&adult_1=2&child_1=0"
                    % (a.strftime("%d.%m.%Y"), b.strftime("%d.%m.%Y"))),
-        "trip": ("https://tr.trip.com/hotels/detail/?city=1216&hotelid=102583877&checkin=%s&checkout=%s"
+        "trip": ("https://tr.trip.com/hotels/detail/?city=1216&hotelid=115599670&checkin=%s&checkout=%s"
                  "&adult=2&crn=1&curr=TRY&locale=tr_TR" % (a.isoformat(), b.isoformat())),
     }
 
