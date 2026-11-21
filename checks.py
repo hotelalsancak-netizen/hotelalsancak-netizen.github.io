@@ -2846,7 +2846,8 @@ def build_fiyat(env):
     # Özet: önümüzdeki günlerde hedeften UCUZ görülen kanal (en son gözleme göre) +
     # Elektra ayarı yüzünden beklenen fiyatı sapan kanal.
     ucuz = set()
-    taze = (dt.datetime.now() - dt.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M")   # eski okuma (eski liste) sayılmaz
+    from zoneinfo import ZoneInfo
+    taze = (dt.datetime.now(ZoneInfo("Europe/Istanbul")) - dt.timedelta(hours=6)).strftime("%Y-%m-%d %H:%M")   # 6 saatten eski okuma sayılmaz (kartlarla aynı)
     for (t, k, rk), o in obs.items():
         d = pdate(t)
         if d and d >= today and o.get("fiyat") and o.get("zaman", "") >= taze and rk != "eko":
@@ -3035,17 +3036,21 @@ __DUZ__
       if(meta.kapali&&!o){cards.push({rank:5,html:'<div class="fk-card bek"><div class="top"><span class="name">'+esc(meta.ad)+'</span><span class="fk-diff fk-none">kapalı</span></div><div class="meta">Satış durduruldu (Elektra’da kapatıldı)</div></div>'});return;}
       if(!o&&!b)return;
       var p=o?o.p:b[0],diff=p-T,s=st(diff),gor=!!o;
+      // 6 saatten eski okuma "ucuz/pahalı" sayılmaz: fiyat o arada değişmiş olabilir (21.11.2026 — Trip 20.11,
+      // Tatilsepeti 15.11 okumaları günler sonra kırmızı "ucuz" görünüyordu; Trip'te gerçek fiyat 4.250'ydi).
+      var eski=gor&&o.t&&(Date.now()-new Date(o.t.replace(' ','T')).getTime())>6*3600e3;
       if(selRoom==='eko'&&k!=='site'&&o)s='low';
-      if(gor)cnt[s]++;else cnt.bek++;
+      if(gor&&!eski)cnt[s]++;else cnt.bek++;
       var acik=o&&o.acik?o.acik:(b&&b[1]?b[1]:null);
       var lines='<div class="meta">'+esc(o&&o.et?o.et:meta.etiket)+'</div>';
       if(o&&o.uyesiz)lines+='<div class="meta">üye fiyatı (yukarıda) · üye olmayan misafir: '+fmt(o.uyesiz)+' ₺ (trivago bunu gösterir)</div>';
       if(acik&&meta.acikNot)lines+='<div class="meta">'+esc(meta.acikNot)+': '+fmt(acik)+' ₺</div>';
       if(selRoom==='eko'&&k!=='site'&&o)lines+='<div class="meta" style="color:var(--statbad);font-weight:700">Ekonomik oda burada satılmamalı</div>';
       lines+='<div class="meta">'+(gor?('görüldü: '+esc(o.src)+' · '+esc(kisa(o.t))):'<b>hesaplanan</b> · gerçek fiyat henüz okunmadı')+'</div>';
-      var rank=gor?({low:0,high:1,ok:2}[s]):3;
-      var chip=gor?'<span class="fk-diff fk-'+s+'">'+(diff>0?'+':'')+fmt(diff)+'</span>':'<span class="fk-diff fk-none">hesap</span>';
-      cards.push({rank:rank,diff:diff,html:'<div class="fk-card'+(gor?'':' bek')+'"><div class="top"><span class="name">'+esc(meta.ad)+'</span>'+chip+'</div><div class="price">'+(gor?'':'≈ ')+fmt(p)+' ₺</div>'+lines+'</div>'});
+      var rank=eski?4:gor?({low:0,high:1,ok:2}[s]):3;
+      var chip=eski?'<span class="fk-diff fk-none">eski okuma</span>':gor?'<span class="fk-diff fk-'+s+'">'+(diff>0?'+':'')+fmt(diff)+'</span>':'<span class="fk-diff fk-none">hesap</span>';
+      if(eski)lines+='<div class="meta">6 saatten eski · yeni okuma bekleniyor, ucuz sayılmadı</div>';
+      cards.push({rank:rank,diff:diff,html:'<div class="fk-card'+(gor&&!eski?'':' bek')+'"><div class="top"><span class="name">'+esc(meta.ad)+'</span>'+chip+'</div><div class="price">'+(gor?'':'≈ ')+fmt(p)+' ₺</div>'+lines+'</div>'});
     });
     cards.sort(function(a,b){return a.rank-b.rank||(a.diff||0)-(b.diff||0)});
     document.getElementById('fkCards').innerHTML=cards.map(function(c){return c.html}).join('')||'<div class="empty">Bu oda ve tarih için veri yok.</div>';

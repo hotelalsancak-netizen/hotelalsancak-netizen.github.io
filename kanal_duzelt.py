@@ -40,7 +40,7 @@ KANALLAR = {
     "booking":        ("Booking", 12, 23670, ("sui",), 1.0),      # Suit okuması 3 kişilik (×1,05)
     "hotels":         ("Expedia", 10, 23672, (), 0.9),            # trivago üye OLMAYAN fiyatı gösterir
     "etstur":         ("Etstur", 147, 50099, (), 1.0),
-    "trip":           ("Trip.com", 72, 59207, (), 1.0),
+    "trip":           ("Trip.com", 72, 59207, (), 0.9),           # trivago bilgisayar fiyatı; uygulamada Trip %10 daha indirir (21.11)
     "obilet":         ("obilet", 153, 57720, (), 1.0),
     "enuygun":        ("Enuygun", 136, 40136, ("sui",), 1.0),     # Suit okuması 4 kişilik (×1,10)
     "jolly":          ("Jollytur", 83, 38893, (), 1.0),
@@ -181,7 +181,8 @@ def calistir(e, hid, anahtar, bugun, simdi, fiyat, gozlem, kuru):
         for rt in tipler:
             s = uzun.get(rt)
             if s:
-                bas = dt.date.fromisoformat(str(s["FROMDATE"])[:10])
+                # geçmişte başlayan satırın başlangıcı bugüne çekilir; yoksa Elektra "Past date cannot be changed" der (21.11)
+                bas = max(bugun, dt.date.fromisoformat(str(s["FROMDATE"])[:10]))
                 r = {k2: s[k2] for k2 in ("ID", "HOTELID", "CHANNELID", "ROOMTYPEID", "AVAILABILITYOFFSET")}
                 r.update(FROMDATE=bas.isoformat(), TODATE=SON.isoformat(), WEEKDAYPERCENT=yeni,
                          WEEKENDPERCENT=yeni, WEEKDAYAMOUNT=0, WEEKENDAMOUNT=0)
