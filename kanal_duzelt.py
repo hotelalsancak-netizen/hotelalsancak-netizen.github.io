@@ -47,6 +47,9 @@ KANALLAR = {
     "tatilbudur":     ("TatilBudur", 107, 24784, (), 1.0),
     "tatilsepeticom": ("Tatilsepeti", 78, 24226, (), 1.0),
 }
+# Sahibi (21.11.2026): "booking ve expedia 3800 civarında çünkü %20 üye indirimi ve kampanya var, bunlara
+# dokunmayalım; geri kalan tüm kanallar 4000 bandında olsun." Okumaları panoda kalır, satırları yazılmaz.
+DOKUNMA = ("booking", "hotels")
 RATETYPE = 44257
 SON = dt.date(2027, 3, 31)
 ESIK = 0.025
@@ -218,7 +221,7 @@ def main():
         return
     fiyat = FB.elektra_fiyatlar(e, hid, bugun, bugun + dt.timedelta(days=UFUK_GUN))
     gozlem = checks.fiyat_tum_gozlemler()
-    for k in ([a.kanal] if a.kanal else KANALLAR):
+    for k in ([a.kanal] if a.kanal else [k for k in KANALLAR if k not in DOKUNMA]):
         try:
             calistir(e, hid, k, bugun, simdi, fiyat, gozlem, a.kuru)
         except Exception as ex:      # biri bozulursa öbürleri yine çalışsın
