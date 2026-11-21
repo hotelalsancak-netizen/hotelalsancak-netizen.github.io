@@ -33,6 +33,7 @@ import json
 import os
 import shutil
 import sys
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import dashcrypto
@@ -57,7 +58,7 @@ def tr_date(d: dt.date) -> str:
 
 
 def now_str() -> str:
-    n = dt.datetime.now()
+    n = dt.datetime.now(ZoneInfo("Europe/Istanbul"))   # bulut UTC'de çalışır; sahip TR saatini görsün
     return f"{n.day:02d}.{n.month:02d}.{n.year} {n.hour:02d}:{n.minute:02d}"
 
 
