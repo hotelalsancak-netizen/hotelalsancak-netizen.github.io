@@ -18,6 +18,7 @@ import json
 from collections import Counter, defaultdict, OrderedDict
 
 import elektra_api as E
+from zoneinfo import ZoneInfo
 
 ROOMS_TOTAL = 55  # Riva Hotel Alsancak
 
@@ -4418,6 +4419,344 @@ document.querySelectorAll('.mtabs button').forEach(function(b){b.addEventListene
   document.querySelectorAll('.mtabs button').forEach(function(x){x.classList.toggle('on',x===b)});
   document.querySelectorAll('.gg-m').forEach(function(m){m.classList.toggle('on',m.id===b.dataset.m)});
 });});
+</script>"""
+
+
+def anlik_odalar(env):
+    """Otelin 55 odasının numarası (QA_HOTEL_ROOM). Okunamazsa boş liste."""
+    try:
+        e, env = E.connect(env)
+        hid = int(env.get("ELEKTRA_HOTELID", E.DEFAULT_TENANT))
+        rows = e.select("QA_HOTEL_ROOM", ["ROOMNO"],
+                        where=[{"Column": "HOTELID", "Operator": "=", "Value": hid}])
+        return sorted({str(r["ROOMNO"]) for r in rows if str(r.get("ROOMNO") or "").isdigit()}, key=int)
+    except Exception:
+        return []
+
+
+def build_anlik(env):
+    """Anlık Durum — Günlük İşler'in en üstü (sahibi, 22.11.2026: "anlık dolu oda sayısı, eksik
+    bilgiler ve gün sonu hazırlık sayfasındaki bilgileri ve senin gerekli gördüğün bilgileri").
+    Tek sayfada: özet rakamlar, 'Şimdi yapılacaklar' (Gün Sonu + Eksik Bilgiler + Ödeme +
+    kapı satışı + İstenilen Yorumlar), 55 odanın durumu, eksik bilgi tablosu, gün sonu
+    maddeleri ve ek bilgiler (son 3 saatin rezervasyonları, kanal fiyatı, yarın, sistem).
+    İstenilen Yorumlar ve oda/temizlik problemleri Günlük Rapor'un tarayıcıda tuttuğu
+    kayıtlardan (localStorage) okunur — aynı cihazda işaretleneni görür."""
+    import audit
+    import nightaudit as NA
+    today = tr_bugun()
+    yarin = today + dt.timedelta(days=1)
+    now = dt.datetime.now(ZoneInfo("Europe/Istanbul")).replace(tzinfo=None)
+    iso = today.isoformat()
+
+    inhouse = E.fetch_inhouse(env=env)
+    arr_today = E.fetch_arrivals(iso, env=env)
+    co_today = E.fetch_checkouts(iso, env=env)
+    arr_yarin = E.fetch_arrivals(yarin.isoformat(), env=env)
+    co_yarin = E.fetch_checkouts(yarin.isoformat(), env=env)
+    gercek = lambda r: str(r.get("room") or "").isdigit() and not NA.is_virtual_folio(r)
+    canli = lambda r: str(r.get("durum")) not in EXCL_STATES | {"Option"}
+    inhouse = [r for r in inhouse if gercek(r)]
+
+    # gün sonu maddeleri (nightaudit.generate ile aynı hesap, dosya yazmadan)
+    cats = audit.categorise(inhouse, today)
+    gelmedi = NA.not_checked_in([r for r in arr_today if canli(r)], now)
+    cikmadi = NA.overstays(inhouse, today)
+    sifir = NA.zero_rate(inhouse)
+    borclu = cats["inhouse_owes"]
+
+    # eksik bilgiler (konaklayanlar)
+    gaps, _ = guest_gaps(E.fetch_res_guests(
+        [{"Column": "RESSTATE", "Operator": "=", "Value": "InHouse"}], env=env))
+    tel = [x for x in gaps if x["phone"] is not None]
+    kim = [x for x in gaps if x["ident"]]
+    eksik = sorted({x["rez"]: x for x in tel + kim}.values(), key=lambda x: int(x["room"]))
+    try:
+        who = E.fetch_checkin_users([x["rez"] for x in eksik] + [r.get("rez_id") for r in cikmadi], env=env)
+    except Exception:
+        who = {}
+
+    # bugün satışlar (kapı/telefon), tahsilat, son 3 saatin rezervasyonları
+    arr_ext = E.fetch_reservations_between("CHECKIN", iso, iso, env=env)
+    dusuk = []
+    kapi = []
+    for a in arr_ext:
+        if str(a.get("RESSTATE")) in EXCL_STATES | {"Option"} or not str(a.get("ROOMNO") or "")[:1].isdigit():
+            continue
+        if not _is_direct_agency((a.get("AGENCY") or "").strip()):
+            continue
+        avg = round(num(a.get("AVERAGENIGHTPRICE")) * (num(a.get("CURRENCYRATE")) or 1))
+        kapi.append(avg)
+        liste = satis_liste_fiyati(a)
+        alt = (liste - SATIS_PAYI) if liste else SATIS_MIN_FIYAT
+        if 0 < avg < alt:
+            dusuk.append({"room": str(a.get("ROOMNO")), "agency": (a.get("AGENCY") or "").strip(),
+                          "avg": avg, "liste": liste, "user": (a.get("CREATORUSER") or "").strip()})
+    tahsil = Counter()
+    try:
+        for r in E.fetch_folio(iso, iso, env=env):
+            if r.get("DEPTTYPENAME") == "PAYMENT":
+                m = (r.get("DEPNAME") or "").lower()
+                k = "nakit" if ("cash" in m or "nakit" in m) else "kart" if "card" in m or "kart" in m \
+                    else "havale" if "havale" in m or "eft" in m else "diğer"
+                tahsil[k] += abs(num(r.get("TOTAL")))
+    except Exception:
+        tahsil = None
+    son3 = Counter()
+    sinir3 = (now - dt.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M")
+    try:
+        for r in E.fetch_reservations_between(
+                "CREATEDATE", (now - dt.timedelta(hours=3)).date().isoformat(), iso, env=env,
+                columns=["RESID", "AGENCY", "CREATEDATE", "RESSTATE"]):
+            if str(r.get("CREATEDATE") or "")[:16].replace("T", " ") >= sinir3 and str(r.get("RESSTATE")) not in EXCL_STATES:
+                son3[(r.get("AGENCY") or "?").strip().title()] += 1
+    except Exception:
+        son3 = None
+
+    # doluluk ve fiyat
+    try:
+        dol = gece_doluluk(env, today, yarin)
+    except Exception:
+        dol = Counter()
+    stu = FIYAT_ODALAR[1]
+    fiyat_bu = gece_hedef(stu, today, dol.get(today, 0), today)
+    fiyat_yarin = gece_hedef(stu, yarin, dol.get(yarin, 0), today)
+
+    # kanallarda ucuz (son 6 saatin okumaları, bugün … +14)
+    ucuz = Counter()
+    try:
+        taze = (now - dt.timedelta(hours=6)).strftime("%Y-%m-%d %H:%M")
+        for (t, k, rk), o in fiyat_gozlemler().items():
+            d = pdate(t)
+            if k in ("booking", "hotels", "site") or rk == "eko" or not d or not (today <= d <= today + dt.timedelta(days=14)):
+                continue
+            if not o.get("fiyat") or o.get("zaman", "") < taze:
+                continue
+            hedef = dict((r[0], gece_taban(r, d, today)) for r in FIYAT_ODALAR)[rk]
+            if o["fiyat"] < hedef - FIYAT_TOLERANS:
+                ucuz[FIYAT_KANALLAR.get(k, (k,))[0]] = max(ucuz[FIYAT_KANALLAR.get(k, (k,))[0]], hedef - o["fiyat"])
+    except Exception:
+        ucuz = None
+
+    # odalar
+    odalar = anlik_odalar(env) or sorted({str(r["room"]) for r in inhouse}, key=int)
+    by_room = {}
+    for r in inhouse:
+        by_room[str(r["room"])] = r
+    bekleyen = {str(r.get("room")): r for r in gelmedi if str(r.get("room") or "").isdigit()}
+    borc_oda = {str(r["room"]): r["_guest"] for r in borclu}
+    eksik_oda = {x["room"]: gap_texts(x) for x in eksik}
+    rooms = []
+    for no in odalar:
+        r = by_room.get(no)
+        info = {"no": no}
+        if r:
+            co = pdate(r.get("checkout"))
+            info.update(st="cik" if co and co <= today else "dolu", g=(r.get("guest") or "")[:40],
+                        ag=(r.get("agency") or "").strip()[:24], ci=tr_g(pdate(r.get("checkin"))), co=tr_g(co))
+        elif no in bekleyen:
+            b = bekleyen[no]
+            info.update(st="bek", g=(b.get("guest") or "")[:40], ag=(b.get("agency") or "").strip()[:24],
+                        ci=tr_g(pdate(b.get("checkin"))), co=tr_g(pdate(b.get("checkout"))))
+        else:
+            info["st"] = "bos"
+        if no in borc_oda:
+            info["borc"] = round(borc_oda[no])
+        if no in eksik_oda:
+            info["eksik"] = eksik_oda[no]
+        rooms.append(info)
+    dolu_n = sum(1 for x in rooms if x["st"] in ("dolu", "cik"))
+
+    # Şimdi yapılacaklar (sunucu tarafı; yorum ve problemler sayfada eklenir)
+    todo = []
+    def ekle(seviye, tag, baslik, detay, kim=""):
+        todo.append({"s": seviye, "tag": tag, "t": baslik, "d": detay, "w": kim})
+    for r in cikmadi:
+        u = who.get(str(r.get("rez_id")))
+        ekle(0, "ÇIKMADI", f"Oda {r.get('room')} — çıkış tarihi geçti ({tr_g(pdate(r.get('checkout')))}), hâlâ konaklıyor görünüyor",
+             "Misafir uzattıysa tarihi düzeltin, çıktıysa Elektra'da çıkış yapın.", f"giriş: {u[0]}" if u else "")
+    if borclu:
+        top = sum(r["_guest"] for r in borclu)
+        ekle(0, "BORÇ", f"{len(borclu)} konaklayan misafirin açık bakiyesi var — toplam {_tl(top)} ₺",
+             " · ".join(f"Oda {r['room']} {_tl(r['_guest'])} ₺" for r in borclu[:6]), "Ödeme Kontrolü")
+    for r in sifir:
+        ekle(0, "FİYATSIZ", f"Oda {r.get('room')} fiyatsız (0 ₺) satılmış", (r.get("agency") or "").strip(), "Gün Sonu")
+    # Giriş saati (14:00) geçti diye öğleden sonra uyarmak yanlış alarm: misafir akşam gelir.
+    # 22:00'den sonra ya da önceki günden kalan rezervasyon "GELMEDİ" olur; öncesinde sadece "bekleniyor".
+    gec = [r for r in gelmedi if now.hour >= 22 or (pdate(r.get("checkin")) or today) < today]
+    if gec:
+        ekle(1, "GELMEDİ", f"{len(gec)} rezervasyon hâlâ gelmedi (“Rezervasyon” durumunda)",
+             " · ".join(f"{('Oda ' + str(r.get('room'))) if str(r.get('room') or '').isdigit() else 'oda atanmamış'} ({(r.get('agency') or '').strip()})"
+                        for r in gec[:6]) + " — geldi mi, no-show mu?", "Gün Sonu")
+    if kim:
+        ekle(1, "KİMLİK", f"{len(kim)} odada kimlik bilgisi eksik",
+             " · ".join(f"Oda {x['room']}" for x in sorted(kim, key=lambda x: int(x['room']))[:10]) + " — KBS bildirimi için gerekli.", "Eksik Bilgiler")
+    if tel:
+        ekle(1, "TELEFON", f"{len(tel)} odada telefon numarası yok",
+             " · ".join(f"Oda {x['room']}" for x in sorted(tel, key=lambda x: int(x['room']))[:10]), "Eksik Bilgiler")
+    for x in dusuk:
+        ekle(1, "FİYAT", f"Oda {x['room']} {x['agency'] or 'kapı'} satışı {_tl(x['avg'])} ₺ — listenin altında",
+             f"Bu odanın liste fiyatı {_tl(x['liste'])} ₺." if x["liste"] else f"Sınır {_tl(SATIS_MIN_FIYAT)} ₺.",
+             f"satış: {x['user']}" if x["user"] else "")
+    ekle(3, "KBS", "KBS bildirimi otomatik kontrol edilemiyor", "Gün sonundan önce elle kontrol edin.")
+
+    gunsonu = [
+        ("Ödemeler", f"{len(borclu)} konaklayan borçlu" if borclu else "konaklayan borçlu yok", "bad" if borclu else "ok"),
+        ("Gelmeyenler", f"{len(gelmedi)} misafir henüz gelmedi" if gelmedi else "bekleyen yok", "warn" if gec else ("bek" if gelmedi else "ok")),
+        ("Çıkmayanlar", f"{len(cikmadi)} oda çıkış tarihini geçti" if cikmadi else "yok", "bad" if cikmadi else "ok"),
+        ("Fiyatsız satış", f"{len(sifir)} oda 0 ₺" if sifir else "0 ₺ ya da fiyatsız rezervasyon yok", "bad" if sifir else "ok"),
+        ("Eksik bilgi", f"{len(eksik)} odada kimlik/telefon eksik" if eksik else "eksik yok", "warn" if eksik else "ok"),
+        ("KBS", "otomatik kontrol yok — elle bakın", "man"),
+    ]
+    hazir = not (borclu or gec or cikmadi or sifir)
+
+    gelen = [r for r in arr_today if canli(r)]
+    giren = [r for r in gelen if str(r.get("durum")) in ("InHouse", "CheckOut")]
+    cikis = [r for r in co_today if canli(r) and gercek(r)]
+    cikan = [r for r in cikis if str(r.get("durum")) == "CheckOut"]
+    deps = [{"rez": str(r.get("rez_id") or ""), "room": str(r.get("room") or "")} for r in cikan]
+
+    data = {"day": iso, "rooms": rooms, "todo": sorted(todo, key=lambda x: x["s"]), "deps": deps}
+
+    # ---- HTML
+    def kpi(baslik, deger, alt, ek=""):
+        return (f"<div class='ak'><div class='l'>{esc(baslik)}</div><div class='n'>{deger}</div>{ek}"
+                f"<div class='s'>{alt}</div></div>")
+    yuzde = round(100 * dolu_n / (len(odalar) or ROOMS_TOTAL))
+    kp = (kpi("Dolu oda", f"{dolu_n} <small>/ {len(odalar) or ROOMS_TOTAL}</small>", f"%{yuzde} doluluk · {len(odalar) - dolu_n} boş",
+              f"<div class='bar'><i style='width:{yuzde}%'></i></div>")
+          + kpi("Bugün giriş", str(len(gelen)), f"{len(giren)} geldi" + (f" · <b class='w'>{len(gelen) - len(giren)} bekleniyor</b>" if len(gelen) > len(giren) else ""))
+          + kpi("Bugün çıkış", str(len(cikis)), f"{len(cikan)} çıktı" + (f" · <b class='b'>{len(cikis) - len(cikan)} çıkmadı</b>" if len(cikis) > len(cikan) else ""))
+          + kpi("Bu gece kapı fiyatı", f"{_tl(fiyat_bu)} ₺", f"Stüdyo · {BASAMAK_ADI[basamak(today, today, dol.get(today, 0))]} · indirim yok")
+          + (kpi("Bugün tahsilat", f"{_tl(sum(tahsil.values()))} ₺",
+                 " · ".join(f"{k} {_tl(v)}" for k, v in tahsil.most_common()) or "henüz tahsilat yok") if tahsil is not None else ""))
+
+    def satir_eksik(x):
+        u = who.get(x["rez"])
+        return (f"<tr><td class='mono'><b>{esc(x['room'])}</b></td><td>{esc(x['guest'][:30])}</td>"
+                f"<td>{'<br>'.join(esc(t) for t in gap_texts(x))}</td><td>{esc(tr_g(x['ci']))}</td>"
+                f"<td>{('<span class=who>' + esc(u[0]) + '</span>') if u else '—'}</td></tr>")
+    eksik_html = (("<div style='overflow-x:auto'><table><thead><tr><th>Oda</th><th>Misafir</th><th>Eksik</th>"
+                   "<th>Giriş</th><th>Girişi yapan</th></tr></thead><tbody>" + "".join(satir_eksik(x) for x in eksik)
+                   + "</tbody></table></div>") if eksik else empty_ok("Konaklayanların bilgileri tam."))
+    ton = {"ok": ("TAMAM", "ok"), "warn": ("DİKKAT", "warn"), "bad": ("DİKKAT", "bad"), "man": ("ELLE", "man"), "bek": ("BEKLENİYOR", "man")}
+    gs_html = "".join(f"<div class='gs'><div><b>{esc(a)}</b><div class='s'>{esc(n)}</div></div>"
+                      f"<span class='pill {ton[t][1]}'>{ton[t][0]}</span></div>" for a, n, t in gunsonu)
+
+    ek = []
+    if son3 is not None:
+        ek.append(("Son 3 saatte yeni rezervasyon", str(sum(son3.values())),
+                   " · ".join(f"{k} {v}" for k, v in son3.most_common(5)) or "yeni rezervasyon yok", ""))
+    if ucuz is not None:
+        ek.append(("Kanallarda fiyat (14 gün)", f"{len(ucuz)} ucuz" if ucuz else "hepsi hedefte",
+                   " · ".join(f"{k} −{_tl(v)} ₺" for k, v in ucuz.most_common(4)) or "Booking/Expedia hariç bütün okumalar hedefte",
+                   "b" if ucuz else "o"))
+    if kapi:
+        ek.append(("Bugün kapıdan / telefondan giriş", f"{len(kapi)} oda",
+                   f"ort. {_tl(sum(kapi) / len(kapi))} ₺" + (f" · <b class='b'>{len(dusuk)} tanesi listenin altında</b>" if dusuk else ""), ""))
+    ek.append(("Yarın", f"{len([r for r in arr_yarin if canli(r)])} giriş · {len([r for r in co_yarin if canli(r) and gercek(r)])} çıkış",
+               f"yarın gece {dol.get(yarin, 0)} dolu · Stüdyo {_tl(fiyat_yarin)} ₺", ""))
+    ek_html = "".join(f"<div class='ex'><div class='l'>{esc(a)}</div><div class='n {c}'>{b}</div><div class='s'>{d}</div></div>"
+                      for a, b, d, c in ek)
+    ek_html += "<div class='ex' id='axProb'></div>"
+
+    body = (AN_CSS
+            + f"<div class='fresh'>Elektra'dan · pano her saat ve 30 dakikada bir yenilenir · bu sayfa: <b>{now.strftime('%d.%m %H:%M')}</b></div>"
+            + f"<div class='aks'>{kp}</div>"
+            + "<div class='card'><div class='hd'><h2>Şimdi yapılacaklar <span id='axN' class='b'></span></h2>"
+              "<span class='s'>Gün Sonu + Eksik Bilgiler + Ödeme + Yorumlar · en acil üstte</span></div><div id='axTodo'></div></div>"
+            + "<div class='card'><div class='hd'><h2>Oda durumu</h2><div class='lg'>"
+              "<span><i class='sw dolu'></i>Dolu</span><span><i class='sw bek'></i>Giriş bekleniyor</span>"
+              "<span><i class='sw cik'></i>Bugün çıkacak</span><span><i class='sw bos'></i>Boş</span>"
+              "<span><b class='b'>!</b> Eksik bilgi / borç</span></div></div>"
+              "<div id='axRooms' class='rooms'></div><div id='axRoom' class='rinfo'>Bir odaya dokunun: misafir, tarih, bakiye ve eksik bilgi burada görünür.</div></div>"
+            + f"<div class='g2'><div class='card'><div class='hd'><h2>Eksik bilgiler <span class='b'>({len(eksik)} oda)</span></h2>"
+              f"<span class='s'>misafir otelde, hemen tamamlanabilir</span></div>{eksik_html}</div>"
+              f"<div class='card'><div class='hd'><h2>Gün sonu hazırlık</h2><span class='pill {'ok' if hazir else 'warn'}'>"
+              f"{'HAZIR (KBS elle)' if hazir else 'HENÜZ HAZIR DEĞİL'}</span></div>{gs_html}</div></div>"
+            + f"<div class='card'><div class='hd'><h2>Ayrıca bilinmesi gerekenler</h2></div><div class='exs'>{ek_html}</div></div>"
+            + "<script>var AD=" + json.dumps(data, ensure_ascii=False).replace("</", "<\\/") + ";</script>" + AN_JS)
+    n = len([t for t in todo if t["s"] < 3])
+    return {"label": "Anlık Durum", "count": n, "count_label": "yapılacak", "tone": "bad" if n else "ok",
+            "sub": f"{dolu_n}/{len(odalar) or ROOMS_TOTAL} dolu · {len(eksik)} eksik bilgi · gün sonu {'hazır' if hazir else 'hazır değil'}",
+            "updated": now.strftime("%d.%m.%Y %H:%M"),
+            "html": PAGE("Günlük işler", "Anlık Durum", f"{tr_g(today)} · şu an otelde ne var, ne eksik, ne yapılmalı", body)}
+
+
+AN_CSS = """<style>
+.aks{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:0 0 16px}
+.ak{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.ak .l,.ex .l{color:var(--sub);font-size:12.5px;font-weight:600}
+.ak .n{font-size:28px;font-weight:800;margin-top:2px}.ak .n small{font-size:15px;color:var(--sub);font-weight:600}
+.ak .s,.ex .s,.gs .s,.card .s{color:var(--sub);font-size:12px;margin-top:3px}
+.ak .bar{height:7px;background:var(--th-bg);border-radius:9px;overflow:hidden;margin-top:6px}.ak .bar i{display:block;height:7px;background:var(--eyebrow)}
+.b{color:var(--statbad)}.w{color:#b45309}.o{color:var(--statok)}
+.card{margin:0 0 16px}.card .hd{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.card .hd h2{margin:0;font-size:16px}
+.td{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--td-line)}
+.td:first-child{border-top:0}
+.tg{flex:0 0 auto;min-width:70px;text-align:center;font-size:10.5px;font-weight:800;padding:4px 7px;border-radius:6px}
+.tg.s0{background:#fde8e8;color:#991b1b}.tg.s1{background:#fef3c7;color:#92400e}.tg.s2{background:#e0e7ff;color:#3730a3}.tg.s3{background:var(--th-bg);color:var(--th-fg)}
+.td .t{font-weight:700}.td .d{color:var(--sub);font-size:12.5px;margin-top:1px}.td .wh{margin-left:auto;color:var(--sub);font-size:12px;white-space:nowrap}
+.lg{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--sub)}.lg span{display:flex;align-items:center;gap:5px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:7px;margin-top:6px}
+.rm{position:relative;height:50px;border-radius:9px;border:0;font:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.rm b{font-size:14.5px}.rm span{font-size:10px;opacity:.85}
+.rm .x{position:absolute;top:2px;right:6px;color:#dc2626;font-weight:900;font-size:13px}
+.dolu{background:#1d4ed8;color:#fff}.bek{background:#f59e0b;color:#111827}.cik{background:var(--card);color:#991b1b;box-shadow:inset 0 0 0 2px #dc2626}
+.bos{background:var(--th-bg);color:var(--th-fg)}
+.sw.cik{box-shadow:inset 0 0 0 2px #dc2626}
+.rm.sel{outline:3px solid var(--fg);outline-offset:1px}
+.rinfo{margin-top:10px;font-size:13px;color:var(--sub);background:var(--th-bg);border-radius:10px;padding:10px 12px}
+.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}.g2 .card{margin:0 0 16px}
+.gs{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--td-line)}
+.pill{font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.pill.ok{background:#dcfce7;color:#166534}.pill.warn{background:#fef3c7;color:#92400e}.pill.bad{background:#fde8e8;color:#991b1b}.pill.man{background:var(--th-bg);color:var(--th-fg)}
+.exs{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.ex{border:1px solid var(--border);border-radius:12px;padding:12px 14px}.ex:empty{display:none}
+.ex .n{font-size:21px;font-weight:800;margin-top:2px}
+.mono{font-variant-numeric:tabular-nums}
+</style>"""
+
+AN_JS = """<script>
+(function(){
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function sget(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
+  function lst(k){try{var s=localStorage.getItem(k);return s?JSON.parse(s):[];}catch(e){return [];}}
+  var todo=AD.todo.slice();
+  // İstenilen Yorumlar (Günlük Rapor'un kaydı: 'RG:<gün>:yistendi:<rez>' = '1'). İşaretlenmeyen çıkış = yapılacak.
+  var yok=AD.deps.filter(function(d){return d.rez && sget('RG:'+AD.day+':yistendi:'+d.rez)!=='1';});
+  if(yok.length) todo.push({s:2,tag:'YORUM',t:yok.length+' çıkış yapan misafirden yorum istendiği not edilmedi',
+    d:yok.slice(0,10).map(function(d){return 'Oda '+d.room;}).join(' · ')+' — Günlük Rapor › İstenilen Yorumlar’da işaretleyin.',w:'Günlük Rapor'});
+  // Oda / temizlik problemleri (Günlük Rapor'da girilen, bitmemiş olanlar)
+  // son 7 gün: önceki günlerde girilip hâlâ "Yapıldı" işaretlenmemiş problemler de açık sayılır
+  var pr=[],d0=new Date(AD.day+'T12:00:00');
+  for(var g=0;g<7;g++){var dd=new Date(d0.getTime()-g*864e5).toISOString().slice(0,10);
+    ['odap','temp'].forEach(function(t){lst('RG:'+dd+':'+t).forEach(function(r){if(r&&!r.done&&(r.oda||r.problem))pr.push({t:t,r:r});});});}
+  var pe=document.getElementById('axProb');
+  if(pe) pe.innerHTML="<div class='l'>Açık oda / temizlik problemi</div><div class='n "+(pr.length?'b':'o')+"'>"+(pr.length?pr.length+' açık':'yok')+"</div>"
+    +"<div class='s'>"+(pr.length?pr.slice(0,4).map(function(x){return esc((x.r.oda?('Oda '+x.r.oda+' '):'')+(x.r.problem||''));}).join(' · '):'Günlük Rapor’da kayıtlı açık problem yok')+"</div>";
+  todo.sort(function(a,b){return a.s-b.s;});
+  var n=todo.filter(function(x){return x.s<3;}).length;
+  document.getElementById('axN').textContent=n?'('+n+')':'';
+  document.getElementById('axTodo').innerHTML=todo.length?todo.map(function(x){
+    return "<div class='td'><span class='tg s"+x.s+"'>"+esc(x.tag)+"</span><div><div class='t'>"+esc(x.t)+"</div><div class='d'>"+esc(x.d)+"</div></div>"
+      +(x.w?"<span class='wh'>"+esc(x.w)+"</span>":"")+"</div>";}).join(''):"<div class='empty'>✓ Şu an yapılacak bir şey yok.</div>";
+  var ad={dolu:'dolu',bek:'bekleniyor',cik:'çıkacak',bos:'boş'};
+  var box=document.getElementById('axRooms'), info=document.getElementById('axRoom');
+  box.innerHTML=AD.rooms.map(function(r,i){
+    return "<button type='button' class='rm "+r.st+"' data-i='"+i+"' aria-label='Oda "+esc(r.no)+" "+ad[r.st]+"'><b>"+esc(r.no)+"</b><span>"+ad[r.st]+"</span>"
+      +((r.eksik||r.borc)?"<i class='x'>!</i>":"")+"</button>";}).join('');
+  box.addEventListener('click',function(ev){var b=ev.target.closest('.rm'); if(!b)return;
+    box.querySelectorAll('.rm.sel').forEach(function(x){x.classList.remove('sel');}); b.classList.add('sel');
+    var r=AD.rooms[+b.dataset.i];
+    info.innerHTML="<b style='color:var(--fg)'>Oda "+esc(r.no)+"</b> · "+ad[r.st]
+      +(r.g?" · "+esc(r.g):"")+(r.ag?" · "+esc(r.ag):"")+(r.ci?" · "+esc(r.ci)+" → "+esc(r.co):"")
+      +(r.borc?" · <b class='b'>borç "+r.borc.toLocaleString('tr-TR')+" ₺</b>":"")
+      +(r.eksik?"<br><span class='b'>"+r.eksik.map(esc).join(' · ')+"</span>":"");
+  });
+})();
 </script>"""
 
 

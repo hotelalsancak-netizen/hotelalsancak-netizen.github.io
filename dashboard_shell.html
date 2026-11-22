@@ -254,7 +254,7 @@ async function getJSON(url){
 // ---- Menü düzeni. Yeni bir bölüm eklenince anahtarını buraya, uygun gruba ekle;
 // eklenmezse menünün sonunda "Diğer" altında görünür (yine çalışır). ----
 const GROUPS = [
-  ["Günlük işler",   ["gunluk","odeme","fiyat","eksik","gunsonu"]],   // sahibin sırası, 02.11.2026
+  ["Günlük işler",   ["anlik","gunluk","odeme","fiyat","eksik","gunsonu"]],   // sahibin sırası, 02.11.2026; Anlık Durum en üstte (22.11)
   ["Denetim",        ["kasa","iptal","indirim","kart"]],
   ["Satış",          ["satis","stats"]],
   ["Muhasebe",       ["gelirgider","bakiye","borclar","vergi"]],   // gelirgider 20.11.2026
@@ -262,6 +262,7 @@ const GROUPS = [
 ];
 const ICONS = {
   ozet:"M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z",
+  anlik:"M21 12a9 9 0 1 1-18 0a9 9 0 1 1 18 0M12 7v5l3 2",
   gunsonu:"M9 3h6v3H9zM9 4.5H6a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1h-3M9 14l2 2 4-4",
   gunluk:"M5 4a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v17H7a2 2 0 0 1-2-2zM5 19a2 2 0 0 1 2-2h12M9 7h6M9 11h6",
   odeme:"M3 6h18v12H3zM3 10h18M7 15h4",
