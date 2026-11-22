@@ -4598,6 +4598,12 @@ def build_anlik(env):
         ekle(1, "FİYAT", f"Oda {x['room']} {x['agency'] or 'kapı'} satışı {_tl(x['avg'])} ₺ — listenin altında",
              f"Bu odanın liste fiyatı {_tl(x['liste'])} ₺." if x["liste"] else f"Sınır {_tl(SATIS_MIN_FIYAT)} ₺.",
              f"satış: {x['user']}" if x["user"] else "")
+    if ucuz:
+        # sahibi (21.11): "kesinlikle ucuza satmalarına izin verme". Bağlı kanalları kanal_duzelt.py
+        # yarım saatte bir düzeltir; burada kalan, düzeltilemeyen (toptancı/son dakika) ucuzluktur.
+        ekle(1, "UCUZ SATIŞ", f"{len(ucuz)} kanal/satıcı son 6 saatte hedefin altında görüldü",
+             " · ".join(f"{k} −{_tl(v)} ₺" for k, v in ucuz.most_common(5))
+             + " — bağlı kanallar otomatik düzeltiliyor; düzelmezse Fiyat Kontrol'e bakın.", "Fiyat Kontrol")
     ekle(3, "KBS", "KBS bildirimi otomatik kontrol edilemiyor", "Gün sonundan önce elle kontrol edin.")
 
     gunsonu = [
