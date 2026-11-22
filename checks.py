@@ -4686,7 +4686,7 @@ def build_anlik(env):
     return {"label": "Anlık Durum", "count": n, "count_label": "yapılacak", "tone": "bad" if n else "ok",
             "sub": f"{dolu_n}/{len(odalar) or ROOMS_TOTAL} dolu · {len(eksik)} eksik bilgi · gün sonu {'hazır' if hazir else 'hazır değil'}",
             "updated": now.strftime("%d.%m.%Y %H:%M"),
-            "html": PAGE("Günlük işler", "Anlık Durum", f"{tr_g(today)} · şu an otelde ne var, ne eksik, ne yapılmalı", body)}
+            "html": PAGE(None, "Anlık Durum", "", body)}   # başlık shell'de; içeride tekrarlanmaz (sahibi 22.11)
 
 
 AN_CSS = """<style>
