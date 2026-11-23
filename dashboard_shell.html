@@ -433,6 +433,15 @@ function renderDashboard(){
   show(byKey(want) ? want : "ozet");
 }
 
+// Bölüm sayfası (iframe) içinden gezinme: parent.postMessage({git:'eksik', sekme:'yorum'}) (sahibi 23.11:
+// "Şimdi yapılacaklar / Gün sonu / Eksik bilgiler satırına tıklayınca ilgili yere gitsin").
+window.addEventListener("message", function(e){
+  var fr = $("frame"); if(!fr || e.source !== fr.contentWindow) return;
+  var d = e.data || {}; if(!d.git || !byKey(d.git)) return;
+  try{ if(d.sekme) sessionStorage.setItem("gitSekme", String(d.sekme)); }catch(_){}
+  show(d.git); try{ window.scrollTo(0, 0); }catch(_){}
+});
+
 function show(key){
   const s = byKey(key);
   if(!s) key = "ozet";

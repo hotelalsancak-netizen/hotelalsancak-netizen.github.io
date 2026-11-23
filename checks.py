@@ -3151,6 +3151,7 @@ GUNLUK_JS = r"""<script>
   // Sabah açılınca DÜN (sahibi 19.11.2026: "rapor açılınca dün ne olmuş görmek istiyorum")
   var cur = (D.dun && D.days[D.dun]) ? D.dun : ((D.today && D.days[D.today]) ? D.today : (alldays[alldays.length-1] || D.today));
   var curTab = 'bal';      // ilk sekme açık gelir (sekme sırası sahibin, 28.10.2026)
+  try{ var _gs=sessionStorage.getItem('gitSekme'); if(_gs){ curTab=_gs; sessionStorage.removeItem('gitSekme'); } }catch(e){}   // Anlık Durum'dan gelindi
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function money(n){return (Math.round((+n||0)*100)/100).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});}
   var MON=['','Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
@@ -4569,50 +4570,51 @@ def build_anlik(env):
 
     # Şimdi yapılacaklar (sunucu tarafı; yorum ve problemler sayfada eklenir)
     todo = []
-    def ekle(seviye, tag, baslik, detay, kim=""):
-        todo.append({"s": seviye, "tag": tag, "t": baslik, "d": detay, "w": kim})
+    def ekle(seviye, tag, baslik, detay, kim="", git="", sekme=""):
+        # git/sekme: tıklayınca açılacak bölüm (ve Günlük Rapor sekmesi) — sahibi 23.11
+        todo.append({"s": seviye, "tag": tag, "t": baslik, "d": detay, "w": kim, "g": git, "k": sekme})
     for r in cikmadi:
         u = who.get(str(r.get("rez_id")))
         ekle(0, "ÇIKMADI", f"Oda {r.get('room')} — çıkış tarihi geçti ({tr_g(pdate(r.get('checkout')))}), hâlâ konaklıyor görünüyor",
-             "Misafir uzattıysa tarihi düzeltin, çıktıysa Elektra'da çıkış yapın.", f"giriş: {u[0]}" if u else "")
+             "Misafir uzattıysa tarihi düzeltin, çıktıysa Elektra'da çıkış yapın.", f"giriş: {u[0]}" if u else "", "gunsonu")
     if borclu:
         top = sum(r["_guest"] for r in borclu)
         ekle(0, "BORÇ", f"{len(borclu)} konaklayan misafirin açık bakiyesi var — toplam {_tl(top)} ₺",
-             " · ".join(f"Oda {r['room']} {_tl(r['_guest'])} ₺" for r in borclu[:6]), "Ödeme Kontrolü")
+             " · ".join(f"Oda {r['room']} {_tl(r['_guest'])} ₺" for r in borclu[:6]), "Ödeme Kontrolü", "odeme")
     for r in sifir:
-        ekle(0, "FİYATSIZ", f"Oda {r.get('room')} fiyatsız (0 ₺) satılmış", (r.get("agency") or "").strip(), "Gün Sonu")
+        ekle(0, "FİYATSIZ", f"Oda {r.get('room')} fiyatsız (0 ₺) satılmış", (r.get("agency") or "").strip(), "Gün Sonu", "gunsonu")
     # Giriş saati (14:00) geçti diye öğleden sonra uyarmak yanlış alarm: misafir akşam gelir.
     # 22:00'den sonra ya da önceki günden kalan rezervasyon "GELMEDİ" olur; öncesinde sadece "bekleniyor".
     gec = [r for r in gelmedi if now.hour >= 22 or (pdate(r.get("checkin")) or today) < today]
     if gec:
         ekle(1, "GELMEDİ", f"{len(gec)} rezervasyon hâlâ gelmedi (“Rezervasyon” durumunda)",
              " · ".join(f"{('Oda ' + str(r.get('room'))) if str(r.get('room') or '').isdigit() else 'oda atanmamış'} ({(r.get('agency') or '').strip()})"
-                        for r in gec[:6]) + " — geldi mi, no-show mu?", "Gün Sonu")
+                        for r in gec[:6]) + " — geldi mi, no-show mu?", "Gün Sonu", "gunsonu")
     if kim:
         ekle(1, "KİMLİK", f"{len(kim)} odada kimlik bilgisi eksik",
-             " · ".join(f"Oda {x['room']}" for x in sorted(kim, key=lambda x: int(x['room']))[:10]) + " — KBS bildirimi için gerekli.", "Eksik Bilgiler")
+             " · ".join(f"Oda {x['room']}" for x in sorted(kim, key=lambda x: int(x['room']))[:10]) + " — KBS bildirimi için gerekli.", "Eksik Bilgiler", "eksik")
     if tel:
         ekle(1, "TELEFON", f"{len(tel)} odada telefon numarası yok",
-             " · ".join(f"Oda {x['room']}" for x in sorted(tel, key=lambda x: int(x['room']))[:10]), "Eksik Bilgiler")
+             " · ".join(f"Oda {x['room']}" for x in sorted(tel, key=lambda x: int(x['room']))[:10]), "Eksik Bilgiler", "eksik")
     for x in dusuk:
         ekle(1, "FİYAT", f"Oda {x['room']} {x['agency'] or 'kapı'} satışı {_tl(x['avg'])} ₺ — listenin altında",
              f"Bu odanın liste fiyatı {_tl(x['liste'])} ₺." if x["liste"] else f"Sınır {_tl(SATIS_MIN_FIYAT)} ₺.",
-             f"satış: {x['user']}" if x["user"] else "")
+             f"satış: {x['user']}" if x["user"] else "", "gunluk", "sales")
     if ucuz:
         # sahibi (21.11): "kesinlikle ucuza satmalarına izin verme". Bağlı kanalları kanal_duzelt.py
         # yarım saatte bir düzeltir; burada kalan, düzeltilemeyen (toptancı/son dakika) ucuzluktur.
         ekle(1, "UCUZ SATIŞ", f"{len(ucuz)} kanal/satıcı son 6 saatte hedefin altında görüldü",
              " · ".join(f"{k} −{_tl(v)} ₺" for k, v in ucuz.most_common(5))
-             + " — bağlı kanallar otomatik düzeltiliyor; düzelmezse Fiyat Kontrol'e bakın.", "Fiyat Kontrol")
-    ekle(3, "KBS", "KBS bildirimi otomatik kontrol edilemiyor", "Gün sonundan önce elle kontrol edin.")
+             + " — bağlı kanallar otomatik düzeltiliyor; düzelmezse Fiyat Kontrol'e bakın.", "Fiyat Kontrol", "fiyat")
+    ekle(3, "KBS", "KBS bildirimi otomatik kontrol edilemiyor", "Gün sonundan önce elle kontrol edin.", "Gün Sonu", "gunsonu")
 
-    gunsonu = [
-        ("Ödemeler", f"{len(borclu)} konaklayan borçlu" if borclu else "konaklayan borçlu yok", "bad" if borclu else "ok"),
-        ("Gelmeyenler", f"{len(gelmedi)} misafir henüz gelmedi" if gelmedi else "bekleyen yok", "warn" if gec else ("bek" if gelmedi else "ok")),
-        ("Çıkmayanlar", f"{len(cikmadi)} oda çıkış tarihini geçti" if cikmadi else "yok", "bad" if cikmadi else "ok"),
-        ("Fiyatsız satış", f"{len(sifir)} oda 0 ₺" if sifir else "0 ₺ ya da fiyatsız rezervasyon yok", "bad" if sifir else "ok"),
-        ("Eksik bilgi", f"{len(eksik)} odada kimlik/telefon eksik" if eksik else "eksik yok", "warn" if eksik else "ok"),
-        ("KBS", "otomatik kontrol yok — elle bakın", "man"),
+    gunsonu = [   # (başlık, açıklama, ton, tıklayınca açılacak bölüm, Günlük Rapor sekmesi)
+        ("Ödemeler", f"{len(borclu)} konaklayan borçlu" if borclu else "konaklayan borçlu yok", "bad" if borclu else "ok", "odeme", ""),
+        ("Gelmeyenler", f"{len(gelmedi)} misafir henüz gelmedi" if gelmedi else "bekleyen yok", "warn" if gec else ("bek" if gelmedi else "ok"), "gunsonu", ""),
+        ("Çıkmayanlar", f"{len(cikmadi)} oda çıkış tarihini geçti" if cikmadi else "yok", "bad" if cikmadi else "ok", "gunsonu", ""),
+        ("Fiyatsız satış", f"{len(sifir)} oda 0 ₺" if sifir else "0 ₺ ya da fiyatsız rezervasyon yok", "bad" if sifir else "ok", "gunluk", "sales"),
+        ("Eksik bilgi", f"{len(eksik)} odada kimlik/telefon eksik" if eksik else "eksik yok", "warn" if eksik else "ok", "eksik", ""),
+        ("KBS", "otomatik kontrol yok — elle bakın", "man", "gunsonu", ""),
     ]
     hazir = not (borclu or gec or cikmadi or sifir)
 
@@ -4639,15 +4641,15 @@ def build_anlik(env):
 
     def satir_eksik(x):
         u = who.get(x["rez"])
-        return (f"<tr><td class='mono'><b>{esc(x['room'])}</b></td><td>{esc(x['guest'][:30])}</td>"
+        return (f"<tr class='go' data-go='eksik' title='Eksik Bilgiler sayfasında aç'><td class='mono'><b>{esc(x['room'])}</b></td><td>{esc(x['guest'][:30])}</td>"
                 f"<td>{'<br>'.join(esc(t) for t in gap_texts(x))}</td><td>{esc(tr_g(x['ci']))}</td>"
                 f"<td>{('<span class=who>' + esc(u[0]) + '</span>') if u else '—'}</td></tr>")
     eksik_html = (("<div style='overflow-x:auto'><table><thead><tr><th>Oda</th><th>Misafir</th><th>Eksik</th>"
                    "<th>Giriş</th><th>Girişi yapan</th></tr></thead><tbody>" + "".join(satir_eksik(x) for x in eksik)
                    + "</tbody></table></div>") if eksik else empty_ok("Konaklayanların bilgileri tam."))
     ton = {"ok": ("TAMAM", "ok"), "warn": ("DİKKAT", "warn"), "bad": ("DİKKAT", "bad"), "man": ("ELLE", "man"), "bek": ("BEKLENİYOR", "man")}
-    gs_html = "".join(f"<div class='gs'><div><b>{esc(a)}</b><div class='s'>{esc(n)}</div></div>"
-                      f"<span class='pill {ton[t][1]}'>{ton[t][0]}</span></div>" for a, n, t in gunsonu)
+    gs_html = "".join(f"<button type='button' class='gs go' data-go='{g}' data-sk='{k}'><div><b>{esc(a)}</b><div class='s'>{esc(n)}</div></div>"
+                      f"<span class='pill {ton[t][1]}'>{ton[t][0]}</span></button>" for a, n, t, g, k in gunsonu)
 
     ek = []
     if son3 is not None:
@@ -4676,9 +4678,9 @@ def build_anlik(env):
               "<span><i class='sw cik'></i>Bugün çıkacak</span><span><i class='sw bos'></i>Boş</span>"
               "<span><b class='b'>!</b> Eksik bilgi / borç</span></div></div>"
               "<div id='axRooms' class='rooms'></div><div id='axRoom' class='rinfo'>Bir odaya dokunun: misafir, tarih, bakiye ve eksik bilgi burada görünür.</div></div>"
-            + f"<div class='g2'><div class='card'><div class='hd'><h2>Eksik bilgiler <span class='b'>({len(eksik)} oda)</span></h2>"
+            + f"<div class='g2'><div class='card'><div class='hd'><h2><button type='button' class='hlink go' data-go='eksik'>Eksik bilgiler <span class='b'>({len(eksik)} oda)</span> ›</button></h2>"
               f"<span class='s'>misafir otelde, hemen tamamlanabilir</span></div>{eksik_html}</div>"
-              f"<div class='card'><div class='hd'><h2>Gün sonu hazırlık</h2><span class='pill {'ok' if hazir else 'warn'}'>"
+              f"<div class='card'><div class='hd'><h2><button type='button' class='hlink go' data-go='gunsonu'>Gün sonu hazırlık ›</button></h2><span class='pill {'ok' if hazir else 'warn'}'>"
               f"{'HAZIR (KBS elle)' if hazir else 'HENÜZ HAZIR DEĞİL'}</span></div>{gs_html}</div></div>"
             + f"<div class='card'><div class='hd'><h2>Ayrıca bilinmesi gerekenler</h2></div><div class='exs'>{ek_html}</div></div>"
             + "<script>var AD=" + json.dumps(data, ensure_ascii=False).replace("</", "<\\/") + ";</script>" + AN_JS)
@@ -4723,6 +4725,13 @@ AN_CSS = """<style>
 .ex{border:1px solid var(--border);border-radius:12px;padding:12px 14px}.ex:empty{display:none}
 .ex .n{font-size:21px;font-weight:800;margin-top:2px}
 .mono{font-variant-numeric:tabular-nums}
+/* tıklanınca ilgili bölüme git (sahibi 23.11) */
+button.td,button.gs{width:100%;border:0;border-top:1px solid var(--td-line);background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+button.td:first-child{border-top:0}
+.go{cursor:pointer}.go:hover{background:var(--th-bg)}
+button.td:hover,button.gs:hover{background:var(--th-bg)}
+.td .wh{color:var(--eyebrow)!important;font-weight:700}
+.hlink{border:0;background:none;font:inherit;color:inherit;padding:0;cursor:pointer}.hlink:hover{color:var(--eyebrow)}
 </style>"""
 
 AN_JS = """<script>
@@ -4734,7 +4743,7 @@ AN_JS = """<script>
   // İstenilen Yorumlar (Günlük Rapor'un kaydı: 'RG:<gün>:yistendi:<rez>' = '1'). İşaretlenmeyen çıkış = yapılacak.
   var yok=AD.deps.filter(function(d){return d.rez && sget('RG:'+AD.day+':yistendi:'+d.rez)!=='1';});
   if(yok.length) todo.push({s:2,tag:'YORUM',t:yok.length+' çıkış yapan misafirden yorum istendiği not edilmedi',
-    d:yok.slice(0,10).map(function(d){return 'Oda '+d.room;}).join(' · ')+' — Günlük Rapor › İstenilen Yorumlar’da işaretleyin.',w:'Günlük Rapor'});
+    d:yok.slice(0,10).map(function(d){return 'Oda '+d.room;}).join(' · ')+' — Günlük Rapor › İstenilen Yorumlar’da işaretleyin.',w:'Günlük Rapor',g:'gunluk',k:'yorum'});
   // Oda / temizlik problemleri (Günlük Rapor'da girilen, bitmemiş olanlar)
   // son 7 gün: önceki günlerde girilip hâlâ "Yapıldı" işaretlenmemiş problemler de açık sayılır
   var pr=[],d0=new Date(AD.day+'T12:00:00');
@@ -4747,8 +4756,12 @@ AN_JS = """<script>
   var n=todo.filter(function(x){return x.s<3;}).length;
   document.getElementById('axN').textContent=n?'('+n+')':'';
   document.getElementById('axTodo').innerHTML=todo.length?todo.map(function(x){
-    return "<div class='td'><span class='tg s"+x.s+"'>"+esc(x.tag)+"</span><div><div class='t'>"+esc(x.t)+"</div><div class='d'>"+esc(x.d)+"</div></div>"
-      +(x.w?"<span class='wh'>"+esc(x.w)+"</span>":"")+"</div>";}).join(''):"<div class='empty'>✓ Şu an yapılacak bir şey yok.</div>";
+    var tag=x.g?"button type='button' class='td' data-go='"+esc(x.g)+"' data-sk='"+esc(x.k||'')+"'":"div class='td'";
+    return "<"+tag+"><span class='tg s"+x.s+"'>"+esc(x.tag)+"</span><div><div class='t'>"+esc(x.t)+"</div><div class='d'>"+esc(x.d)+"</div></div>"
+      +(x.w?"<span class='wh'>"+esc(x.w)+(x.g?" ›":"")+"</span>":"")+"</"+(x.g?"button":"div")+">";}).join(''):"<div class='empty'>✓ Şu an yapılacak bir şey yok.</div>";
+  // tıklayınca ilgili bölüm (panel çerçevesine istek; sekme Günlük Rapor içindir)
+  document.addEventListener('click',function(ev){var b=ev.target.closest('[data-go]'); if(!b)return;
+    try{parent.postMessage({git:b.getAttribute('data-go'),sekme:b.getAttribute('data-sk')||''},'*');}catch(e){}});
   var ad={dolu:'dolu',bek:'bekleniyor',cik:'çıkacak',bos:'boş'};
   var box=document.getElementById('axRooms'), info=document.getElementById('axRoom');
   box.innerHTML=AD.rooms.map(function(r,i){
