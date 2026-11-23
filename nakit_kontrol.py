@@ -178,7 +178,9 @@ def analiz(bas, bit, env=None):
         tutar = round(checks.num(r.get("LOCALAMOUNT")))
         ad = tam_ad.get((rid, abs(tutar)))
         kullanici = str(r.get("USER") or "?")
-        kim = kullanici + (f" ({ad})" if ad and kullanici.split()[0].upper() not in str(ad).upper() else "")
+        # Kasa kullanıcısı ile folyoya işleyen ayrı yazılır: "Murat (X)" sanki Murat'ın tam adı X'miş
+        # gibi okunuyordu; oysa bazen ödemeyi kasada biri alıp folyoya başkası işliyor (23.11).
+        kim = kullanici + (f" · folyoda: {ad}" if ad and kullanici.split()[0].upper() not in str(ad).upper() else "")
         ci, co = P(x.get("CHECKIN")), P(x.get("CHECKOUT"))
 
         nedenler = []
