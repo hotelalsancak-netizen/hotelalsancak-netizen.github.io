@@ -190,6 +190,17 @@ Folio `TOTAL` **her zaman TL** (ana para); `CTOTAL` = **orijinal para birimi** (
   grafikler ikişer yan yana. Elektra verisi Ara 2025'te başlıyor: `_veri_aylari` doluluğu %15'in
   altındaki ilk ayları atar. "Geçen yıla göre" sütunu veri olunca (Ara 2026'dan itibaren) kendiliğinden çıkar.
 
+## Vergiler: bankadan ödendi (23.11.2026)
+- `_vergi_odemeleri` banka (102) satırlarındaki "VERGI-xxxx" açıklamalarını okur. Kod → tür eşlemesi
+  `VERGI_KOD`'da: 0015 KDV-1, 4017 KDV-2, 0003 stopaj, 0059 konaklama, 0068 turizm payı, 0033 geçici.
+  Ayrıca "SGK(" açıklamalarını okur.
+- Ay belirleme: VERGI satırlarında THN'nin tarihi (beyan ayı) esas alınır. SGK'da THN yok; ay sonu
+  vadesi hafta sonuna kayarsa ertesi ayın ilk günlerindeki ödeme ÖNCEKİ aya yazılır.
+- Açıklamada RİVA yoksa ödeme şahıs adınadır (Bağ-Kur, aile adına vergi/harç); ayrı satırda gösterilir.
+- `_vergi_takip` satırı, bankada o ayın ödemesi tutarın ≥%99'u ise "Ödendi · bankada gg.aa" yazar.
+- Banka satırları `_banka_6ay` ile Gelir-Gider ile ortak okunur (tek çağrı, önbellek).
+- Muhasebe ~3 gün geriden işler; sayfa son banka kaydı tarihini söyler.
+
 ## Kart (haftalık) — özel notlar
 - Kapı kilidi dökümleri **~2 aylık geçmiş** tutar; hafta veriden değil **export tarihinden** belirlenir.
 - `build_report.build(cards, changes, occ, lo, hi)` haftaya göre **parametreli**.

@@ -1837,8 +1837,15 @@ def build_vergi(env):
     else:                                   # Ocak: geçen ay = önceki yılın Aralık'ı
         prev_rows = E.fetch_trial_balance(f"{year - 1}-12-01", f"{year - 1}-12-31", env=env)
         kdv_prev = max(0.0, _acc(prev_rows, "391", "c") - _acc(prev_rows, "191", "d"))
+    try:                                    # bankadan ödenen vergiler (23.11.2026)
+        b_rows = _banka_6ay(env)
+        banka = _vergi_odemeleri(b_rows)
+        banka_son = max((str(r.get("RECEIPTDATE"))[:10] for r in b_rows), default="")
+    except Exception as e:                  # banka okunamazsa sayfa eskisi gibi çıksın
+        print(f"  vergi: banka hareketleri alınamadı: {e}")
+        banka, banka_son = None, ""
     takip, t_stats, t_toplam, t_acil = _vergi_takip(env, prev_rows, bu_ay["rows"], kdv_prev,
-                                                    kv_donemler)
+                                                    kv_donemler, banka, banka_son)
     yillik = kv_donemler[-1]["vergi"] if kv_donemler else 0.0
     t_stats += stat(f"≈ {tl(yillik)} ₺", f"{year} kurumlar vergisi (tahmini, yıllık)")
 
@@ -2116,7 +2123,7 @@ def build_borclar(env):
                          "tüm borç hesapları", body)}
 
 
-def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler):
+def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler, banka=None, banka_son=""):
     """Vergiler sayfasının üst kısmı: yaklaşan ödemeler (geçen ayın tahakkuku, bu ay vadeli),
     Elektra'da kapanmamış vergi bakiyeleri, yıllık takvim, Bilsa'nın vergi etkisi.
     Döner: (html, stats, en_yakin, bu_ay_odenecek, gecikmis_ya_da_yakin)."""
@@ -2140,28 +2147,52 @@ def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler):
     def odenen(codes, d):
         return sum(d[c]["debit"] for c in codes if c in d)
 
-    kalemler = []   # (vade, ad, alt, tutar, odendi)
+    kalemler = []   # (vade, ad, alt, tutar, odendi, kaydi) — odendi: False | True | "bankada 17.11"
 
-    def ekle(gun, ad, alt, tutar, codes, cur):
+    def bankada(turler, bitis=None):
+        """Bu ayın (tahakkuk ayı) şirket adına bankadan ödenen tutarı ve son ödeme günü."""
+        ps = [p for p in (banka or []) if p["sirket"] and p["tur"] in turler and p["ay"] == (yil, ay)]
+        return sum(p["tutar"] for p in ps), max((p["d"] for p in ps), default=None)
+
+    def odeme_durumu(tutar, elektra_odenen, turler):
+        b, bd = bankada(turler)
+        if tutar > 0 and b >= tutar * 0.99 or (not tutar and b > 0):
+            return f"bankada {bd.day:02d}.{bd.month:02d} · {tl(b)} ₺"
+        if tutar > 0 and elektra_odenen >= tutar * 0.99:
+            return True
+        return False
+
+    def ekle(gun, ad, alt, tutar, codes, cur, turler=()):
         vade = _is_gunu(son_gun if gun == "son" else dt.date(yil, ay, gun))
-        odendi = tutar > 0 and odenen(codes, cur) >= tutar * 0.99
+        odendi = odeme_durumu(tutar, odenen(codes, cur), turler)
         kalemler.append((vade, ad, alt, tutar, odendi, gun != "son" and vade.day != gun))
 
     mh = sec(p360, "GELİR VERGİSİ", "DAMGA", "SERBEST MESLEK", haric=("YILLIK",))
-    ekle(26, "Muhtasar: gelir vergisi stopajı + damga", "", tahakkuk(p360, mh), mh, c360)
+    ekle(26, "Muhtasar: gelir vergisi stopajı + damga", "", tahakkuk(p360, mh), mh, c360,
+         ("Muhtasar (stopaj)", "Damga vergisi"))
     kdvc = sec(p360, "KDV", haric=("TEVKİFAT",))
-    ekle(28, "KDV-1", "hesaplanan − indirilecek − devreden", kdv_prev, kdvc, c360)
+    ekle(28, "KDV-1", "hesaplanan − indirilecek − devreden", kdv_prev, kdvc, c360, ("KDV-1",))
     tv = sec(p360, "TEVKİFAT")
-    ekle(28, "KDV-2 (tevkifat, sorumlu sıfatıyla)", "", tahakkuk(p360, tv), tv, c360)
+    ekle(28, "KDV-2 (tevkifat, sorumlu sıfatıyla)", "", tahakkuk(p360, tv), tv, c360, ("KDV-2 (tevkifat)",))
     kon = sec(p360, "KONAKLAMA")
-    ekle(28, "Konaklama vergisi", "", tahakkuk(p360, kon), kon, c360)
-    ekle("son", "SGK + işsizlik primi", "", tahakkuk(p361, list(p361)), list(p361), c361)
+    ekle(28, "Konaklama vergisi", "", tahakkuk(p360, kon), kon, c360, ("Konaklama vergisi",))
+    # Turizm payı: muhasebeci KDV ile aynı gün ödüyor (banka kayıtları). Mizanda ayrı
+    # tahakkuk yoksa tutar = geçen ay bankadan ödenen (tahmini).
+    tp = sec(p360, "TURİZM", "TURIZM")
+    tp_tut, tp_alt = tahakkuk(p360, tp), ""
+    if not tp_tut and banka:
+        g = (yil - (ay == 1), 12 if ay == 1 else ay - 1)
+        tp_tut = sum(p["tutar"] for p in banka if p["sirket"] and p["tur"] == "Turizm payı" and p["ay"] == g)
+        tp_alt = "tahmini: geçen ay ödenen" if tp_tut else ""
+    if tp_tut or bankada(("Turizm payı",))[0]:
+        ekle(28, "Turizm payı", tp_alt, tp_tut, tp, c360, ("Turizm payı",))
+    ekle("son", "SGK + işsizlik primi", "", tahakkuk(p361, list(p361)), list(p361), c361, ("SGK primi",))
     # Geçici vergi: vadesi bu ay olan dönem (Mayıs/Ağustos/Kasım 17'si).
     for d in kv_donemler:
         if d["vade"].year == yil and d["vade"].month == ay:
             kalemler.append((_is_gunu(d["vade"]), "Geçici vergi " + d["ad"],
                              f"kümülatif {tl(d['vergi'])}, önceki dönemler {tl(d['onceki'])}",
-                             d["odenecek"], False, False))
+                             d["odenecek"], odeme_durumu(d["odenecek"], 0.0, ("Geçici vergi",)), False))
     for v in _elle("vergiler"):
         try:
             vd = dt.date.fromisoformat(str(v.get("vade")))
@@ -2174,7 +2205,8 @@ def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler):
 
     def durum(vade, tutar, odendi):
         if odendi:
-            return "<span class='st ok'>Ödendi</span>"
+            return ("<span class='st ok'>Ödendi</span>"
+                    + (f"<span class='alt'>{esc(odendi)}</span>" if isinstance(odendi, str) else ""))
         if not tutar:
             return "<span class='st mut'>ödeme yok</span>"
         kalan = (vade - today).days
@@ -2198,8 +2230,11 @@ def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler):
     yaklasan = (
         f"<h2>{TR_MON_FULL[ay]} ödemeleri ({TR_MON_FULL[pm]} dönemi)</h2>"
         "<p class='lead'>Tutarlar geçen ayın muhasebe tahakkukundan. Vade tatile denk gelirse ilk iş "
-        "gününe kayar (dini bayramlar hariç, onları kontrol edin). Elektra'da bu ay ödeme kaydı "
-        "görülünce satır kendiliğinden <b>Ödendi</b> olur.</p>"
+        "gününe kayar (dini bayramlar hariç, onları kontrol edin). Bankadan ödeme (muhasebecinin "
+        "işlediği banka hareketi) ya da Elektra'da ödeme kaydı görülünce satır kendiliğinden "
+        "<b>Ödendi</b> olur"
+        + (f"; son banka kaydı <b>{_tr_d(banka_son)}</b>, sonrasında yapılan ödeme henüz görünmez"
+           if banka_son else "") + ".</p>"
         "<div class='scroll'><table><tr><th>Vade</th><th>Vergi</th><th class='r'>Tutar (₺)</th>"
         f"<th>Durum</th></tr>{''.join(satir)}<tr class='top'><td colspan='2'>Ödenmemiş toplam</td>"
         f"<td class='r'>{tl(toplam)}</td><td></td></tr></table></div>")
@@ -2252,7 +2287,8 @@ def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler):
            if yillik else "") + "</td></tr>"
         "<tr><td>Ocak · Temmuz sonu</td><td>Motorlu taşıtlar vergisi (Elektra'da yok, elle)</td></tr>"
         "<tr><td>Mayıs · Kasım sonu</td><td>Emlak vergisi (Elektra'da yok, elle)</td></tr>"
-        "<tr><td>Teyit edilecek</td><td>Turizm payı</td></tr></table></div>")
+        "<tr><td>Her ay 28'i civarı</td><td>Turizm payı (muhasebeci KDV ile aynı gün ödüyor)</td></tr>"
+        "</table></div>")
     bilsa = _bilsa(env)
     bilsa_html = ""
     if bilsa and bilsa["gider"] > 0:
@@ -2271,7 +2307,8 @@ def _vergi_takip(env, prev_rows, cur_rows, kdv_prev, kv_donemler):
              + stat(f"{tl(toplam)} ₺", f"{TR_MON_FULL[ay]} ödenmemiş", "bad" if toplam else "ok")
              + stat(f"{tl(kap_top)} ₺", "Elektra'da kapanmamış eski bakiye", "bad" if kap_top else "ok"))
     acil = any((v - today).days <= 3 for v, _, _ in acik)
-    return (yaklasan + kap_html + takvim + bilsa_html, stats, toplam, acil)
+    banka_html = _vergi_banka_tablo(banka, banka_son) if banka else ""
+    return (yaklasan + banka_html + kap_html + takvim + bilsa_html, stats, toplam, acil)
 
 
 # Tarayıcı-içi düzeltme kartı: yıl başı devreden KDV + Elektra'ya HENÜZ girilmemiş
@@ -4783,9 +4820,7 @@ def build_gelirgider(env):
     """Gelir-Gider — bankaya giren / bankadan çıkan para, Elektra muhasebesinden."""
     today = dt.date.today()
     bas = month_start(today, GG_AY - 1)
-    rows = [r for r in _banka_satirlari(env, bas, today)
-            if not _tr_has(r.get("RECEIPTNOTES"), ("KAPANIŞ", "AÇILIŞ", "KAPANIS", "ACILIS"))]
-    _ic_virman_isaretle(rows)
+    rows = _banka_6ay(env)
     son_gun = max((str(r.get("RECEIPTDATE"))[:10] for r in rows), default="")
 
     aylar = [month_start(today, GG_AY - 1 - i) for i in range(GG_AY)]
@@ -5107,3 +5142,104 @@ def build_nakit(env):
             "html": PAGE("Denetim", "Nakit Tahsilat Kontrol",
                          "Nakit tahsilatlar — liste fiyatı altında kalanlar önce; kamera kontrolü için saatli",
                          fresh + secici + note + REZ_COPY_JS)}
+
+
+# --------------------------------------------------------------------------- Bankadan ödenen vergiler
+# 23.11.2026 (sahibi "yapalım"): Vergiler sayfasında "ödendi / ödenmedi" artık bankadan da
+# okunur. Muhasebeci vergi ödemelerini banka açıklamasıyla işliyor: "VERGI-0015 KDV GERÇEK
+# VD:…-THN:20261028…-VN:… RİVA OTEL…". Dört haneli kod vergi türüdür; THN'nin ilk 8 hanesi
+# tahakkuk (beyan) tarihi = hangi ayın vergisi olduğu. SGK: "INTERNET SGK( EMS/BAĞ/SSK)/…".
+# Açıklamada RİVA yoksa ödeme şahıs adınadır (sahibin Bağ-Kur'u, aile adına vergi/harç) —
+# ayrı satırda gösterilir, şirket vergisine katılmaz.
+VERGI_KOD = {"0015": "KDV-1", "4017": "KDV-2 (tevkifat)", "0003": "Muhtasar (stopaj)",
+             "1047": "Damga vergisi", "1048": "Damga vergisi", "9047": "Damga vergisi",
+             "0059": "Konaklama vergisi", "0068": "Turizm payı", "0033": "Geçici vergi",
+             "0010": "Kurumlar vergisi", "9015": "MTV"}
+VERGI_SIRA = ["KDV-1", "KDV-2 (tevkifat)", "Muhtasar (stopaj)", "Damga vergisi", "Konaklama vergisi",
+              "Turizm payı", "Geçici vergi", "Kurumlar vergisi", "SGK primi", "MTV"]
+_BANKA_CACHE = {}
+
+
+def _banka_6ay(env):
+    """Son GG_AY ayın banka (102) satırları, açılış/kapanış fişleri hariç, iç virmanlar
+    işaretli. Gelir-Gider ve Vergiler aynı derlemede ikisi de ister: tek okuma."""
+    today = dt.date.today()
+    bas = month_start(today, GG_AY - 1)
+    k = (bas, today)
+    if k not in _BANKA_CACHE:
+        rows = [r for r in _banka_satirlari(env, bas, today)
+                if not _tr_has(r.get("RECEIPTNOTES"), ("KAPANIŞ", "AÇILIŞ", "KAPANIS", "ACILIS"))]
+        _BANKA_CACHE[k] = _ic_virman_isaretle(rows)
+    return _BANKA_CACHE[k]
+
+
+def _vergi_odemeleri(rows):
+    """Banka satırlarından vergi/SGK ödemeleri: [{d, ay, tur, tutar, sirket}].
+    tutar > 0 = bankadan çıkan (ters kayıt eksi gelir, toplamda netleşir). ay = (yıl, ay):
+    tahakkuk tarihi (THN) varsa onun ayı, yoksa banka tarihinin ayı."""
+    import re
+    out = []
+    for r in rows:
+        n = str(r.get("DETAILNOTES") or "")
+        u = _fold(n)
+        if u.startswith("VERGI-"):
+            kod = u[6:10]
+            tur = VERGI_KOD.get(kod) or (n[11:].split(" VD:")[0].strip().title()[:28] or "Diğer vergi")
+        elif "SGK(" in u or "SGK (" in u:
+            tur = "SGK primi"
+        else:
+            continue
+        v = num(r.get("LOCALCREDIT")) - num(r.get("LOCALDEBIT"))
+        d = pdate(r.get("RECEIPTDATE"))
+        if not v or not d:
+            continue
+        sirket = "RIVA" in u
+        if not sirket:
+            tur = "Bağ-Kur (şahsi)" if tur == "SGK primi" else tur + " (şahıs adına)"
+        thn = re.search(r"THN:(\d{4})(\d{2})(\d{2})", n)
+        if thn:
+            ay = (int(thn.group(1)), int(thn.group(2)))
+        else:
+            # SGK: vadesi ay sonu, hafta sonuna denk gelirse ertesi ayın ilk iş gününe kayar
+            # (31.10.2026 Cmt → 02.11 Pzt). O güne kadarki ödeme ÖNCEKİ ayın borcudur.
+            onceki_son = dt.date(d.year, d.month, 1) - dt.timedelta(days=1)
+            ay = ((onceki_son.year, onceki_son.month) if d <= _is_gunu(onceki_son)
+                  else (d.year, d.month))
+        out.append({"d": d, "ay": ay, "tur": tur, "tutar": v, "sirket": sirket})
+    return out
+
+
+def _vergi_banka_tablo(banka, son_kayit):
+    """Son 6 ay, tür × ay: bankadan gerçekten ödenen vergiler (BANKA TARİHİNE göre)."""
+    today = dt.date.today()
+    aylar = [month_start(today, GG_AY - 1 - i) for i in range(GG_AY)]
+    akey = [(a.year, a.month) for a in aylar]
+    tab = defaultdict(lambda: [0.0] * len(aylar))
+    for p in banka:
+        k = (p["d"].year, p["d"].month)
+        if k in akey:
+            tab[p["tur"]][akey.index(k)] += p["tutar"]
+    sir = [t for t in VERGI_SIRA if t in tab] + sorted(
+        t for t in tab if t not in VERGI_SIRA and "şahs" not in t and "şahıs" not in t)
+    sah = sorted(t for t in tab if t not in sir)
+    bas = "".join(f"<th class='r'>{esc(mlabel(k))}</th>" for k in akey)
+
+    def satir(t):
+        xs = tab[t]
+        return (f"<tr><td>{esc(t)}</td>" + "".join(
+            f"<td class='r'>{tl(x) if abs(x) >= 1 else '—'}</td>" for x in xs)
+            + f"<td class='r money'>{tl(sum(xs))}</td></tr>")
+    top = [sum(tab[t][j] for t in sir) for j in range(len(aylar))]
+    html = (
+        f"<h2>Bankadan ödenen vergiler — son {GG_AY} ay</h2>"
+        "<p class='lead'>Muhasebecinin Elektra'ya işlediği banka hareketlerinden: vergi dairesine ve "
+        "SGK'ya <b>gerçekten ödenen</b> tutarlar, ödeme gününün ayına göre. Son banka kaydı "
+        f"<b>{_tr_d(son_kayit)}</b>; sonraki ödemeler henüz burada yok.</p>"
+        f"<div class='scroll'><table><tr><th>Tür</th>{bas}<th class='r'>Toplam</th></tr>"
+        + "".join(satir(t) for t in sir)
+        + "<tr class='top'><td>Şirket toplamı</td>" + "".join(
+            f"<td class='r money'>{tl(x)}</td>" for x in top) + f"<td class='r money'>{tl(sum(top))}</td></tr>")
+    if sah:
+        html += (f"<tr><th colspan='{len(aylar) + 2}'>Şahıs adına ödenenler (şirket vergisine "
+                 "katılmadı)</th></tr>" + "".join(satir(t) for t in sah))
+    return html + "</table></div>"
