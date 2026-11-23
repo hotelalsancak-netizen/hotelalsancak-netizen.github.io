@@ -5,4 +5,5 @@ sık işlemler, güvenlik ve git kuralları orada. Lütfen önce onu oku.
 
 Kısa hatırlatma: Kullanıcı **Riva Hotel Alsancak sahibi** (teknik değil) — **Türkçe, sade** yanıt ver.
 Parolalar/kimlik bilgileri `.env` ve GitHub Secrets'ta; **repoya asla girmez**. Push'tan önce daima
-`git fetch` (paralel oturumlar olabilir).
+`git fetch` (paralel oturumlar olabilir). **Sahibin kuralı: her oturum işini bitirince push eder**
+(ayrıntı AGENTS.md › Git).

@@ -87,6 +87,11 @@ Bu repoya **başka Claude oturumları da push edebiliyor** (kullanıcı birden �
   force-push YOK** — gelen commit'i `git show` ile incele, kendi işini onun **üstüne** yeniden uygula,
   kullanıcıya bildir.
 - Commit mesajları Türkçe.
+- **SAHİBİN KURALI (23.11.2026): Her oturum işini bitirince PUSH eder.** Değiştirdiğin her dosya
+  iş bitince bu repoya commit + push edilir (önce `git fetch`, gerekirse rebase); yerelde ya da
+  geçici klasörde bırakılmaz. Sahibi evden ve otelden ayrı oturumlarla çalışıyor; push edilmeyen iş
+  öteki makinede görünmez ve bir sonraki kopyalamada ezilir. Otel makinesindeki yerel klasör
+  (`/home/work/Desktop/dev/rivacheck`) git değildir: push'tan sonra değişen dosyaları oraya da kopyala.
 
 ## Güvenlik / KVKK
 - Panel **misafir verisi (PII)** içerir. Public repoya **ASLA:** `.env`, `cards.json`,
