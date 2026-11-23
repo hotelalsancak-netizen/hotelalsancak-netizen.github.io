@@ -4935,3 +4935,175 @@ def build_gelirgider(env):
                     f"son muhasebe kaydı {_tr_d(son_gun)}"),
             "updated": now_str(),
             "html": PAGE(None, "Gelir-Gider", "", BV_CSS + body)}
+
+
+# ---------------------------------------------------------------------------
+# Nakit Tahsilat Kontrol (Denetim) — sahibi 23.11.2026: "geçen haftanın nakit tahsilatları,
+# özellikle liste fiyatı altında kalanlar; teker teker KAMERADAN kontrol ediyorum, o saatte
+# gerçekten o miktarı almışlar mı diye. İlk 5'e bakacağım, sen daha fazla şüpheli getirebilirsin."
+# Veri: nakit_kontrol.analiz (yerel nakit_supheli.py yönteminin aynısı). Yalnız yönetim.
+def build_nakit(env):
+    import nakit_kontrol as NK
+    gun = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
+    bugun = (dt.datetime.utcnow() + dt.timedelta(hours=3)).date()
+    bu_pzt = bugun - dt.timedelta(days=bugun.weekday())
+    haftalar = [("gecen", "Geçen hafta", bu_pzt - dt.timedelta(days=7), bu_pzt - dt.timedelta(days=1)),
+                ("bu", "Bu hafta (bugüne kadar)", bu_pzt, bugun),
+                ("onceki", "Önceki hafta", bu_pzt - dt.timedelta(days=14), bu_pzt - dt.timedelta(days=8))]
+    veri = NK.analiz(haftalar[2][2], bugun, env)
+    if not veri["satirlar"]:
+        raise RuntimeError("3 haftada hiç nakit tahsilat dönmedi — boş liste 'temiz' sayılmaz (API sorunu olabilir).")
+
+    def an_s(t):
+        return f"{t:%d.%m} {gun[t.weekday()]} <b>{t:%H:%M}</b>"
+
+    def para(n):
+        return f"{tl(n)[:-3]} ₺"
+
+    def tag(s, renk):
+        return (f"<span style='display:inline-block;background:{renk};color:#fff;border-radius:6px;"
+                f"padding:1px 7px;font-size:11px;font-weight:700;margin:1px 4px 1px 0'>{esc(s)}</span>")
+
+    def tahsilatlar_html(ps):
+        return "<br>".join(
+            f"{an_s(p['an'])} <span class='lead'>({p['vardiya']})</span> · <span class='who'>{esc(p['kim'])}</span>"
+            f" · <span class='money'>{para(p['tutar'])}</span>"
+            + (f" <span class='lead'>({esc(p['doviz'])})</span>" if p["doviz"] not in ("TRY", "TL") else "")
+            for p in ps)
+
+    def hafta_paneli(anahtar, ad, bas, bit):
+        sat = [s for s in veri["satirlar"] if bas <= s["an"].date() <= bit]
+        toplam = sum(s["tutar"] for s in sat if s["tutar"] > 0)
+        # 1) Liste altı — rezervasyon başına bir satır, o haftadaki tüm nakit tahsilatlarıyla
+        rez = OrderedDict()
+        for s in sat:
+            if s["fiyat"] and s["fiyat"]["liste_alti"]:
+                rez.setdefault(s["rid"], []).append(s)
+        la = sorted(rez.values(), key=lambda ps: ps[0]["fiyat"]["fark"] * ps[0]["fiyat"]["n"])
+        la_fark = sum(ps[0]["fiyat"]["fark"] * ps[0]["fiyat"]["n"] for ps in la)
+        la_ids = set(rez)
+        # 2) Diğer dikkat — liste altı olmayan ama bir nedeni olan tahsilatlar
+        diger = [s for s in sat if s["nedenler"] and s["rid"] not in la_ids]
+
+        st = (stat(len(sat), "nakit tahsilat") + stat(para(toplam), "toplam nakit")
+              + stat(len(la), "liste fiyatı altında", "bad" if la else "ok")
+              + stat(para(la_fark) if la else "0 ₺", "liste altı toplam fark", "bad" if la else "ok")
+              + stat(len(diger), "diğer dikkat", "bad" if diger else "ok"))
+
+        if la:
+            trs = ""
+            for i, ps in enumerate(la, 1):
+                s0, f = ps[0], ps[0]["fiyat"]
+                gece = (f"{s0['giris']:%d.%m} {gun[s0['giris'].weekday()]}" if s0["giris"] else "—") \
+                    + (f" <span class='lead'>+{f['n'] - 1} gece</span>" if f["n"] > 1 else "")
+                hedef = para(f["hedef"]) + (f" <span class='lead'>({f['d0']} oda dolu)</span>"
+                                             if f["d0"] is not None else " <span class='lead'>(taban)</span>")
+                acan = esc(f["acan"] or "?") + (f" <span class='lead'>{f['acan_t']:%d.%m %H:%M}</span>"
+                                                 if f["acan_t"] else "")
+                ek = "".join(tag(n, "#b45309") for n in ps[0]["nedenler"])
+                ilk5 = tag(f"ÖNCE BAK #{i}", "#dc2626") if i <= 5 else f"<b>{i}</b>"
+                trs += (f"<tr class='{'bad' if i <= 5 else ''}'><td>{ilk5}</td>"
+                        f"<td>{tahsilatlar_html(ps)}{('<br>' + ek) if ek else ''}</td>"
+                        f"<td><b>{esc(s0['oda'] or '—')}</b> <span class='lead'>{esc(s0['oda_tipi'])}</span><br>"
+                        f"{esc(s0['misafir'][:32])}</td>"
+                        f"<td>{rez_link(s0['rid'])}<br><span class='lead'>{esc(s0['kanal'] or 'acentasız')}</span></td>"
+                        f"<td>{gece}</td><td>{acan}</td>"
+                        f"<td class='r money'>{para(f['gecelik'])}</td><td class='r'>{hedef}</td>"
+                        f"<td class='r money miss'>{para(f['fark'])}"
+                        + (f"<br><span class='lead'>toplam {para(f['fark'] * f['n'])}</span>" if f["n"] > 1 else "")
+                        + "</td></tr>")
+            bol1 = ("<h2>🎥 Önce bunlara bakın — liste fiyatının altındaki nakit satışlar</h2>"
+                    "<p class='lead'>Resepsiyonun kendi fiyatladığı (walk-in / telefon / acentasız) ve <b>nakit</b> "
+                    "ödenen satışlardan gecelik fiyatı listenin altında kalanlar, <b>en büyük farktan başlayarak</b>. "
+                    "Kamerada kontrol için her tahsilatın <b>gerçek tarihi-saati</b> ve kasada alan kişi ilk sütunda. "
+                    "“Olması gereken” = satış anındaki doluluğa göre liste basamağı.</p>"
+                    "<table><tr><th>#</th><th>Tahsilat (tarih · saat · alan · tutar)</th><th>Oda / misafir</th>"
+                    "<th>Rez No</th><th>Gece</th><th>Rezervasyonu açan</th><th class='r'>Alınan (gecelik)</th>"
+                    "<th class='r'>Olması gereken</th><th class='r'>Fark</th></tr>" + trs + "</table>")
+        else:
+            bol1 = "<h2>🎥 Liste fiyatının altındaki nakit satışlar</h2>" + empty_ok(
+                "Bu hafta liste fiyatının altında nakit satış yok.")
+
+        if diger:
+            trs = "".join(
+                f"<tr><td>{an_s(s['an'])}<br><span class='lead'>{s['vardiya']}</span></td>"
+                f"<td><span class='who'>{esc(s['kim'])}</span></td>"
+                f"<td class='r money'>{para(s['tutar'])}</td>"
+                f"<td><b>{esc(s['oda'] or '—')}</b> {esc(s['misafir'][:28])}</td>"
+                f"<td>{rez_link(s['rid'])}<br><span class='lead'>{esc(s['kanal'] or ('acentasız' if s['rid'] else ''))}</span></td>"
+                f"<td>{''.join(tag(n, '#b45309') for n in s['nedenler'])}</td></tr>"
+                for s in diger)
+            bol2 = ("<h2>🔎 Şüpheli olabilecek diğerleri</h2>"
+                    "<p class='lead'>Liste fiyatı sorunu olmayan ama başka bir nedenle bakmaya değer nakit hareketleri. "
+                    "Bunlar <b>suçlama değil</b>, kontrol listesi: çoğunun masum bir açıklaması olabilir.</p>"
+                    "<table><tr><th>Tahsilat</th><th>Alan</th><th class='r'>Tutar</th><th>Oda / misafir</th>"
+                    "<th>Rez No</th><th>Neden bakmalı</th></tr>" + trs + "</table>")
+        else:
+            bol2 = ""
+
+        trs = ""
+        for s in sat:
+            durum = (tag("liste altı", "#dc2626") if s["rid"] in la_ids else "") + \
+                (tag("dikkat", "#b45309") if s["nedenler"] and s["rid"] not in la_ids else "")
+            trs += (f"<tr><td>{an_s(s['an'])}</td><td>{s['vardiya']}</td>"
+                    f"<td><span class='who'>{esc(s['kim'])}</span></td><td class='r money'>{para(s['tutar'])}</td>"
+                    f"<td>{esc(s['oda'] or '—')}</td><td>{esc(s['misafir'][:28])}</td>"
+                    f"<td>{esc(s['kanal'] or ('acentasız' if s['rid'] else '—'))}</td>"
+                    f"<td>{rez_link(s['rid'])}</td><td>{durum}</td></tr>")
+        bol3 = ("<h2>Haftanın tüm nakit tahsilatları</h2>"
+                "<p class='lead'>Saat sırasıyla, Ön Kasa defterindeki her nakit tahsilat (acenta rezervasyonları dahil).</p>"
+                + ("<table><tr><th>Tarih · saat</th><th>Vardiya</th><th>Alan</th><th class='r'>Tutar</th><th>Oda</th>"
+                   "<th>Misafir</th><th>Kanal</th><th>Rez No</th><th></th></tr>" + trs + "</table>"
+                   if sat else "<p class='lead'>Bu hafta nakit tahsilat yok.</p>"))
+
+        kisi = defaultdict(lambda: [0, 0, 0])
+        for s in sat:
+            k = kisi[s["kim"]]
+            k[0] += 1
+            k[1] += s["tutar"]
+            k[2] += 1 if s["rid"] in la_ids else 0
+        bol4 = ""
+        if kisi:
+            bol4 = ("<h2>Kim ne kadar nakit aldı</h2><table><tr><th>Kasada alan</th><th class='r'>Adet</th>"
+                    "<th class='r'>Toplam</th><th class='r'>Liste altı</th></tr>"
+                    + "".join(f"<tr><td><span class='who'>{esc(k)}</span></td><td class='r'>{v[0]}</td>"
+                              f"<td class='r money'>{para(v[1])}</td>"
+                              f"<td class='r {'miss' if v[2] else ''}'>{v[2]}</td></tr>"
+                              for k, v in sorted(kisi.items(), key=lambda kv: -kv[1][1]))
+                    + "</table>")
+        ozet = dict(n=len(sat), toplam=toplam, la=len(la), la_fark=la_fark, diger=len(diger))
+        etiket = f"{ad}: {bas.day} {TR_MONTHS[bas.month]} – {bit.day} {TR_MONTHS[bit.month]}"
+        return etiket, ozet, f"<div class='stats'>{st}</div>{bol1}{bol2}{bol3}{bol4}"
+
+    opts, panels, ozetler = "", "", {}
+    for anahtar, ad, bas, bit in haftalar:
+        etiket, oz, html_ = hafta_paneli(anahtar, ad, bas, bit)
+        ozetler[anahtar] = (etiket, oz)
+        opts += (f"<option value='{anahtar}'>{esc(etiket)} — {oz['la']} liste altı, {oz['diger']} dikkat</option>")
+        panels += f"<div class='nkpanel' data-h='{anahtar}' style='display:none'>{html_}</div>"
+    secici = ("<p class='lead' style='margin-top:4px'>Hafta seç:</p><select id='nkSel'>" + opts + "</select>"
+              + panels +
+              "<script>(function(){var s=document.getElementById('nkSel');"
+              "function g(){var ps=document.querySelectorAll('.nkpanel');for(var i=0;i<ps.length;i++)"
+              "{ps[i].style.display=ps[i].getAttribute('data-h')===s.value?'block':'none';}}"
+              "s.addEventListener('change',g);g();})();</script>")
+    k = veri["kaynak"]
+    note = ("<div class='note'>Kaynak: Elektra Ön Kasa defteri (QA_EASYPMS_DAILYCASHDETAIL), yalnız <b>Folio Cash</b>. "
+            "Saatler Türkiye saati (Elektra UTC tutuyor, +3 eklendi). Elektra tahsilatı <b>iş gününe</b> yazar — "
+            "gece ve sabah tahsilatları bir önceki güne düşer; burada gerçek tarihe çevrildi "
+            f"(saat bilgisinden {k['time']}, iş günü düzeltmesiyle {k['is_gunu']}, yalnız tarihli {k['tarih']}). "
+            "Liste kıyası yalnız walk-in / telefon / acentasız satışlarda; acenta fiyatı kontrat fiyatıdır. "
+            f"Fark {SATIS_PAYI} ₺'ye kadar kur yuvarlaması sayılır. Bakiyesi 0 olan bir satışta misafirden fazlası "
+            "alınıp farkın cebe atılmasını sistem gösteremez — bu yüzden kamera kontrolü.</div>")
+    fresh = ("<div style='background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:9px 13px;"
+             f"border-radius:9px;margin:0 0 12px;font-size:12.5px'>⏱ Veriler <b>{now_str()}</b> itibarıyladır.</div>")
+    etiket, gz = ozetler["gecen"]
+    sub = (f"{etiket} · {gz['n']} nakit tahsilat {tl(gz['toplam'])[:-3]} ₺ · "
+           f"{gz['la']} liste altı" + (f" ({tl(gz['la_fark'])[:-3]} ₺)" if gz["la"] else "")
+           + f" · {gz['diger']} dikkat")
+    return {"label": "Nakit Tahsilat Kontrol", "count": gz["la"],
+            "count_label": "liste altı nakit (geçen hafta)", "tone": "bad" if gz["la"] else "ok",
+            "sub": sub, "updated": now_str(),
+            "html": PAGE("Denetim", "Nakit Tahsilat Kontrol",
+                         "Nakit tahsilatlar — liste fiyatı altında kalanlar önce; kamera kontrolü için saatli",
+                         fresh + secici + note + REZ_COPY_JS)}

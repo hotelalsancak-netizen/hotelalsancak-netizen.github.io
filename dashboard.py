@@ -45,7 +45,7 @@ SHELL = ROOT / "dashboard_shell.html"
 
 # Display order of the tiles. A key here maps to site_data/<key>.enc.json (local,
 # committed) or is built live in build_cloud(). Add future lists by extending this.
-SECTION_ORDER = ["anlik", "gunsonu", "odeme", "gunluk", "kasa", "iptal", "indirim", "bakiye", "eksik",
+SECTION_ORDER = ["anlik", "gunsonu", "odeme", "gunluk", "kasa", "nakit", "iptal", "indirim", "bakiye", "eksik",
                  "fiyat", "kart", "stats", "satis", "gelirgider", "borclar", "vergi", "tvkart",
                  "yorumkart"]
 
@@ -262,7 +262,8 @@ def build_cloud():
     # Live sections (Elektra API only). A broken section is logged and skipped so
     # one bad fetch never blanks the whole dashboard.
     live = (("gunsonu", build_gunsonu), ("odeme", checks.build_odeme),
-            ("kasa", checks.build_kasa), ("iptal", checks.build_iptal),
+            ("kasa", checks.build_kasa), ("nakit", checks.build_nakit),
+            ("iptal", checks.build_iptal),
             ("indirim", checks.build_indirim), ("bakiye", checks.build_bakiye),
             ("eksik", checks.build_eksik),
             ("fiyat", checks.build_fiyat),
