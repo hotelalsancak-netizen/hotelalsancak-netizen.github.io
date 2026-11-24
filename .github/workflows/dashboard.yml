@@ -42,6 +42,8 @@ jobs:
           ELEKTRA_TOTP_SECRET: ${{ secrets.ELEKTRA_TOTP_SECRET }}
           DASH_PW_MANAGER: ${{ secrets.DASH_PW_MANAGER }}
           DASH_PW_RECEPTION: ${{ secrets.DASH_PW_RECEPTION }}
+          PANEL_KEY_YONETIM: ${{ secrets.PANEL_KEY_YONETIM }}
+          PANEL_KEY_MUDUR: ${{ secrets.PANEL_KEY_MUDUR }}
         run: python dashboard.py --build
       - uses: actions/upload-pages-artifact@v3
         with:

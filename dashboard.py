@@ -37,6 +37,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import dashcrypto
+import pazarlama   # Pazarlama sayfaları: api.rivaalsancak.com (24.11.2026)
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
@@ -47,7 +48,7 @@ SHELL = ROOT / "dashboard_shell.html"
 # committed) or is built live in build_cloud(). Add future lists by extending this.
 SECTION_ORDER = ["anlik", "gunsonu", "odeme", "gunluk", "kasa", "nakit", "iptal", "indirim", "bakiye", "eksik",
                  "fiyat", "kart", "stats", "satis", "gelirgider", "borclar", "vergi", "tvkart",
-                 "yorumkart"]
+                 "yorumkart", "yorumlar", "paylasim", "kurumlar"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -190,7 +191,8 @@ def build_kart() -> dict:
 # Fiyat Kontrol iki role de açık: resepsiyon kapı fiyatlarını oradan görür (17.10.2026).
 # Eksik Bilgiler iki role de açık: otel müdürü kontrol eder, resepsiyon da kendi
 # eksiğini görüp tamamlar (20.10.2026).
-RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat", "eksik", "yorumkart"}
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat", "eksik", "yorumkart",
+                      "kurumlar"}   # kurumlar: müdür işaretler (24.11.2026); yorumlar/paylasim yalnız yönetim
 
 
 def passwords() -> dict:
@@ -272,6 +274,8 @@ def build_cloud():
             ("borclar", checks.build_borclar),
             ("vergi", checks.build_vergi), ("gunluk", checks.build_gunluk),
             ("tvkart", checks.build_tvkart), ("yorumkart", checks.build_yorumkart),
+            ("yorumlar", pazarlama.build_yorumlar), ("paylasim", pazarlama.build_paylasim),   # Pazarlama 24.11.2026
+            ("kurumlar", pazarlama.build_kurumlar),
             ("anlik", checks.build_anlik))   # Anlık Durum — yalnız yönetim (22.11.2026; tahsilat içerir)
     for key, fn in live:
         try:
