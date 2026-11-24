@@ -62,5 +62,9 @@
  "20261109.zip.enc": {
   "week": "20261102",
   "sha256": "5ea07cd3de47a4c93feffae815d81e422e32906e6a11fc655bdc5eb6b24188f3"
+ },
+ "20261124.zip.enc": {
+  "week": "20261116",
+  "sha256": "001674d5b2205f8ff7bfd2f858719be4918810e87adaff344c7022ecc97ba939"
  }
 }
