@@ -9,7 +9,7 @@ Anahtarlar GitHub Secret PANEL_KEY_YONETIM / PANEL_KEY_MUDUR → bölümün şif
 Yorum ve paylaşım listeleri Google İşletme Profili'nden Claude'un her pazartesi yüklediği anlık görüntüdür
 (GBP API izni yok); kurum listesi aşağıda sabit.
 """
-import json, os
+import json, os, re
 
 from checks import PAGE, esc, now_str
 
@@ -154,6 +154,96 @@ def _yok_notu():
 
 
 # ---------------------------------------------------------------------------
+# Kurumsal müşteriler (26.11.2026, sahibinin isteği "otelin doluluğu için firmaları arayalım"):
+# bu yıl otelde kalmış firmalar/cariler, Elektra'dan her derlemede yeniden çekilir. OTA, tur operatörü
+# ve kanal adları hariç. Durum + not aynı kayıt servisinde, kimlik "m-<firma>" ile tutulur.
+# ---------------------------------------------------------------------------
+MUSTERI_DURUM = ["Aranmadı", "Arandı – ulaşılamadı", "Arandı – teklif verildi", "Rezervasyon geldi ✓",
+                 "İlgilenmiyor", "Aranmasın"]
+KANAL_DISI = {
+    "BOOKING", "EXPEDIA", "WALKIN", "TELEFON", "ONLINE", "ETSODAMAX", "TATIL BUDUR", "ENUYGUN", "TRIP.COM",
+    "OSTROVOK.RU", "OTEL FİYAT", "OTEL FIYAT", "ALLEGROTOUR  AŞ.", "ALLEGROTOUR AŞ.", "OBİLET", "OBILET",
+    "JOLLY TOUR", "PIKONAKLAMA", "PİKONAKLAMA", "EPOSTA", "OTELZV2", "SETUR", "TATILSEPETI", "TATİLSEPETİ",
+    "RATEBEDS", "BUTA TOUR", "ANTUR TURIZM A.Ş", "OYAK TUR", "EMELTUR", "TRAVELWAY", "DREAM INCENTIVE",
+    "VIKINGTUR", "GOLDENBAY", "GEZİNOMİ", "GEZINOMI", "TURISMO TUR", "VACANZA", "SANTATUR", "ALPİNA TUR",
+    "HYPERGUEST", "TCI SEYAHAT", "BİLETSEL-DIAMOND", "BRO OTEL", "AIRBNB", "CTRIP", "?", ""}
+
+
+def _mid(ad):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", ad.replace("ı", "i").replace("İ", "I")).encode("ascii", "ignore").decode()
+    return "m-" + (re.sub(r"[^a-z0-9]+", "-", t.lower()).strip("-") or "firma")
+
+
+def _kurumsal_musteriler(env):
+    """[{id, ad, rez, gece, son, misafir, tel}] — bu yıl CHECKIN'i olan, iptal edilmemiş konaklamalar."""
+    import datetime as dt
+    import elektra_api as E
+    bugun = dt.date.today()
+    rows, ay = [], dt.date(bugun.year, 1, 1)
+    while ay <= bugun:
+        son = min(bugun, (ay.replace(day=28) + dt.timedelta(days=4)).replace(day=1) - dt.timedelta(days=1))
+        rows += E.fetch_reservations_between("CHECKIN", ay.isoformat(), son.isoformat(), env=env)
+        ay = son + dt.timedelta(days=1)
+    gr = {}
+    for r in rows:
+        if str(r.get("RESSTATE")) not in ("CheckOut", "InHouse", "Reservation"):
+            continue
+        ad = " ".join((r.get("AGENCY") or "").split())
+        if ad.upper() in KANAL_DISI:
+            continue
+        gr.setdefault(ad, []).append(r)
+    sonlar = {ad: max(v, key=lambda r: str(r.get("CHECKIN"))) for ad, v in gr.items()}
+    tel = {}
+    ids = [int(r["RESID"]) for r in sonlar.values() if str(r.get("RESID", "")).isdigit()]
+    if ids:
+        try:
+            for g in E.fetch_res_guests([{"Column": "RESID", "Operator": "IN", "Value": ids}], env=env):
+                p = (g.get("CONTACTPHONE") or g.get("GUESTPHONE") or "").strip()
+                if p and str(g.get("RESID")) not in tel:
+                    tel[str(g.get("RESID"))] = p
+        except Exception:
+            pass
+    out = []
+    for ad, v in gr.items():
+        s = sonlar[ad]
+        out.append({"id": _mid(ad), "ad": ad, "rez": len(v), "gece": sum(int(r.get("NIGHT") or 0) for r in v),
+                    "son": str(s.get("CHECKIN"))[:10], "misafir": " ".join((s.get("GUESTNAMES") or "").split()),
+                    "tel": tel.get(str(s.get("RESID")), "")})
+    return sorted(out, key=lambda m: (-m["gece"], m["ad"]))
+
+
+def _musteri_tablosu(env):
+    try:
+        ml = _kurumsal_musteriler(env)
+    except Exception as ex:
+        return (f"<div class='note'><b>Kurumsal müşteri listesi alınamadı</b> (Elektra: {esc(str(ex)[:160])}). "
+                "Bir sonraki güncellemede tekrar denenir.</div>"), 0
+    def tarih(s):
+        return f"{s[8:10]}.{s[5:7]}.{s[:4]}" if len(s) >= 10 else s
+    def tel_a(t):
+        d = re.sub(r"[^0-9+]", "", t)
+        return f"<a href='tel:{esc(d)}'>{esc(t)}</a>" if d else "<span class='pz-ok'>telefon yok</span>"
+    satir = "".join(
+        f"<tr class='pz-m' data-id='{esc(m['id'])}'>"
+        f"<td><b>{esc(m['ad'])}</b><div class='pz-ok'>{m['rez']} rezervasyon · {m['gece']} gece · son giriş {tarih(m['son'])}</div></td>"
+        f"<td style='font-size:13px'>{tel_a(m['tel'])}<div class='pz-ok'>Son misafir: {esc(m['misafir']) or '—'}</div></td>"
+        f"<td style='min-width:170px'><select class='pz-d'>{''.join(f'<option>{esc(d)}</option>' for d in MUSTERI_DURUM)}</select>"
+        f"<div class='pz-ok pz-son'>—</div></td>"
+        f"<td style='min-width:180px'><textarea class='pz-n' placeholder='Kiminle görüşüldü, ne teklif edildi…'></textarea></td>"
+        f"</tr>" for m in ml)
+    html = (
+        "<h3 style='margin:26px 0 6px'>Kurumsal müşteriler — bu yıl bizde kalan firmalar</h3>"
+        "<p class='lead'>Elektra'dan otomatik gelir (Booking, Expedia, tur şirketleri hariç). Bu firmaları arayıp "
+        "kış ve uzun konaklama için yer teklif edin; fiyat listesindeki fiyatlarla. Sonucu buradan işaretleyin, "
+        "<b>anında kaydedilir</b>. Telefona dokununca arar.</p>"
+        "<div class='pz-top'><span class='pz-durum-m'>yükleniyor…</span></div>"
+        "<div class='pz-tw'><table class='pz-t'><thead><tr><th>Firma</th><th>Telefon</th><th>Durum</th><th>Not</th>"
+        f"</tr></thead><tbody>{satir}</tbody></table></div>")
+    return html, len(ml)
+
+
+# ---------------------------------------------------------------------------
 def build_kurumlar(env=None):
     key = _anahtar("PANEL_KEY_MUDUR")
     sirali = sorted(KURUMLAR, key=lambda k: (k["oncelik"], k["ad"]))
@@ -181,8 +271,9 @@ function tarih(s){if(!s)return'';var d=new Date(s);return d.toLocaleDateString('
 function goster(id,r){var tr=kok.querySelector('tr[data-id="'+id+'"]'); if(!tr||!r)return;
   if(r.durum)tr.querySelector('.pz-d').value=r.durum; if(r.not!=null)tr.querySelector('.pz-n').value=r.not;
   tr.querySelector('.pz-son').textContent=(r.kim?r.kim+' · ':'')+tarih(r.guncelleme);}
-function say(){var s={}, n=0; kok.querySelectorAll('.pz-d').forEach(function(x){s[x.value]=(s[x.value]||0)+1;n++});
-  dur.textContent=Object.keys(s).map(function(k){return k+': '+s[k]}).join(' · ');}
+function sayac(sec,el){if(!el)return; var s={}; kok.querySelectorAll(sec).forEach(function(x){s[x.value]=(s[x.value]||0)+1});
+  el.textContent=Object.keys(s).map(function(k){return k+': '+s[k]}).join(' · ');}
+function say(){sayac('tr:not(.pz-m) .pz-d',dur); sayac('tr.pz-m .pz-d',kok.querySelector('.pz-durum-m'));}
 if(!KEY){dur.textContent='Kayıt servisi bağlı değil — değişiklikler kaydedilmez.';}
 else fetch(API+'kurumlar',{headers:{'X-Key':KEY}}).then(function(r){return r.json()}).then(function(d){
   Object.keys(d).forEach(function(id){goster(id,d[id])}); say();}).catch(function(){dur.textContent='Kayıt servisine ulaşılamadı.';});
@@ -202,6 +293,7 @@ kok.querySelectorAll('tr[data-id]').forEach(function(tr){
     c.onclick=function(){try{navigator.clipboard.writeText(t); c.textContent='Kopyalandı ✓';}catch(e){}}; m.appendChild(c);});});});
 })();</script>""" % (json.dumps(API), json.dumps(key), json.dumps(veri, ensure_ascii=False),
                      json.dumps(MEKTUP_TR, ensure_ascii=False), json.dumps(MEKTUP_EN, ensure_ascii=False))
+    musteri_html, n_musteri = _musteri_tablosu(env)
     body = (
         CSS +
         "<p class='lead'>Bu kurumların sitesinden bizim sayfalarımıza verilecek her bağlantı Google'da sıralamamızı yükseltir "
@@ -214,9 +306,10 @@ kok.querySelectorAll('tr[data-id]').forEach(function(tr){
         "<div class='note'><b>Öneri:</b> klinik ve üniversitelere imzalı mektup + tek sayfalık broşür, mümkünse kısa ziyaret; "
         "ardından aynı metni e-postayla gönderin. Tur firması ve bloga kısa İngilizce e-posta yeter. "
         "Para karşılığı bağlantı teklif edenleri kabul etmeyin (Google cezalandırır). Kurum indirimi sizin kararınız.</div>"
+        + musteri_html
         + ("" if key else _yok_notu()) + js)
     return {"label": "Kurumlar", "count": len(KURUMLAR), "count_label": "kurum", "tone": "ok",
-            "sub": "Bağlantı / iş birliği istenecek kurumlar · durum takibi", "updated": now_str(),
+            "sub": f"Bağlantı / iş birliği kurumları + {n_musteri} kurumsal müşteri · arama takibi", "updated": now_str(),
             "html": PAGE("Pazarlama", "Kurumlar — bağlantı ve iş birliği",
                          "Kime yazıldı, kim cevap verdi: müdür işaretler, sahibi görür", body)}
 
