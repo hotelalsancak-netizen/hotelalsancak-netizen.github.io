@@ -48,7 +48,7 @@ SHELL = ROOT / "dashboard_shell.html"
 # committed) or is built live in build_cloud(). Add future lists by extending this.
 SECTION_ORDER = ["anlik", "gunsonu", "odeme", "gunluk", "kasa", "nakit", "iptal", "indirim", "bakiye", "eksik",
                  "fiyat", "kart", "stats", "satis", "gelirgider", "borclar", "vergi", "tvkart",
-                 "yorumkart", "yorumlar", "paylasim", "kurumlar"]
+                 "yorumkart", "odakontrol", "yorumlar", "paylasim", "kurumlar"]
 
 TR_MONTHS = ["", "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz",
              "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"]
@@ -191,7 +191,7 @@ def build_kart() -> dict:
 # Fiyat Kontrol iki role de açık: resepsiyon kapı fiyatlarını oradan görür (17.10.2026).
 # Eksik Bilgiler iki role de açık: otel müdürü kontrol eder, resepsiyon da kendi
 # eksiğini görüp tamamlar (20.10.2026).
-RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat", "eksik", "yorumkart",
+RECEPTION_SECTIONS = {"gunsonu", "odeme", "bakiye", "gunluk", "kart", "tvkart", "fiyat", "eksik", "yorumkart", "odakontrol",
                       "kurumlar"}   # kurumlar: müdür işaretler (24.11.2026); yorumlar/paylasim yalnız yönetim
 
 
@@ -276,6 +276,7 @@ def build_cloud():
             ("tvkart", checks.build_tvkart), ("yorumkart", checks.build_yorumkart),
             ("yorumlar", pazarlama.build_yorumlar), ("paylasim", pazarlama.build_paylasim),   # Pazarlama 24.11.2026
             ("kurumlar", pazarlama.build_kurumlar),
+            ("odakontrol", pazarlama.build_odakontrol),   # Oda Kontrol Listesi 27.11.2026
             ("anlik", checks.build_anlik))   # Anlık Durum — yalnız yönetim (22.11.2026; tahsilat içerir)
     for key, fn in live:
         try:
@@ -341,6 +342,10 @@ def build_cloud():
                         dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("*.py", "*.html", "img", ".tmp-*", "__pycache__"))
     # Google yorum kartları (16.11.2026): basılı misafir kartı, gizli değil.
+    # Oda kontrol listesi (27.11.2026): kat hizmetleri formu, gizli değil.
+    if (ROOT / "kartlar" / "oda-kontrol").is_dir():
+        shutil.copytree(ROOT / "kartlar" / "oda-kontrol", PUBLIC / "kartlar" / "oda-kontrol", dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("*.py", "*.html", "__pycache__"))
     if (ROOT / "kartlar" / "yorum").is_dir():
         shutil.copytree(ROOT / "kartlar" / "yorum", PUBLIC / "kartlar" / "yorum",
                         dirs_exist_ok=True,

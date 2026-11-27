@@ -395,3 +395,29 @@ fetch(API+'paylasim',{headers:{'X-Key':KEY}}).then(function(r){return r.json()})
     return {"label": "Google Paylaşımları", "count": 5, "count_label": "paylaşım", "tone": "ok",
             "sub": "İşletme Profili haftalık paylaşım takvimi", "updated": now_str(),
             "html": PAGE("Pazarlama", "Google Paylaşımları", "Haftalık paylaşım takvimi — yayında ve planlı", body)}
+
+
+# ---------------------------------------------------------------------------
+# Oda Kontrol Listesi (27.11.2026) — kat hizmetleri için yazdırılabilir A4 (2 sayfa). Maddeler Google/Expedia/
+# Booking yorumlarında tekrar eden şikâyetlerden. Kaynak: kartlar/oda-kontrol/oda-kontrol-listesi.html (chromium → PDF).
+# dashboard.py dosyaları public/kartlar/oda-kontrol/'a şifresiz kopyalar (gizli bilgi yok).
+# ---------------------------------------------------------------------------
+def build_odakontrol(env=None):
+    u = "kartlar/oda-kontrol/"
+    body = (
+        CSS +
+        "<p class='lead'>Her çıkıştan sonra ve misafir girmeden önce doldurulur; oda en geç <b>13:30</b>'da hazır olur. "
+        "Maddeler misafir yorumlarında en sık tekrar eden şikâyetlerden seçildi (★ işaretliler): <b>toz ve banyo, odada "
+        "su/terlik/bardak/sabun, TV, sıcak su, sifon</b>. 2. sayfa haftalık derin temizlik ve uzun konaklayan misafir içindir.</p>"
+        "<div class='pz-ist' style='grid-template-columns:repeat(auto-fit,minmax(260px,1fr))'>"
+        f"<a class='k' href='{u}onizleme-1.jpg' target='_blank' rel='noopener'><img src='{u}onizleme-1.jpg' alt='Oda kontrol listesi 1. sayfa' style='width:100%;display:block;border-radius:6px'></a>"
+        f"<a class='k' href='{u}onizleme-2.jpg' target='_blank' rel='noopener'><img src='{u}onizleme-2.jpg' alt='Oda kontrol listesi 2. sayfa' style='width:100%;display:block;border-radius:6px'></a>"
+        "</div>"
+        f"<div class='btns'><a class='dl main' href='{u}oda-kontrol-listesi.pdf' download='Riva-oda-kontrol-listesi.pdf'>⤓ PDF indir (A4, 2 sayfa)</a></div>"
+        "<div class='note'><b>Nasıl kullanılır:</b> 1. sayfayı oda başına çoğaltın; kat görevlisi doldurur, kat şefi ya da "
+        "resepsiyon kontrol edip \"oda hazır\" saatini yazar. Arıza aynı gün teknik servise bildirilir; arızalı oda satılmaz. "
+        "Dolu listeler 1 ay saklanır. Booking puanımız 7,5 — 8'in üstüne çıkmak için en etkili adım bu liste.</div>")
+    return {"label": "Oda Kontrol Listesi", "count": 2, "count_label": "sayfa", "tone": "ok",
+            "sub": "Kat hizmetleri · yazdırılabilir A4", "updated": now_str(),
+            "html": PAGE("Kat hizmetleri", "Oda Kontrol Listesi",
+                         "Misafir şikâyetlerini kesmek için her oda, her çıkıştan sonra", body)}
