@@ -244,6 +244,108 @@ def _musteri_tablosu(env):
 
 
 # ---------------------------------------------------------------------------
+# Yeni kurumsal ADAYLAR (27.11.2026 web araştırması; iletişim firmaların kendi sitesinden / KAP). ★ = ilk aranacaklar.
+# Kış (Ara–Mar) boş odalar için ekip / uzun konaklama. Durumlar "kurumlar" koleksiyonunda "a-…" kimliğiyle saklanır.
+# ---------------------------------------------------------------------------
+ADAYLAR = [
+    # (yıldız, ad, grup, neden, telefon, e-posta/web, yer)
+    (1, "Alport Alsancak Liman İşletmeciliği (Albayrak)", "Liman", "Limanı 1 Ağustos 2026'da devraldı; başka şehirden yönetim/devir ekipleri. Otele yürüme mesafesi", "0212 467 36 00 (Albayrak santral)", "albayrak.com.tr", "Alsancak"),
+    (1, "Arkas Holding", "Liman / lojistik", "Merkezi Alsancak; stajyer, denetçi, ziyaretçi trafiği", "0232 477 77 77", "arkasizm@arkas.com.tr", "Alsancak, Liman Cd. 38"),
+    (1, "PwC İzmir", "Denetim", "Ocak–Mart denetim dönemi; İstanbul'dan ekipler", "0232 497 70 70", "pwc.com.tr", "Bayraklı"),
+    (1, "Gülermak (Buca Metrosu)", "İnşaat", "Tünel işi 2026–27; Ankara'dan mühendis ve ekip", "0312 484 14 89", "gulermak.com.tr", "Buca / Gaziemir"),
+    (1, "VYeniKonak (Vakıf GYO + İlk İnşaat)", "İnşaat", "Konak'ta büyük konut projesi 2026–2029; İstanbul'dan proje ekibi", "444 5 232", "info@vyenikonak.com", "Konak"),
+    (1, "Gözde Sağlık Grubu — Özel Sağlık Hastanesi", "Sağlık", "Şehir dışından hasta ve refakatçi; otele çok yakın", "0850 259 23 27", "info@gozdegrubu.com", "Alsancak"),
+    (1, "Ege İhracatçı Birlikleri (EİB)", "Oda / birlik", "Yabancı alıcı heyetleri, ticaret müşavirleri", "0232 488 60 00", "pr@eib.org.tr", "Alsancak, Atatürk Cd. 382"),
+    (1, "Dokuz Eylül Üniversitesi Rektörlüğü", "Üniversite", "Misafir öğretim üyesi, jüri, doktora savunması", "0232 412 12 12", "info@deu.edu.tr", "Alsancak"),
+    (1, "İZFAŞ (Fuar İzmir)", "Fuar", "TTI, IF Wedding, Opticworld, EXPO 2027 — katılımcı konaklama listesi", "0232 497 10 00", "izfas.com.tr", "Gaziemir"),
+    (1, "Orion Fuarcılık (AGROEXPO 2–6 Şub 2027)", "Fuar", "~500 katılımcı firma, 125 ülke", "0533 385 58 46", "international@orionfair.com", "Balçova"),
+    (0, "KPMG İzmir", "Denetim", "Ocak–Mart denetim dönemi", "0232 464 20 45", "kpmg.com/tr", "Bayraklı"),
+    (0, "EY İzmir", "Denetim", "Ocak–Mart denetim dönemi", "0232 483 59 59", "izmir.office@tr.ey.com", "Konak"),
+    (0, "Deloitte İzmir", "Denetim", "Ocak–Mart denetim dönemi", "0232 464 70 64", "deloitte.com/tr", "Bayraklı"),
+    (0, "ENEZ – SRL İnşaat Ortaklığı", "İnşaat", "Emlak Konut Bayraklı 1. etap", "444 36 39", "info@enezinsaat.com.tr", "Bayraklı"),
+    (0, "Mirnas Grup (Bronz Kule)", "İnşaat", "Bayraklı kule inşaatı; taşeron/teknik ekip", "444 66 70", "info@mirnas.com.tr", "Bayraklı"),
+    (0, "ENKA (TÜPRAŞ İzmir projesi)", "İnşaat", "Aliağa rafineri projesi Nisan 2027'ye kadar; İZBAN direkt", "0212 376 10 00", "enka@enka.com", "Aliağa"),
+    (0, "Türk Loydu İzmir", "Denizcilik", "Gemi sörveyör ve denetçileri", "0232 464 29 88", "info@turkloydu.org", "Alsancak"),
+    (0, "Wilhelmsen (Aliağa)", "Denizcilik", "Mürettebat değişimi (crew change)", "0232 655 05 04", "wps.aliaga@wilhelmsen.com", "Aliağa"),
+    (0, "EFR Fuarcılık (İZFURNEX 17–21 Mar 2027)", "Fuar", "Mobilya fuarı katılımcıları", "0530 068 18 39", "info@efrfairs.com", "İzmir"),
+    (0, "Tema Fuarcılık (PET İzmir 25–28 Mar 2027)", "Fuar", "Fuar katılımcıları", "0232 503 80 39", "info@temafair.com", "İzmir"),
+    (0, "TACT Fuar (GITFEST 2–6 Ara 2026)", "Fuar", "Fuar katılımcıları", "0232 332 02 29", "tact@tactfair.com", "İzmir"),
+    (0, "Medicana International İzmir", "Sağlık", "Şehir dışı / yabancı hasta", "444 6 334", "medicana.com.tr", "Konak"),
+    (0, "Acıbadem Kent Hastanesi", "Sağlık", "Çevre illerden hasta", "0232 491 44 44", "info.kent@acibadem.com", "Çiğli"),
+    (0, "Ege Bölgesi Sanayi Odası (EBSO)", "Oda / birlik", "Eğitim ve heyet ziyaretçileri", "0232 455 29 00", "ebso.org.tr", "Konak"),
+    (0, "Göztepe SK", "Spor", "Seçmeler, transfer, misafir kafileler", "444 1 925", "iletisim@goztepe.org.tr", "Konak"),
+    (0, "Otis (asansör)", "Teknik servis", "Başka şehirden teknisyen (genel hat)", "444 68 47", "bilgi@otis.com", "—"),
+    (0, "Schindler (asansör)", "Teknik servis", "Başka şehirden teknisyen (genel hat)", "0212 276 86 00", "kurumsaliletisim.tr@schindler.com", "—"),
+    (0, "Alarko Carrier", "Teknik servis", "Teknisyen ekipleri (genel hat)", "444 0 128", "info@alarko-carrier.com.tr", "—"),
+    (0, "Daikin", "Teknik servis", "İzmir bölge ofisi var (genel hat)", "444 999 0", "daikin.com.tr", "—"),
+]
+
+FUAR_TAKVIMI = [
+    ("TTI İzmir (turizm)", "2–4 Ara 2026"), ("GITFEST (karavan/outdoor)", "2–6 Ara 2026"),
+    ("IF Wedding Fashion", "19–22 Oca 2027"), ("AGROEXPO (tarım)", "2–6 Şub 2027"),
+    ("İZFURNEX (mobilya)", "17–21 Mar 2027"), ("PET İzmir", "25–28 Mar 2027"), ("Opticworld (optik)", "26–28 Mar 2027"),
+    ("MARBLE İzmir", "13–16 Nis 2027"), ("EXPO İzmir 2027", "15 Nis – 2 May 2027"),
+]
+
+ARAMA_METNI = """YENİ FİRMA — telefonda (1,5 dk)
+Merhaba, ben [ad], Alsancak'taki Riva Hotel'den. İzmir'e iş için gelen ekiplerin konaklamasıyla kim ilgileniyor, onunla görüşebilir miyim? (insan kaynakları / idari işler / satın alma / proje müdürü)
+— Şirketinizin İzmir'de [proje / fuar / denetim / ziyaret] olduğunu gördüm. Alsancak'ta, İZBAN'a yürüme mesafesinde 55 odalı otelimiz var; 42 odamız mutfaklı. Uzun kalan ekipler için 7 gece ve üzeri gecelik 3.200 TL'den, 28 gece ve üzeri 2.800 TL. Temizlik ve bütün faturalar dahil, şirkete fatura kesiyoruz, 24 saat resepsiyon.
+— Size fiyat listesini e-postayla göndereyim mi? İsterseniz bir gün gelin, odaları gösterelim.
+Fuar firmasına ek: "Fuar İzmir'e Alsancak'tan İZBAN'la aktarmasız gidiliyor; fuar haftası oteller erken doluyor, tarihlerinizi şimdiden bloke edebiliriz."
+
+ESKİ MÜŞTERİ — telefonda (1 dk)
+Merhaba, ben [ad], Riva Hotel Alsancak'tan. [Firma] ekibinizi geçen dönem ağırlamıştık, teşekkür ederiz. Kış aylarında İzmir'e gelecek çalışanınız ya da projeniz var mı? 7+ gece mutfaklı stüdyo 3.200 TL, 14+ gece 3.000, 28+ gece 2.800 TL; temizlik ve faturalar dahil, fatura kesiyoruz. Fiyatları e-postayla göndereyim mi?
+
+AÇILMAZSA — WhatsApp / SMS
+Merhaba, Riva Hotel Alsancak'tan [ad]. Kış dönemi için firmalara uzun konaklama fiyatımız var: mutfaklı oda, 7+ gece 3.200 TL, 28+ gece 2.800 TL; temizlik ve faturalar dahil, şirkete fatura. Ayrıntı: www.rivaalsancak.com/uzun-konaklama.html — 0232 464 64 02
+
+E-POSTA (aramadan sonra) — Konu: Riva Hotel Alsancak — kurumsal uzun konaklama fiyatları (Aralık 2026 – Mart 2027)
+Sayın [Ad Soyad], bugünkü görüşmemiz için teşekkür ederim. Riva Hotel Alsancak — 1454 Sokak No:11, Alsancak/İzmir; Alsancak İZBAN'a ve Kordon'a yürüme mesafesi, 55 oda, 42'si mutfaklı.
+Uzun konaklama (gecelik, KDV dahil, 31.03.2027'ye kadar):
+• Stüdyo mutfaklı: 7–13 gece 3.200 · 14–27 gece 3.000 · 28+ gece 2.800 TL
+• Superior mutfaklı: 3.400 / 3.200 / 3.000 TL
+• Deluxe mutfaklı: 3.600 / 3.400 / 3.200 TL
+• 1+1 Suit (4 kişi): 4.200 / 4.000 / 3.800 TL
+Fiyata dahil: günlük temizlik, çarşaf-havlu, elektrik-su-ısınma, Wi-Fi, 24 saat resepsiyon ve güvenlik. Firmanıza fatura kesilir.
+Ayrıntı ve fotoğraflar: https://www.rivaalsancak.com/uzun-konaklama.html
+Rezervasyon: [ad] · 0232 464 64 02 · WhatsApp 0533 167 44 56 · info@rivaalsancak.com
+
+KURAL: Fiyat listesinin altında fiyat verilmez. 5+ oda (grup) taleplerinde fiyatı sahibi verir."""
+
+
+def _aday_tablosu():
+    def aid(ad):
+        return "a-" + _mid(ad)[2:]
+    def tel_a(t):
+        d = re.sub(r"[^0-9+]", "", t.split("(")[0])
+        return f"<a href='tel:{esc(d)}'>{esc(t)}</a>" if d else esc(t)
+    def ilet(e):
+        return (f"<a href='mailto:{esc(e)}'>{esc(e)}</a>" if "@" in e
+                else f"<a href='https://{esc(e)}' target='_blank' rel='noopener'>{esc(e)}</a>")
+    sirali = sorted(ADAYLAR, key=lambda a: (-a[0], a[2], a[1]))
+    satir = "".join(
+        f"<tr class='pz-m pz-a' data-id='{esc(aid(a[1]))}'>"
+        f"<td><b>{esc(a[1])}</b>{'<span class=pz-on>★ önce</span>' if a[0] else ''}"
+        f"<div class='pz-ok'>{esc(a[2])} · {esc(a[6])}</div><div class='pz-ok'>{esc(a[3])}</div></td>"
+        f"<td style='font-size:13px'>{tel_a(a[4])}<div class='pz-ok'>{ilet(a[5])}</div></td>"
+        f"<td style='min-width:170px'><select class='pz-d'>{''.join(f'<option>{esc(d)}</option>' for d in MUSTERI_DURUM)}</select>"
+        f"<div class='pz-ok pz-son'>—</div></td>"
+        f"<td style='min-width:180px'><textarea class='pz-n' placeholder='Kiminle görüşüldü, ne teklif edildi…'></textarea></td>"
+        f"</tr>" for a in sirali)
+    fuar = "".join(f"<li><b>{esc(f)}</b> — {esc(d)}</li>" for f, d in FUAR_TAKVIMI)
+    return (
+        "<h3 style='margin:26px 0 6px'>Yeni aday firmalar — kış için aranacaklar</h3>"
+        "<p class='lead'>Daha önce bizde kalmamış ama kışın İzmir'e ekip gönderen firmalar (liman, denetim, inşaat, fuar, "
+        "sağlık). ★ olanlardan başlayın. Durumu buradan işaretleyin; anında kaydedilir.</p>"
+        "<details style='margin:6px 0 12px'><summary class='pz-btn' style='display:inline-block'>📞 Arama metni, WhatsApp ve e-posta şablonu</summary>"
+        f"<div class='pz-mektup'>{esc(ARAMA_METNI)}</div></details>"
+        "<div class='pz-tw'><table class='pz-t'><thead><tr><th>Firma</th><th>İletişim</th><th>Durum</th><th>Not</th>"
+        f"</tr></thead><tbody>{satir}</tbody></table></div>"
+        "<div class='card' style='margin-top:14px'><h3>Kış fuar takvimi (Fuar İzmir) — bu haftalarda reklam ve fuar firmaları</h3>"
+        f"<ul>{fuar}</ul><p class='pz-ok'>Kaynak: İZFAŞ fuar takvimi; tarihler değişebilir, aramadan önce kontrol edin.</p></div>")
+
+
+# ---------------------------------------------------------------------------
 def build_kurumlar(env=None):
     key = _anahtar("PANEL_KEY_MUDUR")
     sirali = sorted(KURUMLAR, key=lambda k: (k["oncelik"], k["ad"]))
@@ -306,10 +408,10 @@ kok.querySelectorAll('tr[data-id]').forEach(function(tr){
         "<div class='note'><b>Öneri:</b> klinik ve üniversitelere imzalı mektup + tek sayfalık broşür, mümkünse kısa ziyaret; "
         "ardından aynı metni e-postayla gönderin. Tur firması ve bloga kısa İngilizce e-posta yeter. "
         "Para karşılığı bağlantı teklif edenleri kabul etmeyin (Google cezalandırır). Kurum indirimi sizin kararınız.</div>"
-        + musteri_html
+        + musteri_html + _aday_tablosu()
         + ("" if key else _yok_notu()) + js)
     return {"label": "Kurumlar", "count": len(KURUMLAR), "count_label": "kurum", "tone": "ok",
-            "sub": f"Bağlantı / iş birliği kurumları + {n_musteri} kurumsal müşteri · arama takibi", "updated": now_str(),
+            "sub": f"Bağlantı kurumları + {n_musteri} kurumsal müşteri + {len(ADAYLAR)} aday firma · arama takibi", "updated": now_str(),
             "html": PAGE("Pazarlama", "Kurumlar — bağlantı ve iş birliği",
                          "Kime yazıldı, kim cevap verdi: müdür işaretler, sahibi görür", body)}
 
