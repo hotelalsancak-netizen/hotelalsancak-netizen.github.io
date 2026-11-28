@@ -4667,8 +4667,15 @@ def build_anlik(env):
     def kpi(baslik, deger, alt, ek=""):
         return (f"<div class='ak'><div class='l'>{esc(baslik)}</div><div class='n'>{deger}</div>{ek}"
                 f"<div class='s'>{alt}</div></div>")
-    yuzde = round(100 * dolu_n / (len(odalar) or ROOMS_TOTAL))
-    kp = (kpi("Dolu oda", f"{dolu_n} <small>/ {len(odalar) or ROOMS_TOTAL}</small>", f"%{yuzde} doluluk · {len(odalar) - dolu_n} boş",
+    # Sahibi (27–28.11.2026): "toplamda ne kadar satılmış oda var bilmiyorum" — Elektra Oda Planı'ndaki
+    # gece sayısı (bu gece satılan = konaklayan + gelecek). Büyük rakam o; "şu an otelde" altta.
+    top_oda = len(odalar) or ROOMS_TOTAL
+    satilan = dol.get(today, 0)
+    yuzde = round(100 * satilan / top_oda)
+    bekleyen = len(gelen) - len(giren)
+    kp = (kpi("Bu gece satılan oda", f"{satilan} <small>/ {top_oda}</small>",
+              f"%{yuzde} doluluk · {top_oda - satilan} boş · şu an otelde {dolu_n}"
+              + (f" · <b class='w'>{bekleyen} giriş bekleniyor</b>" if bekleyen > 0 else ""),
               f"<div class='bar'><i style='width:{yuzde}%'></i></div>")
           + kpi("Bugün giriş", str(len(gelen)), f"{len(giren)} geldi" + (f" · <b class='w'>{len(gelen) - len(giren)} bekleniyor</b>" if len(gelen) > len(giren) else ""))
           + kpi("Bugün çıkış", str(len(cikis)), f"{len(cikan)} çıktı" + (f" · <b class='b'>{len(cikis) - len(cikan)} çıkmadı</b>" if len(cikis) > len(cikan) else ""))
@@ -4723,7 +4730,7 @@ def build_anlik(env):
             + "<script>var AD=" + json.dumps(data, ensure_ascii=False).replace("</", "<\\/") + ";</script>" + AN_JS)
     n = len([t for t in todo if t["s"] < 3])
     return {"label": "Anlık Durum", "count": n, "count_label": "yapılacak", "tone": "bad" if n else "ok",
-            "sub": f"{dolu_n}/{len(odalar) or ROOMS_TOTAL} dolu · {len(eksik)} eksik bilgi · gün sonu {'hazır' if hazir else 'hazır değil'}",
+            "sub": f"bu gece {dol.get(today, 0)}/{len(odalar) or ROOMS_TOTAL} satılan · şu an otelde {dolu_n} · {len(eksik)} eksik bilgi · gün sonu {'hazır' if hazir else 'hazır değil'}",
             "updated": now.strftime("%d.%m.%Y %H:%M"),
             "html": PAGE(None, "Anlık Durum", "", body)}   # başlık shell'de; içeride tekrarlanmaz (sahibi 22.11)
 
